@@ -1,0 +1,21 @@
+{
+	"name": "landvalue-sim",
+	"private": true,
+	"version": "0.0.0",
+	"type": "module",
+	"scripts": {
+		"dev": "vite",
+		"build": "tsc && vite build",
+		"preview": "vite preview",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"lint": "biome check .",
+		"lint:fix": "biome check --fix ."
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.5.1",
+		"typescript": "~6.0.2",
+		"vite": "^8.1.0",
+		"vitest": "^4.1.9"
+	}
+}
