@@ -17,6 +17,7 @@ import {
 	AGG,
 	BUILDING_EMPTY,
 	COMMERCIAL_PER_POP,
+	DEMAND_SMOOTHING,
 	INDUSTRIAL_BASE_DEMAND,
 	INDUSTRIAL_PER_POP,
 	JOBS_C_PER_DENSITY,
@@ -123,10 +124,9 @@ export function updateRciDemand(state: CityState): void {
 	const rawI = iGap * 8.0 - iTaxPenalty;
 
 	// Lerp toward target
-	const SMOOTHING = 0.15;
-	const newR = prevR + (rawR - prevR) * SMOOTHING;
-	const newC = prevC + (rawC - prevC) * SMOOTHING;
-	const newI = prevI + (rawI - prevI) * SMOOTHING;
+	const newR = prevR + (rawR - prevR) * DEMAND_SMOOTHING;
+	const newC = prevC + (rawC - prevC) * DEMAND_SMOOTHING;
+	const newI = prevI + (rawI - prevI) * DEMAND_SMOOTHING;
 
 	aggregates[AGG.R_DEMAND] = clamp(newR, -MAX_DEMAND, MAX_DEMAND);
 	aggregates[AGG.C_DEMAND] = clamp(newC, -MAX_DEMAND, MAX_DEMAND);

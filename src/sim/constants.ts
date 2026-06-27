@@ -39,7 +39,7 @@ export const JOBS_I_PER_DENSITY = [0, 10, 25, 60] as const;
 // RCI demand tuning
 // ---------------------------------------------------------------------------
 export const MAX_DEMAND = 1000;
-export const DEMAND_SMOOTHING = 0.12;
+export const DEMAND_SMOOTHING = 0.15;
 export const RESIDENTS_PER_JOB = 2.5;
 export const COMMERCIAL_PER_POP = 0.05;
 export const INDUSTRIAL_BASE_DEMAND = 80;

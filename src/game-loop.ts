@@ -31,7 +31,7 @@ export function startGameLoop(
 		const dt = lastTime === 0 ? 0 : time - lastTime;
 		lastTime = time;
 
-		const interval = TICK_INTERVALS[appState.speed];
+		const interval = TICK_INTERVALS[appState.speed] ?? 0;
 
 		if (interval > 0) {
 			accumulator += dt;

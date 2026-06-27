@@ -30,6 +30,24 @@ const COL_R_ZONE = "#22c55e";
 const COL_C_ZONE = "#3b82f6";
 const COL_I_ZONE = "#eab308";
 
+// Pre-computed color LUTs to avoid per-tile string allocation each frame.
+// Land value: 256 entries mapping value (0-255) to an hsla() color string.
+const LV_LUT_SIZE = 256;
+const LV_LUT_MAX = 150;
+const LV_LUT: string[] = new Array(LV_LUT_SIZE);
+for (let i = 0; i < LV_LUT_SIZE; i++) {
+	const t = Math.min(1, i / LV_LUT_MAX);
+	const hue = 120 * (1 - t);
+	LV_LUT[i] = `hsla(${hue.toFixed(0)},80%,45%,0.45)`;
+}
+
+// Pollution: 256 entries mapping pollution level (0-255) to an rgba() color string.
+const POL_LUT: string[] = new Array(LV_LUT_SIZE);
+for (let i = 0; i < LV_LUT_SIZE; i++) {
+	const alpha = Math.min(0.6, (i / 255) * 0.7);
+	POL_LUT[i] = `rgba(168,50,168,${alpha.toFixed(2)})`;
+}
+
 const COL_CURSOR_TOOL: Record<Tool, string> = {
 	none: "rgba(255,255,255,0.25)",
 	"zone-r": "rgba(34,197,94,0.35)",
@@ -182,23 +200,17 @@ function drawOverlay(
 			if (app.overlay === "land-value") {
 				const lv = city.landValue[idx] ?? 0;
 				if (lv > 0) {
-					ctx.fillStyle = heatmapColor(lv, 150);
+					const clamped = Math.min(lv, LV_LUT_SIZE - 1);
+					ctx.fillStyle = LV_LUT[clamped] ?? LV_LUT[0] ?? "";
 					ctx.fillRect(sx, sy, ts, ts);
 				}
 			} else if (app.overlay === "pollution") {
 				const pol = city.pollution[idx] ?? 0;
 				if (pol > 0) {
-					const alpha = Math.min(0.6, (pol / 255) * 0.7);
-					ctx.fillStyle = `rgba(168,50,168,${alpha.toFixed(2)})`;
+					ctx.fillStyle = POL_LUT[pol] ?? POL_LUT[0] ?? "";
 					ctx.fillRect(sx, sy, ts, ts);
 				}
 			}
 		}
 	}
-}
-
-function heatmapColor(value: number, max: number): string {
-	const t = Math.min(1, value / max);
-	const hue = 120 * (1 - t);
-	return `hsla(${hue.toFixed(0)},80%,45%,0.45)`;
 }
