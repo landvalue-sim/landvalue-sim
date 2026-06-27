@@ -25,10 +25,15 @@ import {
 	LV_POPULATION_BONUS,
 	LV_ROAD_ADJ_BONUS,
 	LV_ROAD_BONUS,
+	MAX_GRID_SIZE,
 	ZONE_COMMERCIAL,
 	ZONE_INDUSTRIAL,
 	ZONE_RESIDENTIAL,
 } from "../constants.ts";
+
+// Pre-allocated scratch buffer for diffusion passes.
+// Sized for max possible grid to avoid per-tick allocation.
+const scratch = new Uint16Array(MAX_GRID_SIZE * MAX_GRID_SIZE);
 
 // Orthogonal + diagonal neighbor offsets
 const DX = [-1, 0, 1, -1, 1, -1, 0, 1] as const;
@@ -126,8 +131,6 @@ export function updateLandValue(state: CityState): void {
 	}
 
 	// --- Pass 2: diffusion (bounded iterations) ------------------------------
-	const scratch = new Uint16Array(size);
-
 	for (let iter = 0; iter < LV_DIFFUSION_ITERATIONS; iter++) {
 		scratch.set(landValue);
 

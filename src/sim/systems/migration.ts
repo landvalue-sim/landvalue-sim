@@ -19,6 +19,7 @@ import {
 	JOBS_I_PER_DENSITY,
 	MAX_ABANDONS_PER_TICK,
 	MAX_BUILDS_PER_TICK,
+	MAX_GRID_SIZE,
 	POP_PER_DENSITY,
 	TERRAIN_WATER,
 	ZONE_COMMERCIAL,
@@ -26,14 +27,12 @@ import {
 	ZONE_RESIDENTIAL,
 } from "../constants.ts";
 
-interface TileScore {
-	index: number;
-	value: number;
-}
-
-// Pre-allocated scratch arrays to avoid per-tick allocation.
-// Sized for max possible grid (256×256 = 65536).
-const candidates: TileScore[] = [];
+// Pre-allocated scratch arrays for candidate tile selection.
+// Sized for max possible grid (MAX_GRID_SIZE² = 65536).
+// Shared across growZone/abandonZone calls within a tick (each resets count).
+const MAX_TILES = MAX_GRID_SIZE * MAX_GRID_SIZE;
+const candIdx = new Uint32Array(MAX_TILES);
+const candVal = new Uint16Array(MAX_TILES);
 
 export function processMigration(state: CityState): void {
 	const rDemand = state.aggregates[AGG.R_DEMAND] ?? 0;
@@ -55,7 +54,7 @@ function growZone(state: CityState, zoneType: number, demand: number): void {
 	const { size, terrain, zoning, building, landValue } = state;
 
 	// Collect empty zoned tiles that have road access
-	candidates.length = 0;
+	let count = 0;
 	for (let i = 0; i < size; i++) {
 		if (
 			zoning[i] === zoneType &&
@@ -63,22 +62,24 @@ function growZone(state: CityState, zoneType: number, demand: number): void {
 			terrain[i] !== TERRAIN_WATER &&
 			hasRoadAccess(state, i)
 		) {
-			candidates.push({ index: i, value: landValue[i] ?? 0 });
+			candIdx[count] = i;
+			candVal[count] = landValue[i] ?? 0;
+			count++;
 		}
 	}
 
-	// Sort by land value descending (highest value first)
-	candidates.sort((a, b) => b.value - a.value);
+	if (count === 0) return;
 
 	// Scale builds by demand magnitude
 	const demandFactor = Math.min(1, (demand - GROWTH_DEMAND_THRESHOLD) / 200);
 	const maxBuilds = Math.max(1, Math.floor(MAX_BUILDS_PER_TICK * demandFactor));
-	const buildCount = Math.min(maxBuilds, candidates.length);
+	const buildCount = Math.min(maxBuilds, count);
+
+	// Partial selection sort: place highest-value tiles at front
+	selectTopK(count, buildCount);
 
 	for (let i = 0; i < buildCount; i++) {
-		const tile = candidates[i];
-		if (tile === undefined) break;
-		const idx = tile.index;
+		const idx = candIdx[i] ?? 0;
 
 		building[idx] = BUILDING_LOW;
 
@@ -101,26 +102,70 @@ function abandonZone(state: CityState, zoneType: number, demand: number): void {
 	const { size, zoning, building, landValue } = state;
 
 	// Collect occupied tiles of this zone type
-	candidates.length = 0;
+	let count = 0;
 	for (let i = 0; i < size; i++) {
 		if (zoning[i] === zoneType && building[i] !== BUILDING_EMPTY) {
-			candidates.push({ index: i, value: landValue[i] ?? 0 });
+			candIdx[count] = i;
+			candVal[count] = landValue[i] ?? 0;
+			count++;
 		}
 	}
 
-	// Sort by land value ascending (lowest value abandoned first)
-	candidates.sort((a, b) => a.value - b.value);
+	if (count === 0) return;
 
-	const abandonCount = Math.min(MAX_ABANDONS_PER_TICK, candidates.length);
+	const abandonCount = Math.min(MAX_ABANDONS_PER_TICK, count);
+
+	// Partial selection sort: place lowest-value tiles at front
+	selectBottomK(count, abandonCount);
 
 	for (let i = 0; i < abandonCount; i++) {
-		const tile = candidates[i];
-		if (tile === undefined) break;
-		const idx = tile.index;
+		const idx = candIdx[i] ?? 0;
 
 		building[idx] = BUILDING_EMPTY;
 		state.population[idx] = 0;
 		state.jobs[idx] = 0;
+	}
+}
+
+/** Partial selection sort: places the largest `k` values at indices 0..k-1. */
+function selectTopK(count: number, k: number): void {
+	const limit = Math.min(k, count);
+	for (let i = 0; i < limit; i++) {
+		let bestJ = i;
+		for (let j = i + 1; j < count; j++) {
+			if ((candVal[j] ?? 0) > (candVal[bestJ] ?? 0)) {
+				bestJ = j;
+			}
+		}
+		if (bestJ !== i) {
+			const tmpIdx = candIdx[i] ?? 0;
+			const tmpVal = candVal[i] ?? 0;
+			candIdx[i] = candIdx[bestJ] ?? 0;
+			candVal[i] = candVal[bestJ] ?? 0;
+			candIdx[bestJ] = tmpIdx;
+			candVal[bestJ] = tmpVal;
+		}
+	}
+}
+
+/** Partial selection sort: places the smallest `k` values at indices 0..k-1. */
+function selectBottomK(count: number, k: number): void {
+	const limit = Math.min(k, count);
+	for (let i = 0; i < limit; i++) {
+		let bestJ = i;
+		for (let j = i + 1; j < count; j++) {
+			if ((candVal[j] ?? 0) < (candVal[bestJ] ?? 0)) {
+				bestJ = j;
+			}
+		}
+		if (bestJ !== i) {
+			const tmpIdx = candIdx[i] ?? 0;
+			const tmpVal = candVal[i] ?? 0;
+			candIdx[i] = candIdx[bestJ] ?? 0;
+			candVal[i] = candVal[bestJ] ?? 0;
+			candIdx[bestJ] = tmpIdx;
+			candVal[bestJ] = tmpVal;
+		}
 	}
 }
 
