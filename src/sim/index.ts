@@ -28,4 +28,8 @@ export {
 } from "./constants.ts";
 export type { PrngState } from "./prng.ts";
 export { createPrng, nextFloat, nextInt, nextU32 } from "./prng.ts";
+export type { ProfileSnapshot, SystemStats } from "./profiler.ts";
+export { getProfileSnapshot, SYSTEM_NAMES } from "./profiler.ts";
+export type { Violation } from "./sim-invariants.ts";
+export { clearViolations, getViolations } from "./sim-invariants.ts";
 export { tick } from "./tick.ts";

@@ -1,3 +1,8 @@
+import {
+	createDevPanel,
+	type DevPanelElements,
+	updateDevPanel,
+} from "./dev-panel.ts";
 import { startGameLoop } from "./game-loop.ts";
 import { setupInput } from "./input.ts";
 import { render } from "./renderer.ts";
@@ -47,6 +52,9 @@ const ui: UiElements = createUi(app, {
 	},
 });
 
+// Dev panel (only created in dev mode)
+const devPanel: DevPanelElements | null = createDevPanel(ui.sidebar);
+
 // ---- Input -----------------------------------------------------------------
 setupInput(canvas, appState, city.width, city.height, () => {
 	updateUi(ui, city, appState);
@@ -78,4 +86,5 @@ startGameLoop(city, appState, () => {
 
 	render(ctx, canvas.width, canvas.height, city, appState);
 	updateUi(ui, city, appState);
+	updateDevPanel(devPanel);
 });
