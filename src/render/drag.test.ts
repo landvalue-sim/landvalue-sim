@@ -45,6 +45,32 @@ describe("roadLineTiles", () => {
 			{ x: 0, y: 0 },
 		]);
 	});
+
+	it("draws a vertical-first L-shape when horizontalFirst is false", () => {
+		expect(roadLineTiles(0, 0, 2, 2, false)).toEqual([
+			{ x: 0, y: 0 },
+			{ x: 0, y: 1 },
+			{ x: 0, y: 2 },
+			{ x: 1, y: 2 },
+			{ x: 2, y: 2 },
+		]);
+	});
+
+	it("draws a vertical-first L-shape in the negative direction", () => {
+		expect(roadLineTiles(2, 2, 0, 0, false)).toEqual([
+			{ x: 2, y: 2 },
+			{ x: 2, y: 1 },
+			{ x: 2, y: 0 },
+			{ x: 1, y: 0 },
+			{ x: 0, y: 0 },
+		]);
+	});
+
+	it("orientation is irrelevant for a straight run", () => {
+		expect(roadLineTiles(1, 2, 4, 2, false)).toEqual(
+			roadLineTiles(1, 2, 4, 2, true),
+		);
+	});
 });
 
 describe("rectTiles", () => {

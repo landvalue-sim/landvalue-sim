@@ -79,6 +79,9 @@ export class IsoScene extends Phaser.Scene {
 	private dragging = false;
 	private dragStartX = -1;
 	private dragStartY = -1;
+	// Locked L-shape orientation, set from the initial drag direction; reset to
+	// "none" whenever the cursor returns to the origin so it can be re-chosen.
+	private dragAxis: "none" | "h" | "v" = "none";
 
 	constructor(deps: SceneDeps) {
 		super({ key: "iso" });
@@ -148,6 +151,7 @@ export class IsoScene extends Phaser.Scene {
 			this.dragging = true;
 			this.dragStartX = x;
 			this.dragStartY = y;
+			this.dragAxis = "none";
 		} else {
 			this.placeSingle(x, y);
 		}
@@ -163,6 +167,17 @@ export class IsoScene extends Phaser.Scene {
 		const { x, y } = this.pointerTile(pointer);
 		this.hoverX = x;
 		this.hoverY = y;
+
+		if (this.dragging) {
+			if (x === this.dragStartX && y === this.dragStartY) {
+				// Back at the origin — let the next move re-pick the L direction.
+				this.dragAxis = "none";
+			} else if (this.dragAxis === "none") {
+				const dx = Math.abs(x - this.dragStartX);
+				const dy = Math.abs(y - this.dragStartY);
+				this.dragAxis = dx >= dy ? "h" : "v";
+			}
+		}
 	}
 
 	private onPointerUp(): void {
@@ -237,9 +252,11 @@ export class IsoScene extends Phaser.Scene {
 		const ay = this.clampY(this.dragStartY);
 		const bx = this.clampX(this.hoverX);
 		const by = this.clampY(this.hoverY);
-		return tool === "road"
-			? roadLineTiles(ax, ay, bx, by)
-			: rectTiles(ax, ay, bx, by);
+		if (tool === "road") {
+			// "v" runs the column first; "h"/"none" run the row first.
+			return roadLineTiles(ax, ay, bx, by, this.dragAxis !== "v");
+		}
+		return rectTiles(ax, ay, bx, by);
 	}
 
 	private inBounds(x: number, y: number): boolean {

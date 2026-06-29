@@ -15,27 +15,48 @@ export interface Point {
 // bad input can never spin forever (NASA rule 2: provable loop bounds).
 const MAX_SPAN = 256;
 
-/** L-shaped road path from (ax,ay) to (bx,by): the row first, then the column. */
+/** Append the inclusive horizontal run from x0 to x1 along row y. */
+function pushRow(tiles: Point[], x0: number, x1: number, y: number): void {
+	const s = x1 >= x0 ? 1 : -1;
+	for (let x = x0, i = 0; i <= MAX_SPAN; x += s, i++) {
+		tiles.push({ x, y });
+		if (x === x1) break;
+	}
+}
+
+/** Append the inclusive vertical run from y0 to y1 along column x. */
+function pushCol(tiles: Point[], x: number, y0: number, y1: number): void {
+	const s = y1 >= y0 ? 1 : -1;
+	for (let y = y0, i = 0; i <= MAX_SPAN; y += s, i++) {
+		tiles.push({ x, y });
+		if (y === y1) break;
+	}
+}
+
+/**
+ * L-shaped road path from (ax,ay) to (bx,by). `horizontalFirst` controls the
+ * elbow: true runs the row first then the column (elbow at (bx,ay)); false runs
+ * the column first then the row (elbow at (ax,by)). The corner tile is placed
+ * once.
+ */
 export function roadLineTiles(
 	ax: number,
 	ay: number,
 	bx: number,
 	by: number,
+	horizontalFirst = true,
 ): Point[] {
 	const tiles: Point[] = [];
 
-	const sx = bx >= ax ? 1 : -1;
-	for (let x = ax, i = 0; i <= MAX_SPAN; x += sx, i++) {
-		tiles.push({ x, y: ay });
-		if (x === bx) break;
-	}
-
-	if (by !== ay) {
-		const sy = by >= ay ? 1 : -1;
-		// Start past the corner (bx,ay), which the row loop already placed.
-		for (let y = ay + sy, i = 0; i <= MAX_SPAN; y += sy, i++) {
-			tiles.push({ x: bx, y });
-			if (y === by) break;
+	if (horizontalFirst) {
+		pushRow(tiles, ax, bx, ay);
+		if (by !== ay) {
+			pushCol(tiles, bx, ay + (by >= ay ? 1 : -1), by);
+		}
+	} else {
+		pushCol(tiles, ax, ay, by);
+		if (bx !== ax) {
+			pushRow(tiles, ax + (bx >= ax ? 1 : -1), bx, by);
 		}
 	}
 
