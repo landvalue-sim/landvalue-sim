@@ -26,7 +26,7 @@ export function App({ sim, store }: AppProps): React.ReactElement {
 		const game = createGame(parent, {
 			city: sim.city,
 			store,
-			sendCommand: (cmd) => sim.sendCommands([cmd]),
+			sendCommands: (cmds) => sim.sendCommands(cmds),
 		});
 		const removeKeys = store.installKeyboard();
 

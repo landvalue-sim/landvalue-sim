@@ -9,6 +9,7 @@ import type { Command } from "../commands.ts";
 import {
 	AGG,
 	BUILDING_EMPTY,
+	MAX_GRID_SIZE,
 	MAX_TAX_RATE,
 	MIN_TAX_RATE,
 	TERRAIN_WATER,
@@ -16,7 +17,9 @@ import {
 } from "../constants.ts";
 import { invariant } from "../invariant.ts";
 
-const MAX_COMMANDS_PER_TICK = 256;
+// A single rectangle drag can zone an entire grid at once, so the cap is the
+// whole-grid tile count (still a fixed, provable upper bound — NASA rule 2).
+const MAX_COMMANDS_PER_TICK = MAX_GRID_SIZE * MAX_GRID_SIZE;
 
 export function processCommands(
 	state: CityState,

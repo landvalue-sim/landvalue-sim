@@ -20,6 +20,7 @@ import {
 	ZONE_NONE,
 	ZONE_RESIDENTIAL,
 } from "../sim/index.ts";
+import { type Point, rectTiles, roadLineTiles } from "./drag.ts";
 import { HALF_H, HALF_W, screenToGrid, TIER_HEIGHT } from "./iso.ts";
 
 // ---- Palette (0xRRGGBB) ----------------------------------------------------
@@ -33,6 +34,7 @@ const COL_I_BUILT = 0xca8a04;
 const COL_R_ZONE = 0x22c55e;
 const COL_C_ZONE = 0x3b82f6;
 const COL_I_ZONE = 0xeab308;
+const COL_DEMOLISH = 0xef4444;
 const COL_CURSOR = 0xffffff;
 
 // Land-value overlay renders value as column height, colored by zoning (or
@@ -51,13 +53,13 @@ const KEY_PAN_SPEED = 600; // world px / second
 export interface SceneDeps {
 	readonly city: CityState;
 	readonly store: InteractionStore;
-	readonly sendCommand: (cmd: Command) => void;
+	readonly sendCommands: (cmds: ReadonlyArray<Command>) => void;
 }
 
 export class IsoScene extends Phaser.Scene {
 	private readonly city: CityState;
 	private readonly store: InteractionStore;
-	private readonly sendCommand: (cmd: Command) => void;
+	private readonly sendCommands: (cmds: ReadonlyArray<Command>) => void;
 
 	private g!: Phaser.GameObjects.Graphics;
 	private keys!: {
@@ -71,18 +73,18 @@ export class IsoScene extends Phaser.Scene {
 		d: Phaser.Input.Keyboard.Key;
 	};
 
-	private hoverX = -1;
+	private hoverX = -1; // current tile under the pointer (also the drag end)
 	private hoverY = -1;
-	private applying = false;
 	private panning = false;
-	private lastApplyX = -1;
-	private lastApplyY = -1;
+	private dragging = false;
+	private dragStartX = -1;
+	private dragStartY = -1;
 
 	constructor(deps: SceneDeps) {
 		super({ key: "iso" });
 		this.city = deps.city;
 		this.store = deps.store;
-		this.sendCommand = deps.sendCommand;
+		this.sendCommands = deps.sendCommands;
 	}
 
 	create(): void {
@@ -134,11 +136,20 @@ export class IsoScene extends Phaser.Scene {
 			this.panning = true;
 			return;
 		}
-		const tool = this.store.getSnapshot().tool;
-		if (tool !== "none") {
-			this.applying = true;
-			const { x, y } = this.pointerTile(pointer);
-			this.applyTool(x, y);
+		const snap = this.store.getSnapshot();
+		if (snap.tool === "none") return;
+
+		const { x, y } = this.pointerTile(pointer);
+		this.hoverX = x;
+		this.hoverY = y;
+
+		if (snap.dragEnabled) {
+			// Begin a drag; the preview/commit happens on move/up.
+			this.dragging = true;
+			this.dragStartX = x;
+			this.dragStartY = y;
+		} else {
+			this.placeSingle(x, y);
 		}
 	}
 
@@ -152,14 +163,12 @@ export class IsoScene extends Phaser.Scene {
 		const { x, y } = this.pointerTile(pointer);
 		this.hoverX = x;
 		this.hoverY = y;
-		if (this.applying && (x !== this.lastApplyX || y !== this.lastApplyY)) {
-			this.applyTool(x, y);
-		}
 	}
 
-	private onPointerUp(pointer: Phaser.Input.Pointer): void {
-		if (!pointer.rightButtonReleased() && !pointer.middleButtonReleased()) {
-			this.applying = false;
+	private onPointerUp(): void {
+		if (this.dragging) {
+			this.commitDrag();
+			this.dragging = false;
 		}
 		this.panning = false;
 	}
@@ -202,12 +211,47 @@ export class IsoScene extends Phaser.Scene {
 		return { x: Math.floor(g.x), y: Math.floor(g.y) };
 	}
 
-	private applyTool(x: number, y: number): void {
-		this.lastApplyX = x;
-		this.lastApplyY = y;
-		if (x < 0 || x >= this.city.width || y < 0 || y >= this.city.height) return;
+	private placeSingle(x: number, y: number): void {
+		if (!this.inBounds(x, y)) return;
 		const cmd = toolToCommand(this.store.getSnapshot().tool, x, y);
-		if (cmd !== null) this.sendCommand(cmd);
+		if (cmd !== null) this.sendCommands([cmd]);
+	}
+
+	/** Commit the current drag as one batch of commands (line or rectangle). */
+	private commitDrag(): void {
+		const tool = this.store.getSnapshot().tool;
+		if (tool === "none") return;
+
+		const cmds: Command[] = [];
+		for (const t of this.dragTiles(tool)) {
+			if (!this.inBounds(t.x, t.y)) continue;
+			const cmd = toolToCommand(tool, t.x, t.y);
+			if (cmd !== null) cmds.push(cmd);
+		}
+		if (cmds.length > 0) this.sendCommands(cmds);
+	}
+
+	/** Tiles covered by the active drag: an L-line for roads, a rect otherwise. */
+	private dragTiles(tool: string): Point[] {
+		const ax = this.clampX(this.dragStartX);
+		const ay = this.clampY(this.dragStartY);
+		const bx = this.clampX(this.hoverX);
+		const by = this.clampY(this.hoverY);
+		return tool === "road"
+			? roadLineTiles(ax, ay, bx, by)
+			: rectTiles(ax, ay, bx, by);
+	}
+
+	private inBounds(x: number, y: number): boolean {
+		return x >= 0 && x < this.city.width && y >= 0 && y < this.city.height;
+	}
+
+	private clampX(x: number): number {
+		return Math.max(0, Math.min(this.city.width - 1, x));
+	}
+
+	private clampY(y: number): number {
+		return Math.max(0, Math.min(this.city.height - 1, y));
 	}
 
 	// ---- Drawing -------------------------------------------------------------
@@ -232,8 +276,11 @@ export class IsoScene extends Phaser.Scene {
 			}
 		}
 
-		// Hovered-tile cursor, lifted to the top of that tile's column.
-		if (
+		// While dragging, preview the affected footprint; otherwise highlight the
+		// single hovered tile.
+		if (this.dragging) {
+			this.drawDragPreview();
+		} else if (
 			this.hoverX >= 0 &&
 			this.hoverX < w &&
 			this.hoverY >= 0 &&
@@ -244,6 +291,26 @@ export class IsoScene extends Phaser.Scene {
 			const cy = (this.hoverX + this.hoverY) * HALF_H;
 			g.lineStyle(2, COL_CURSOR, 0.9);
 			diamondPath(g, cx, cy, this.tileTopLift(idx, overlay));
+			g.strokePath();
+		}
+	}
+
+	/** Draw a translucent footprint of the tiles the current drag would place. */
+	private drawDragPreview(): void {
+		const tool = this.store.getSnapshot().tool;
+		if (tool === "none") return;
+
+		const g = this.g;
+		const color = previewColor(tool);
+		for (const t of this.dragTiles(tool)) {
+			if (!this.inBounds(t.x, t.y)) continue;
+			const cx = (t.x - t.y) * HALF_W;
+			const cy = (t.x + t.y) * HALF_H;
+			g.fillStyle(color, 0.45);
+			diamondPath(g, cx, cy, 0);
+			g.fillPath();
+			g.lineStyle(1, color, 0.9);
+			diamondPath(g, cx, cy, 0);
 			g.strokePath();
 		}
 	}
@@ -444,6 +511,23 @@ function shade(color: number, f: number): number {
 	const gch = Math.min(255, ((color >> 8) & 0xff) * f) | 0;
 	const b = Math.min(255, (color & 0xff) * f) | 0;
 	return (r << 16) | (gch << 8) | b;
+}
+
+function previewColor(tool: string): number {
+	switch (tool) {
+		case "zone-r":
+			return COL_R_ZONE;
+		case "zone-c":
+			return COL_C_ZONE;
+		case "zone-i":
+			return COL_I_ZONE;
+		case "road":
+			return COL_ROAD;
+		case "demolish":
+			return COL_DEMOLISH;
+		default:
+			return COL_CURSOR;
+	}
 }
 
 // ---- Command mapping -------------------------------------------------------

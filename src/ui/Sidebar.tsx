@@ -7,6 +7,7 @@
 import {
 	type Key,
 	type PressEvent,
+	Switch,
 	ToggleButton,
 	ToggleButtonGroup,
 } from "react-aria-components";
@@ -45,7 +46,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ store, sim }: SidebarProps): React.ReactElement {
-	const { tool, overlay, speed } = useInteraction(store);
+	const { tool, overlay, speed, dragEnabled } = useInteraction(store);
 	const stats = useLiveStats(sim.city);
 
 	function firstKey(keys: Set<Key>): string | null {
@@ -78,6 +79,16 @@ export function Sidebar({ store, sim }: SidebarProps): React.ReactElement {
 						</ToggleButton>
 					))}
 				</ToggleButtonGroup>
+				<Switch
+					className="drag-switch"
+					isSelected={dragEnabled}
+					onChange={store.setDragEnabled}
+				>
+					<span className="switch-track">
+						<span className="switch-thumb" />
+					</span>
+					Click &amp; drag
+				</Switch>
 			</section>
 
 			<section>

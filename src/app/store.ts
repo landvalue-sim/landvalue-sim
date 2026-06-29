@@ -14,6 +14,8 @@ export interface InteractionSnapshot {
 	readonly tool: Tool;
 	readonly overlay: OverlayMode;
 	readonly speed: Speed;
+	/** Whether tools draw by click-and-drag (roads as a line, zones as a rect). */
+	readonly dragEnabled: boolean;
 }
 
 export interface InteractionStore {
@@ -23,6 +25,7 @@ export interface InteractionStore {
 	toggleTool(tool: Tool): void;
 	setOverlay(overlay: OverlayMode): void;
 	setSpeed(speed: Speed): void;
+	setDragEnabled(enabled: boolean): void;
 	togglePause(): void;
 	/** Install global keyboard shortcuts; returns a teardown function. */
 	installKeyboard(): () => void;
@@ -33,6 +36,7 @@ export function createStore(sim: SimClient): InteractionStore {
 		tool: "none",
 		overlay: "none",
 		speed: 1,
+		dragEnabled: true,
 	};
 	const listeners = new Set<() => void>();
 
@@ -45,7 +49,8 @@ export function createStore(sim: SimClient): InteractionStore {
 		if (
 			merged.tool === snapshot.tool &&
 			merged.overlay === snapshot.overlay &&
-			merged.speed === snapshot.speed
+			merged.speed === snapshot.speed &&
+			merged.dragEnabled === snapshot.dragEnabled
 		) {
 			return;
 		}
@@ -76,6 +81,9 @@ export function createStore(sim: SimClient): InteractionStore {
 		},
 		setOverlay(overlay) {
 			update({ overlay });
+		},
+		setDragEnabled(enabled) {
+			update({ dragEnabled: enabled });
 		},
 		setSpeed,
 		togglePause() {
