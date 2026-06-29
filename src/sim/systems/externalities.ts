@@ -14,11 +14,13 @@ import {
 	POLLUTION_PER_INDUSTRIAL,
 	POLLUTION_SPREAD_RADIUS,
 	POWER_PLANT_POLLUTION,
+	TRAFFIC_POLLUTION_FACTOR,
 	ZONE_INDUSTRIAL,
 } from "../constants.ts";
 
 export function updateExternalities(state: CityState): void {
-	const { width, height, size, zoning, building, civic, pollution } = state;
+	const { width, height, size, zoning, building, civic, traffic, pollution } =
+		state;
 
 	// Reset pollution field
 	pollution.fill(0);
@@ -36,6 +38,18 @@ export function updateExternalities(state: CityState): void {
 		const polAmount = POWER_PLANT_POLLUTION[c];
 		if (polAmount !== undefined && polAmount > 0) {
 			spreadPollution(width, height, pollution, i, polAmount);
+		}
+	}
+
+	// Traffic contributes to pollution on road tiles
+	for (let i = 0; i < size; i++) {
+		const t = traffic[i] ?? 0;
+		if (t > 0) {
+			const trafficPol = Math.floor(t * TRAFFIC_POLLUTION_FACTOR);
+			if (trafficPol > 0) {
+				const current = pollution[i] ?? 0;
+				pollution[i] = Math.min(MAX_POLLUTION, current + trafficPol);
+			}
 		}
 	}
 }

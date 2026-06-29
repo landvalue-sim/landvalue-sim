@@ -20,18 +20,24 @@
 import { type CityState, inBounds } from "../city-state.ts";
 import {
 	BUILDING_EMPTY,
+	CIVIC_PARK,
+	CIVIC_STADIUM,
 	LV_BASE,
 	LV_COMMERCIAL_BONUS,
+	LV_CRIME_FACTOR,
 	LV_DIFFUSION_ITERATIONS,
 	LV_DIFFUSION_RATE,
 	LV_ELEVATION_FACTOR,
 	LV_INDUSTRIAL_PENALTY,
 	LV_NO_POWER_PENALTY,
 	LV_NO_WATER_PENALTY,
+	LV_PARK_BONUS,
 	LV_POLLUTION_FACTOR,
 	LV_POPULATION_BONUS,
 	LV_RAIL_ADJ_BONUS,
 	LV_ROAD_ADJ_BONUS,
+	LV_STADIUM_BONUS,
+	LV_TRAFFIC_FACTOR,
 	LV_WATER_ADJ_BONUS,
 	MAX_GRID_SIZE,
 	TERRAIN_WATER,
@@ -96,10 +102,12 @@ export function updateLandValue(state: CityState): void {
 			continue;
 		}
 
-		// Road-access premium
+		// Road-access premium and amenity scan
 		let hasRoad = false;
 		let hasRailNearby = false;
 		let hasWaterfront = false;
+		let hasPark = false;
+		let hasStadium = false;
 		for (let n = 0; n < NEIGHBOR_COUNT; n++) {
 			const nx = x + (DX[n] ?? 0);
 			const ny = y + (DY[n] ?? 0);
@@ -108,11 +116,16 @@ export function updateLandValue(state: CityState): void {
 			if (!hasRoad && roads[ni] === 1) hasRoad = true;
 			if (!hasRailNearby && rail[ni] === 1) hasRailNearby = true;
 			if (!hasWaterfront && terrain[ni] === TERRAIN_WATER) hasWaterfront = true;
+			const nc = state.civic[ni] ?? 0;
+			if (!hasPark && nc === CIVIC_PARK) hasPark = true;
+			if (!hasStadium && nc === CIVIC_STADIUM) hasStadium = true;
 		}
 
 		if (hasRoad) value += LV_ROAD_ADJ_BONUS;
 		if (hasRailNearby) value += LV_RAIL_ADJ_BONUS;
 		if (hasWaterfront) value += LV_WATER_ADJ_BONUS;
+		if (hasPark) value += LV_PARK_BONUS;
+		if (hasStadium) value += LV_STADIUM_BONUS;
 
 		// Elevation bonus
 		const elev = elevation[i] ?? 0;
@@ -160,6 +173,22 @@ export function updateLandValue(state: CityState): void {
 		// Pollution penalty
 		const pol = pollution[i] ?? 0;
 		value -= pol * LV_POLLUTION_FACTOR;
+
+		// Crime penalty
+		const cr = state.crime[i] ?? 0;
+		value -= Math.floor(cr * LV_CRIME_FACTOR);
+
+		// Traffic penalty (from adjacent road congestion)
+		let maxTraffic = 0;
+		for (let n = 0; n < NEIGHBOR_COUNT; n++) {
+			const nx = x + (DX[n] ?? 0);
+			const ny = y + (DY[n] ?? 0);
+			if (!inBounds(width, height, nx, ny)) continue;
+			const ni = ny * width + nx;
+			const t = state.traffic[ni] ?? 0;
+			if (t > maxTraffic) maxTraffic = t;
+		}
+		value -= Math.floor(maxTraffic * LV_TRAFFIC_FACTOR);
 
 		// Power/water coverage penalties
 		if (power[i] !== 1) value -= LV_NO_POWER_PENALTY;

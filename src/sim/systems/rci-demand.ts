@@ -17,7 +17,9 @@ import {
 	AGG,
 	BUILDING_EMPTY,
 	COMMERCIAL_PER_POP,
+	CONNECTION_DEMAND_BONUS,
 	DEMAND_SMOOTHING,
+	EDUCATION_C_DEMAND_BONUS,
 	INDUSTRIAL_BASE_DEMAND,
 	INDUSTRIAL_PER_POP,
 	JOBS_C_PER_DENSITY,
@@ -100,17 +102,24 @@ export function updateRciDemand(state: CityState): void {
 	const avgPollutionOnR = rTileCount > 0 ? pollutionOnR / rTileCount : 0;
 	const rPollutionPenalty = avgPollutionOnR * 0.5;
 
+	// --- Education / connection bonuses --------------------------------------
+	const eduLevel = aggregates[AGG.EDUCATION_LEVEL] ?? 0;
+	const connections = aggregates[AGG.CONNECTION_COUNT] ?? 0;
+	const eduCBonus = (eduLevel / 100) * EDUCATION_C_DEMAND_BONUS;
+	const connBonus = connections * CONNECTION_DEMAND_BONUS;
+
 	// --- Demand targets ------------------------------------------------------
 	// R: people want to live where there are jobs
 	const targetPop = totalJobs * RESIDENTS_PER_JOB;
 	const rGap = targetPop - totalPop;
 
-	// C: commercial demand driven by population
-	const targetC = totalPop * COMMERCIAL_PER_POP;
+	// C: commercial demand driven by population + education + connections
+	const targetC = totalPop * COMMERCIAL_PER_POP * (1 + eduCBonus);
 	const cGap = targetC - occupiedC;
 
-	// I: base external demand + population-driven
-	const targetI = INDUSTRIAL_BASE_DEMAND + totalPop * INDUSTRIAL_PER_POP;
+	// I: base external demand + population-driven + connections
+	const targetI =
+		INDUSTRIAL_BASE_DEMAND + totalPop * INDUSTRIAL_PER_POP + connBonus;
 	const iGap = targetI - occupiedI;
 
 	// --- Smooth demand adjustment --------------------------------------------

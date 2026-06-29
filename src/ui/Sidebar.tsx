@@ -47,6 +47,21 @@ const CIVIC_TOOLS: ReadonlyArray<{ id: Tool; label: string; accent: string }> =
 		{ id: "water-pump", label: "Water Pump", accent: "#38bdf8" },
 	];
 
+const SERVICE_TOOLS: ReadonlyArray<{
+	id: Tool;
+	label: string;
+	accent: string;
+}> = [
+	{ id: "police", label: "Police", accent: "#1d4ed8" },
+	{ id: "fire-station", label: "Fire Stn", accent: "#dc2626" },
+	{ id: "hospital", label: "Hospital", accent: "#f472b6" },
+	{ id: "school", label: "School", accent: "#fbbf24" },
+	{ id: "college", label: "College", accent: "#7c3aed" },
+	{ id: "library", label: "Library", accent: "#ea580c" },
+	{ id: "park", label: "Park", accent: "#4ade80" },
+	{ id: "stadium", label: "Stadium", accent: "#9ca3af" },
+];
+
 const DEMOLISH_TOOL: ReadonlyArray<{
 	id: Tool;
 	label: string;
@@ -59,6 +74,12 @@ const OVERLAYS: ReadonlyArray<{ id: OverlayMode; label: string }> = [
 	{ id: "pollution", label: "Pollution" },
 	{ id: "power", label: "Power" },
 	{ id: "water", label: "Water" },
+	{ id: "crime", label: "Crime" },
+	{ id: "traffic", label: "Traffic" },
+	{ id: "police", label: "Police" },
+	{ id: "fire", label: "Fire" },
+	{ id: "education", label: "Education" },
+	{ id: "health", label: "Health" },
 ];
 
 const SPEEDS: ReadonlyArray<{ id: Speed; label: string; aria: string }> = [
@@ -152,6 +173,28 @@ export function Sidebar({ store, sim }: SidebarProps): React.ReactElement {
 					onSelectionChange={onToolChange}
 				>
 					{CIVIC_TOOLS.map((t) => (
+						<ToggleButton
+							key={t.id}
+							id={t.id}
+							className="tool-btn"
+							style={{ borderLeftColor: t.accent }}
+							onPress={blurOnPointerPress}
+						>
+							{t.label}
+						</ToggleButton>
+					))}
+				</ToggleButtonGroup>
+			</section>
+
+			<section>
+				<div className="section-title">Services</div>
+				<ToggleButtonGroup
+					selectionMode="single"
+					className="btn-stack"
+					selectedKeys={SERVICE_TOOLS.some((t) => t.id === tool) ? [tool] : []}
+					onSelectionChange={onToolChange}
+				>
+					{SERVICE_TOOLS.map((t) => (
 						<ToggleButton
 							key={t.id}
 							id={t.id}

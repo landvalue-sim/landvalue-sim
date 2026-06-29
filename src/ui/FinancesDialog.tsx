@@ -20,7 +20,12 @@ import {
 	SliderTrack,
 } from "react-aria-components";
 import type { SimClient } from "../app/sim-client.ts";
-import { MAX_TAX_RATE } from "../sim/index.ts";
+import {
+	BOND_AMOUNT,
+	BOND_MONTHLY_PAYMENT,
+	MAX_BONDS,
+	MAX_TAX_RATE,
+} from "../sim/index.ts";
 import { useLiveStats } from "./hooks.ts";
 
 const TAX_MAX_PCT = Math.round(MAX_TAX_RATE * 100);
@@ -58,7 +63,8 @@ function FinancesPanel({
 		stats.serviceCost -
 		stats.roadCost -
 		stats.civicCost -
-		stats.railCost;
+		stats.railCost -
+		stats.bondPayment;
 
 	return (
 		<>
@@ -84,6 +90,11 @@ function FinancesPanel({
 				<FinRow label="Road upkeep" value={-stats.roadCost} sign={"\u2212"} />
 				<FinRow label="Rail upkeep" value={-stats.railCost} sign={"\u2212"} />
 				<FinRow label="Civic upkeep" value={-stats.civicCost} sign={"\u2212"} />
+				<FinRow
+					label="Bond payments"
+					value={-stats.bondPayment}
+					sign={"\u2212"}
+				/>
 				<div className="fin-row fin-net">
 					<span>Net</span>
 					<span className={net >= 0 ? "pos" : "neg"}>
@@ -131,6 +142,42 @@ function FinancesPanel({
 					sim.sendCommands([{ kind: "set-tax-rate", sector: "i", rate }])
 				}
 			/>
+
+			<div className="fin-section-title">Bonds</div>
+			<p className="fin-hint">
+				Issue a ${BOND_AMOUNT.toLocaleString()} bond (${BOND_MONTHLY_PAYMENT}/mo
+				for {MAX_BONDS * 12} months max). Up to {MAX_BONDS} bonds.
+			</p>
+			<Button
+				className="finances-btn"
+				onPress={() => sim.sendCommands([{ kind: "issue-bond" }])}
+			>
+				Issue Bond (${BOND_AMOUNT.toLocaleString()})
+			</Button>
+
+			<div className="fin-section-title">City Stats</div>
+			<div className="fin-table">
+				<FinSimpleRow
+					label="Crime"
+					value={Math.floor(stats.totalCrime).toLocaleString()}
+				/>
+				<FinSimpleRow
+					label="Fires"
+					value={Math.floor(stats.fireCount).toLocaleString()}
+				/>
+				<FinSimpleRow
+					label="Education"
+					value={`${Math.floor(stats.educationLevel)}%`}
+				/>
+				<FinSimpleRow
+					label="Health"
+					value={`${Math.floor(stats.healthLevel)}%`}
+				/>
+				<FinSimpleRow
+					label="Connections"
+					value={Math.floor(stats.connectionCount).toLocaleString()}
+				/>
+			</div>
 
 			<Button className="dialog-close" onPress={onClose}>
 				Close

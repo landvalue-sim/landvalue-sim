@@ -17,6 +17,14 @@ export type Tool =
 	| "coal-plant"
 	| "solar-plant"
 	| "water-pump"
+	| "police"
+	| "fire-station"
+	| "hospital"
+	| "school"
+	| "college"
+	| "library"
+	| "park"
+	| "stadium"
 	| "demolish";
 
 export type OverlayMode =
@@ -24,6 +32,12 @@ export type OverlayMode =
 	| "land-value"
 	| "pollution"
 	| "power"
-	| "water";
+	| "water"
+	| "crime"
+	| "traffic"
+	| "police"
+	| "fire"
+	| "education"
+	| "health";
 
 export type Speed = 0 | 1 | 2 | 3;

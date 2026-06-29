@@ -33,6 +33,13 @@ export interface LiveStats {
 	readonly powerDemand: number;
 	readonly waterCapacity: number;
 	readonly waterDemand: number;
+	readonly bondPayment: number;
+	readonly totalCrime: number;
+	readonly fireCount: number;
+	readonly connectionCount: number;
+	readonly trafficCongestion: number;
+	readonly educationLevel: number;
+	readonly healthLevel: number;
 	readonly month: number;
 	readonly year: number;
 }
@@ -60,6 +67,13 @@ function readStats(city: CityState): LiveStats {
 		powerDemand: a[AGG.POWER_DEMAND] ?? 0,
 		waterCapacity: a[AGG.WATER_CAPACITY] ?? 0,
 		waterDemand: a[AGG.WATER_DEMAND] ?? 0,
+		bondPayment: a[AGG.BOND_PAYMENT] ?? 0,
+		totalCrime: a[AGG.TOTAL_CRIME] ?? 0,
+		fireCount: a[AGG.FIRE_COUNT] ?? 0,
+		connectionCount: a[AGG.CONNECTION_COUNT] ?? 0,
+		trafficCongestion: a[AGG.TRAFFIC_CONGESTION] ?? 0,
+		educationLevel: a[AGG.EDUCATION_LEVEL] ?? 0,
+		healthLevel: a[AGG.HEALTH_LEVEL] ?? 0,
 		month: (Math.floor(tick) % 12) + 1,
 		year: START_YEAR + Math.floor(Math.floor(tick) / 12),
 	};

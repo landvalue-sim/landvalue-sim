@@ -5,12 +5,17 @@
  *   1. Command processor (apply player input)
  *   2. Power coverage (BFS from plants)
  *   3. Water coverage (radius from pumps)
- *   4. RCI demand (economic feedback)
- *   5. Land value (amenity capitalization)
- *   6. Migration (buildings appear / upgrade / abandon)
- *   7. Externalities (pollution)
- *   8. Public finance (taxes, services)
- *   9. Postcondition invariants (dev only)
+ *   4. Civic coverage (police, fire, education, health)
+ *   5. Connections (edge detection)
+ *   6. Traffic (commute congestion)
+ *   7. RCI demand (economic feedback)
+ *   8. Land value (amenity capitalization)
+ *   9. Migration (buildings appear / upgrade / abandon)
+ *  10. Externalities (pollution + traffic emissions)
+ *  11. Crime (density, police, unemployment)
+ *  12. Fire (ignition, spread, containment)
+ *  13. Public finance (taxes, services, bonds)
+ *  14. Postcondition invariants (dev only)
  *
  * The simulation is fully deterministic: same seed + same commands =
  * same state. Never uses Math.random() or Date.now().
@@ -27,23 +32,33 @@ import {
 	systemIndex,
 } from "./profiler.ts";
 import { checkAggregates, checkGridIntegrity } from "./sim-invariants.ts";
+import { updateCivicCoverage } from "./systems/civic-coverage.ts";
 import { processCommands } from "./systems/command-processor.ts";
+import { updateConnections } from "./systems/connections.ts";
+import { updateCrime } from "./systems/crime.ts";
 import { updateExternalities } from "./systems/externalities.ts";
+import { updateFire } from "./systems/fire.ts";
 import { updateLandValue } from "./systems/land-value.ts";
 import { processMigration } from "./systems/migration.ts";
 import { updatePower } from "./systems/power.ts";
 import { updatePublicFinance } from "./systems/public-finance.ts";
 import { updateRciDemand } from "./systems/rci-demand.ts";
+import { updateTraffic } from "./systems/traffic.ts";
 import { updateWater } from "./systems/water.ts";
 
 // Pre-compute system indices so we don't look them up every tick
 const IDX_COMMANDS = systemIndex("commands");
 const IDX_POWER = systemIndex("power");
 const IDX_WATER = systemIndex("water");
+const IDX_CIVIC_COVERAGE = systemIndex("civicCoverage");
+const IDX_CONNECTIONS = systemIndex("connections");
+const IDX_TRAFFIC = systemIndex("traffic");
 const IDX_RCI = systemIndex("rciDemand");
 const IDX_LAND_VALUE = systemIndex("landValue");
 const IDX_MIGRATION = systemIndex("migration");
 const IDX_EXTERNALITIES = systemIndex("externalities");
+const IDX_CRIME = systemIndex("crime");
+const IDX_FIRE = systemIndex("fire");
 const IDX_PUBLIC_FINANCE = systemIndex("publicFinance");
 const IDX_INVARIANTS = systemIndex("invariants");
 
@@ -65,6 +80,18 @@ export function tick(state: CityState, commands: ReadonlyArray<Command>): void {
 	profilerSystemEnd(IDX_WATER, t);
 
 	t = profilerSystemStart();
+	updateCivicCoverage(state);
+	profilerSystemEnd(IDX_CIVIC_COVERAGE, t);
+
+	t = profilerSystemStart();
+	updateConnections(state);
+	profilerSystemEnd(IDX_CONNECTIONS, t);
+
+	t = profilerSystemStart();
+	updateTraffic(state);
+	profilerSystemEnd(IDX_TRAFFIC, t);
+
+	t = profilerSystemStart();
 	updateRciDemand(state);
 	profilerSystemEnd(IDX_RCI, t);
 
@@ -79,6 +106,14 @@ export function tick(state: CityState, commands: ReadonlyArray<Command>): void {
 	t = profilerSystemStart();
 	updateExternalities(state);
 	profilerSystemEnd(IDX_EXTERNALITIES, t);
+
+	t = profilerSystemStart();
+	updateCrime(state);
+	profilerSystemEnd(IDX_CRIME, t);
+
+	t = profilerSystemStart();
+	updateFire(state);
+	profilerSystemEnd(IDX_FIRE, t);
 
 	t = profilerSystemStart();
 	updatePublicFinance(state);

@@ -78,8 +78,8 @@ describe("CityState shared buffer backing", () => {
 		const h = 48;
 		const size = w * h;
 		const bytes = cityByteLength(w, h);
-		// f64 aggregates + u32 rng + 3 u16 layers + 13 u8 layers, plus alignment.
-		const minimum = AGG.COUNT * 8 + 4 * 4 + 3 * size * 2 + 13 * size * 1;
+		// f64 aggregates + u32 rng + 3 u16 layers + 19 u8 layers, plus alignment.
+		const minimum = AGG.COUNT * 8 + 4 * 4 + 3 * size * 2 + 19 * size * 1;
 		expect(bytes).toBeGreaterThanOrEqual(minimum);
 	});
 

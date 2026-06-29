@@ -11,21 +11,23 @@ import type { CityState } from "../city-state.ts";
 import type { Command } from "../commands.ts";
 import {
 	AGG,
+	BOND_AMOUNT,
+	BOND_MONTHLY_PAYMENT,
+	BOND_TERM_MONTHS,
 	BUILDING_EMPTY,
+	CIVIC_COST_TABLE,
 	CIVIC_NONE,
-	COST_COAL_PLANT,
 	COST_DEMOLISH,
 	COST_POWER_LINE,
 	COST_RAIL,
 	COST_ROAD,
-	COST_SOLAR_PLANT,
-	COST_WATER_PUMP,
 	COST_ZONE_HIGH,
 	COST_ZONE_LOW,
 	COST_ZONE_MED,
 	DENSITY_HIGH,
 	DENSITY_LOW,
 	DENSITY_MED,
+	MAX_BONDS,
 	MAX_GRID_SIZE,
 	MAX_TAX_RATE,
 	MIN_TAX_RATE,
@@ -66,16 +68,7 @@ function zoneCost(density: number): number {
 }
 
 function civicCost(civicType: number): number {
-	switch (civicType) {
-		case 1:
-			return COST_COAL_PLANT;
-		case 2:
-			return COST_SOLAR_PLANT;
-		case 3:
-			return COST_WATER_PUMP;
-		default:
-			return 0;
-	}
+	return CIVIC_COST_TABLE[civicType] ?? 0;
 }
 
 function applyCommand(state: CityState, cmd: Command): void {
@@ -100,6 +93,9 @@ function applyCommand(state: CityState, cmd: Command): void {
 			break;
 		case "set-tax-rate":
 			applySetTaxRate(state, cmd.sector, cmd.rate);
+			break;
+		case "issue-bond":
+			applyIssueBond(state);
 			break;
 	}
 }
@@ -219,6 +215,22 @@ function clearTile(state: CityState, idx: number): void {
 	state.building[idx] = BUILDING_EMPTY;
 	state.population[idx] = 0;
 	state.jobs[idx] = 0;
+}
+
+function applyIssueBond(state: CityState): void {
+	const agg = state.aggregates;
+	// Find an empty bond slot
+	for (let i = 0; i < MAX_BONDS; i++) {
+		const slotIdx = AGG.BOND_SLOT_0 + i;
+		if ((agg[slotIdx] ?? 0) <= 0) {
+			agg[slotIdx] = BOND_TERM_MONTHS;
+			agg[AGG.TREASURY] = (agg[AGG.TREASURY] ?? 0) + BOND_AMOUNT;
+			agg[AGG.BOND_PAYMENT] =
+				(agg[AGG.BOND_PAYMENT] ?? 0) + BOND_MONTHLY_PAYMENT;
+			return;
+		}
+	}
+	// All slots full — silently reject
 }
 
 function applySetTaxRate(

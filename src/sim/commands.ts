@@ -55,6 +55,10 @@ export interface SetTaxRateCommand {
 	readonly rate: number;
 }
 
+export interface IssueBondCommand {
+	readonly kind: "issue-bond";
+}
+
 export type Command =
 	| ZoneCommand
 	| BuildRoadCommand
@@ -62,4 +66,5 @@ export type Command =
 	| BuildPowerLineCommand
 	| PlaceCivicCommand
 	| DemolishCommand
-	| SetTaxRateCommand;
+	| SetTaxRateCommand
+	| IssueBondCommand;

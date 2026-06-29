@@ -118,6 +118,12 @@ function resetCity(state: CityState): void {
 	state.elevation.fill(5);
 	state.power.fill(0);
 	state.waterCoverage.fill(0);
+	state.crime.fill(0);
+	state.policeCoverage.fill(0);
+	state.fireCoverage.fill(0);
+	state.fire.fill(0);
+	state.educationCoverage.fill(0);
+	state.healthCoverage.fill(0);
 
 	state.aggregates[AGG.TICK] = 0;
 	state.aggregates[AGG.TREASURY] = STARTING_TREASURY;

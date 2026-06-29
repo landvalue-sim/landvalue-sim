@@ -42,6 +42,15 @@ export const CIVIC_NONE = 0;
 export const CIVIC_COAL_PLANT = 1;
 export const CIVIC_SOLAR_PLANT = 2;
 export const CIVIC_WATER_PUMP = 3;
+export const CIVIC_POLICE = 4;
+export const CIVIC_FIRE_STATION = 5;
+export const CIVIC_HOSPITAL = 6;
+export const CIVIC_SCHOOL = 7;
+export const CIVIC_COLLEGE = 8;
+export const CIVIC_LIBRARY = 9;
+export const CIVIC_PARK = 10;
+export const CIVIC_STADIUM = 11;
+export const CIVIC_TYPE_COUNT = 12;
 
 // ---------------------------------------------------------------------------
 // Population / jobs per density tier
@@ -62,6 +71,10 @@ export const INDUSTRIAL_PER_POP = 0.002;
 export const TAX_NEUTRAL_RATE = 0.07;
 export const TAX_DEMAND_PENALTY = 600;
 export const DEFAULT_TAX_RATE = 0.07;
+// Education boosts C demand (educated workforce attracts commercial).
+export const EDUCATION_C_DEMAND_BONUS = 0.3;
+// Health boosts R growth rate.
+export const HEALTH_GROWTH_BONUS = 0.2;
 
 // ---------------------------------------------------------------------------
 // Land value
@@ -81,6 +94,10 @@ export const LV_ELEVATION_FACTOR = 0.5;
 export const LV_RAIL_ADJ_BONUS = 8;
 export const LV_NO_WATER_PENALTY = 4;
 export const LV_NO_POWER_PENALTY = 8;
+export const LV_CRIME_FACTOR = 1.5;
+export const LV_TRAFFIC_FACTOR = 0.5;
+export const LV_PARK_BONUS = 8;
+export const LV_STADIUM_BONUS = 5;
 
 // ---------------------------------------------------------------------------
 // Migration / growth
@@ -99,20 +116,66 @@ export const POLLUTION_PER_INDUSTRIAL = 25;
 export const POLLUTION_SPREAD_RADIUS = 4;
 export const POLLUTION_DECAY = 0.6;
 export const MAX_POLLUTION = 255;
+export const TRAFFIC_POLLUTION_FACTOR = 0.3;
+
+// ---------------------------------------------------------------------------
+// Crime
+// ---------------------------------------------------------------------------
+export const CRIME_BASE = 5;
+export const CRIME_DENSITY_FACTOR = 3;
+export const CRIME_UNEMPLOYMENT_FACTOR = 0.1;
+export const CRIME_LOW_VALUE_THRESHOLD = 15;
+export const CRIME_LOW_VALUE_BONUS = 8;
+export const CRIME_POLICE_SUPPRESSION = 0.7;
+export const MAX_CRIME = 255;
+
+// ---------------------------------------------------------------------------
+// Fire
+// ---------------------------------------------------------------------------
+export const FIRE_BASE_RISK = 1;
+export const FIRE_INDUSTRIAL_RISK = 4;
+export const FIRE_DENSITY_RISK = 2;
+export const FIRE_COVERAGE_SUPPRESSION = 0.8;
+// Ignition chance is risk / FIRE_IGNITION_DIVISOR per tick (checked via PRNG).
+export const FIRE_IGNITION_DIVISOR = 5000;
+export const FIRE_SPREAD_CHANCE = 40;
+export const FIRE_CONTAINMENT_CHANCE = 30;
+export const FIRE_COVERED_CONTAINMENT_BONUS = 40;
+export const MAX_FIRE_CHECKS_PER_TICK = 64;
+
+// ---------------------------------------------------------------------------
+// Traffic
+// ---------------------------------------------------------------------------
+export const TRAFFIC_ROAD_CAPACITY = 100;
+export const TRAFFIC_RAIL_CAPACITY = 200;
+export const TRAFFIC_SPREAD_RADIUS = 6;
+export const TRAFFIC_DECAY = 0.5;
+export const MAX_TRAFFIC = 255;
 
 // ---------------------------------------------------------------------------
 // Power
 // ---------------------------------------------------------------------------
 // Output in MW per civic type (indexed by CIVIC_* constant).
-export const POWER_OUTPUT = [0, 200, 50, 0] as const;
+// Indices: 0=none, 1=coal, 2=solar, 3=pump, 4=police...11=stadium
+export const POWER_OUTPUT = [0, 200, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0] as const;
 // Pollution emitted by power plants (indexed by CIVIC_* constant).
-export const POWER_PLANT_POLLUTION = [0, 20, 0, 0] as const;
+export const POWER_PLANT_POLLUTION = [
+	0, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+] as const;
 export const POWER_DEMAND_PER_BUILDING = 1;
 
 // ---------------------------------------------------------------------------
 // Water
 // ---------------------------------------------------------------------------
 export const WATER_COVERAGE_RADIUS = 12;
+
+// ---------------------------------------------------------------------------
+// Civic building coverage radii (indexed by CIVIC_* constant)
+// 0 = no coverage. Only service buildings have radii.
+// ---------------------------------------------------------------------------
+export const CIVIC_COVERAGE_RADIUS = [
+	0, 0, 0, 0, 16, 15, 20, 15, 20, 15, 8, 12,
+] as const;
 
 // ---------------------------------------------------------------------------
 // Construction costs (deducted from treasury on placement)
@@ -127,10 +190,48 @@ export const COST_DEMOLISH = 1;
 export const COST_COAL_PLANT = 5000;
 export const COST_SOLAR_PLANT = 3000;
 export const COST_WATER_PUMP = 500;
+export const COST_POLICE = 500;
+export const COST_FIRE_STATION = 500;
+export const COST_HOSPITAL = 1000;
+export const COST_SCHOOL = 250;
+export const COST_COLLEGE = 1000;
+export const COST_LIBRARY = 400;
+export const COST_PARK = 100;
+export const COST_STADIUM = 3000;
 
 // Civic building maintenance per tick (indexed by CIVIC_* constant).
-export const CIVIC_MAINTENANCE = [0, 50, 20, 10] as const;
+// Indices: 0=none, 1=coal, 2=solar, 3=pump, 4=police, 5=fire, 6=hospital,
+//          7=school, 8=college, 9=library, 10=park, 11=stadium
+export const CIVIC_MAINTENANCE = [
+	0, 50, 20, 10, 40, 40, 60, 25, 50, 20, 5, 100,
+] as const;
 export const RAIL_MAINTENANCE_COST = 0.15;
+
+// Civic placement costs (indexed by CIVIC_* constant).
+export const CIVIC_COST_TABLE = [
+	0, COST_COAL_PLANT, COST_SOLAR_PLANT, COST_WATER_PUMP, COST_POLICE,
+	COST_FIRE_STATION, COST_HOSPITAL, COST_SCHOOL, COST_COLLEGE, COST_LIBRARY,
+	COST_PARK, COST_STADIUM,
+] as const;
+
+// ---------------------------------------------------------------------------
+// Bonds
+// ---------------------------------------------------------------------------
+export const BOND_AMOUNT = 5000;
+export const BOND_TERM_MONTHS = 120;
+export const BOND_INTEREST_RATE = 0.05;
+// Monthly payment = principal * (r / (1 - (1+r)^-n)) where r = annual/12
+export const BOND_MONTHLY_PAYMENT = (() => {
+	const r = BOND_INTEREST_RATE / 12;
+	return Math.round(BOND_AMOUNT * (r / (1 - (1 + r) ** -BOND_TERM_MONTHS)));
+})();
+export const MAX_BONDS = 10;
+
+// ---------------------------------------------------------------------------
+// Neighbor connections
+// ---------------------------------------------------------------------------
+export const CONNECTION_TRADE_BONUS = 0.1;
+export const CONNECTION_DEMAND_BONUS = 30;
 
 // ---------------------------------------------------------------------------
 // Public finance
@@ -182,5 +283,24 @@ export const AGG = {
 	WATER_DEMAND: 17,
 	CIVIC_COST: 18,
 	RAIL_COST: 19,
-	COUNT: 20,
+	// P2 systems
+	EDUCATION_LEVEL: 20,
+	HEALTH_LEVEL: 21,
+	TOTAL_CRIME: 22,
+	BOND_PAYMENT: 23,
+	FIRE_COUNT: 24,
+	CONNECTION_COUNT: 25,
+	TRAFFIC_CONGESTION: 26,
+	// Bond slots: remaining months for up to 10 bonds (0 = inactive)
+	BOND_SLOT_0: 27,
+	BOND_SLOT_1: 28,
+	BOND_SLOT_2: 29,
+	BOND_SLOT_3: 30,
+	BOND_SLOT_4: 31,
+	BOND_SLOT_5: 32,
+	BOND_SLOT_6: 33,
+	BOND_SLOT_7: 34,
+	BOND_SLOT_8: 35,
+	BOND_SLOT_9: 36,
+	COUNT: 37,
 } as const;

@@ -12,9 +12,11 @@
 import type { CityState } from "../city-state.ts";
 import {
 	AGG,
+	BOND_MONTHLY_PAYMENT,
 	BUILDING_EMPTY,
 	CIVIC_MAINTENANCE,
 	CIVIC_NONE,
+	MAX_BONDS,
 	RAIL_MAINTENANCE_COST,
 	ROAD_MAINTENANCE_COST,
 	SERVICE_COST_PER_POP,
@@ -61,11 +63,27 @@ export function updatePublicFinance(state: CityState): void {
 		}
 	}
 
+	// --- Bond repayments ---
+	let bondPayment = 0;
+	for (let b = 0; b < MAX_BONDS; b++) {
+		const slotIdx = AGG.BOND_SLOT_0 + b;
+		const remaining = aggregates[slotIdx] ?? 0;
+		if (remaining > 0) {
+			bondPayment += BOND_MONTHLY_PAYMENT;
+			aggregates[slotIdx] = remaining - 1;
+			if (remaining - 1 <= 0) {
+				// Bond matured — remove its payment from total
+				aggregates[AGG.BOND_PAYMENT] =
+					(aggregates[AGG.BOND_PAYMENT] ?? 0) - BOND_MONTHLY_PAYMENT;
+			}
+		}
+	}
+
 	// --- Expenses ---
 	const serviceCost = totalPop * SERVICE_COST_PER_POP;
 	const roadCost = roadCount * ROAD_MAINTENANCE_COST;
 	const railCost = railCount * RAIL_MAINTENANCE_COST;
-	const expenses = serviceCost + roadCost + railCost + civicCost;
+	const expenses = serviceCost + roadCost + railCost + civicCost + bondPayment;
 
 	// --- Update treasury ---
 	const treasury = aggregates[AGG.TREASURY] ?? 0;
@@ -77,4 +95,5 @@ export function updatePublicFinance(state: CityState): void {
 	aggregates[AGG.ROAD_COST] = roadCost;
 	aggregates[AGG.CIVIC_COST] = civicCost;
 	aggregates[AGG.RAIL_COST] = railCost;
+	aggregates[AGG.BOND_PAYMENT] = bondPayment;
 }

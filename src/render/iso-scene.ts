@@ -14,7 +14,15 @@ import type { InteractionStore } from "../app/store.ts";
 import type { Command } from "../sim/commands.ts";
 import {
 	CIVIC_COAL_PLANT,
+	CIVIC_COLLEGE,
+	CIVIC_FIRE_STATION,
+	CIVIC_HOSPITAL,
+	CIVIC_LIBRARY,
+	CIVIC_PARK,
+	CIVIC_POLICE,
+	CIVIC_SCHOOL,
 	CIVIC_SOLAR_PLANT,
+	CIVIC_STADIUM,
 	CIVIC_WATER_PUMP,
 	type CityState,
 	DENSITY_HIGH,
@@ -47,6 +55,14 @@ const COL_CURSOR = 0xffffff;
 const COL_CIVIC = 0x78350f;
 const COL_SOLAR = 0xfde047;
 const COL_WATER_PUMP = 0x38bdf8;
+const COL_POLICE = 0x1d4ed8;
+const COL_FIRE_STN = 0xdc2626;
+const COL_HOSPITAL = 0xf472b6;
+const COL_SCHOOL = 0xfbbf24;
+const COL_COLLEGE = 0x7c3aed;
+const COL_LIBRARY = 0xea580c;
+const COL_PARK_BLDG = 0x4ade80;
+const COL_STADIUM_BLDG = 0x9ca3af;
 
 // Land-value overlay renders value as column height, colored by zoning (or
 // road), so you read both what's there and how valuable it is.
@@ -57,6 +73,9 @@ const COL_POWERED = 0x22c55e;
 const COL_UNPOWERED = 0xef4444;
 const COL_WATERED = 0x38bdf8;
 const COL_UNWATERED = 0xf97316;
+const COL_CRIME = 0xef4444;
+const COL_TRAFFIC_OV = 0xf97316;
+const COL_FIRE_OV = 0xff4500;
 
 // Civic building extrusion heights (tiles tall)
 const CIVIC_HEIGHT = 3;
@@ -445,6 +464,13 @@ export class IsoScene extends Phaser.Scene {
 			}
 		}
 
+		// Fire indicator (always visible regardless of overlay)
+		if (city.fire[idx] === 1) {
+			g.fillStyle(COL_FIRE_OV, 0.7);
+			diamondPath(g, cx, cy, height);
+			g.fillPath();
+		}
+
 		// Overlay tints
 		if (overlay === "pollution") {
 			const pol = city.pollution[idx] ?? 0;
@@ -464,6 +490,48 @@ export class IsoScene extends Phaser.Scene {
 			if (!isWater) {
 				const watered = city.waterCoverage[idx] === 1;
 				g.fillStyle(watered ? COL_WATERED : COL_UNWATERED, 0.45);
+				diamondPath(g, cx, cy, height);
+				g.fillPath();
+			}
+		} else if (overlay === "crime") {
+			const cr = city.crime[idx] ?? 0;
+			if (cr > 0) {
+				g.fillStyle(COL_CRIME, Math.min(0.7, (cr / 255) * 0.8));
+				diamondPath(g, cx, cy, height);
+				g.fillPath();
+			}
+		} else if (overlay === "traffic") {
+			const tr = city.traffic[idx] ?? 0;
+			if (tr > 0) {
+				g.fillStyle(COL_TRAFFIC_OV, Math.min(0.7, (tr / 255) * 0.8));
+				diamondPath(g, cx, cy, height);
+				g.fillPath();
+			}
+		} else if (overlay === "police") {
+			if (!isWater) {
+				const covered = city.policeCoverage[idx] === 1;
+				g.fillStyle(covered ? COL_POWERED : COL_UNPOWERED, 0.45);
+				diamondPath(g, cx, cy, height);
+				g.fillPath();
+			}
+		} else if (overlay === "fire") {
+			if (!isWater) {
+				const covered = city.fireCoverage[idx] === 1;
+				g.fillStyle(covered ? COL_POWERED : COL_UNPOWERED, 0.45);
+				diamondPath(g, cx, cy, height);
+				g.fillPath();
+			}
+		} else if (overlay === "education") {
+			if (!isWater) {
+				const covered = city.educationCoverage[idx] === 1;
+				g.fillStyle(covered ? COL_POWERED : COL_UNPOWERED, 0.45);
+				diamondPath(g, cx, cy, height);
+				g.fillPath();
+			}
+		} else if (overlay === "health") {
+			if (!isWater) {
+				const covered = city.healthCoverage[idx] === 1;
+				g.fillStyle(covered ? COL_POWERED : COL_UNPOWERED, 0.45);
 				diamondPath(g, cx, cy, height);
 				g.fillPath();
 			}
@@ -594,6 +662,14 @@ function civicColor(civicType: number): number {
 	if (civicType === CIVIC_COAL_PLANT) return COL_CIVIC;
 	if (civicType === CIVIC_SOLAR_PLANT) return COL_SOLAR;
 	if (civicType === CIVIC_WATER_PUMP) return COL_WATER_PUMP;
+	if (civicType === CIVIC_POLICE) return COL_POLICE;
+	if (civicType === CIVIC_FIRE_STATION) return COL_FIRE_STN;
+	if (civicType === CIVIC_HOSPITAL) return COL_HOSPITAL;
+	if (civicType === CIVIC_SCHOOL) return COL_SCHOOL;
+	if (civicType === CIVIC_COLLEGE) return COL_COLLEGE;
+	if (civicType === CIVIC_LIBRARY) return COL_LIBRARY;
+	if (civicType === CIVIC_PARK) return COL_PARK_BLDG;
+	if (civicType === CIVIC_STADIUM) return COL_STADIUM_BLDG;
 	return COL_CIVIC;
 }
 
@@ -613,7 +689,17 @@ function isLineTool(tool: string): boolean {
 /** Whether a tool is a civic building (single-click placement, no drag). */
 function isCivicTool(tool: string): boolean {
 	return (
-		tool === "coal-plant" || tool === "solar-plant" || tool === "water-pump"
+		tool === "coal-plant" ||
+		tool === "solar-plant" ||
+		tool === "water-pump" ||
+		tool === "police" ||
+		tool === "fire-station" ||
+		tool === "hospital" ||
+		tool === "school" ||
+		tool === "college" ||
+		tool === "library" ||
+		tool === "park" ||
+		tool === "stadium"
 	);
 }
 
@@ -643,6 +729,22 @@ function previewColor(tool: string): number {
 			return COL_SOLAR;
 		case "water-pump":
 			return COL_WATER_PUMP;
+		case "police":
+			return COL_POLICE;
+		case "fire-station":
+			return COL_FIRE_STN;
+		case "hospital":
+			return COL_HOSPITAL;
+		case "school":
+			return COL_SCHOOL;
+		case "college":
+			return COL_COLLEGE;
+		case "library":
+			return COL_LIBRARY;
+		case "park":
+			return COL_PARK_BLDG;
+		case "stadium":
+			return COL_STADIUM_BLDG;
 		case "demolish":
 			return COL_DEMOLISH;
 		default:
@@ -738,6 +840,22 @@ function toolToCommand(tool: string, x: number, y: number): Command | null {
 			return { kind: "place-civic", x, y, civicType: CIVIC_SOLAR_PLANT };
 		case "water-pump":
 			return { kind: "place-civic", x, y, civicType: CIVIC_WATER_PUMP };
+		case "police":
+			return { kind: "place-civic", x, y, civicType: CIVIC_POLICE };
+		case "fire-station":
+			return { kind: "place-civic", x, y, civicType: CIVIC_FIRE_STATION };
+		case "hospital":
+			return { kind: "place-civic", x, y, civicType: CIVIC_HOSPITAL };
+		case "school":
+			return { kind: "place-civic", x, y, civicType: CIVIC_SCHOOL };
+		case "college":
+			return { kind: "place-civic", x, y, civicType: CIVIC_COLLEGE };
+		case "library":
+			return { kind: "place-civic", x, y, civicType: CIVIC_LIBRARY };
+		case "park":
+			return { kind: "place-civic", x, y, civicType: CIVIC_PARK };
+		case "stadium":
+			return { kind: "place-civic", x, y, civicType: CIVIC_STADIUM };
 		case "demolish":
 			return { kind: "demolish", x, y };
 		default:

@@ -50,6 +50,12 @@ export interface CityState {
 	readonly rail: Uint8Array;
 	readonly powerLines: Uint8Array;
 	readonly elevation: Uint8Array;
+	readonly crime: Uint8Array;
+	readonly policeCoverage: Uint8Array;
+	readonly fireCoverage: Uint8Array;
+	readonly fire: Uint8Array;
+	readonly educationCoverage: Uint8Array;
+	readonly healthCoverage: Uint8Array;
 
 	// Aggregate scalars (indexed by AGG.*)
 	readonly aggregates: Float64Array;
@@ -64,7 +70,7 @@ export interface CityState {
 
 const PRNG_WORDS = 4;
 const U16_LAYER_COUNT = 3;
-const U8_LAYER_COUNT = 13;
+const U8_LAYER_COUNT = 19;
 
 /** Round `offset` up to the next multiple of `align` (a power of two). */
 function alignUp(offset: number, align: number): number {
@@ -151,6 +157,12 @@ function viewLayout(
 		rail: new Uint8Array(buffer, u8 + 10 * u8Stride, size),
 		powerLines: new Uint8Array(buffer, u8 + 11 * u8Stride, size),
 		elevation: new Uint8Array(buffer, u8 + 12 * u8Stride, size),
+		crime: new Uint8Array(buffer, u8 + 13 * u8Stride, size),
+		policeCoverage: new Uint8Array(buffer, u8 + 14 * u8Stride, size),
+		fireCoverage: new Uint8Array(buffer, u8 + 15 * u8Stride, size),
+		fire: new Uint8Array(buffer, u8 + 16 * u8Stride, size),
+		educationCoverage: new Uint8Array(buffer, u8 + 17 * u8Stride, size),
+		healthCoverage: new Uint8Array(buffer, u8 + 18 * u8Stride, size),
 	};
 }
 
@@ -207,6 +219,12 @@ export function createCity(opts?: CreateCityOptions): CityState {
 	state.rail.fill(0);
 	state.powerLines.fill(0);
 	state.elevation.fill(0);
+	state.crime.fill(0);
+	state.policeCoverage.fill(0);
+	state.fireCoverage.fill(0);
+	state.fire.fill(0);
+	state.educationCoverage.fill(0);
+	state.healthCoverage.fill(0);
 	state.aggregates.fill(0);
 
 	state.aggregates[AGG.TREASURY] = STARTING_TREASURY;
