@@ -6,6 +6,7 @@
 
 import {
 	type Key,
+	type PressEvent,
 	ToggleButton,
 	ToggleButtonGroup,
 } from "react-aria-components";
@@ -71,6 +72,7 @@ export function Sidebar({ store, sim }: SidebarProps): React.ReactElement {
 							id={t.id}
 							className="tool-btn"
 							style={{ borderLeftColor: t.accent }}
+							onPress={blurOnPointerPress}
 						>
 							{t.label}
 						</ToggleButton>
@@ -91,7 +93,12 @@ export function Sidebar({ store, sim }: SidebarProps): React.ReactElement {
 					}}
 				>
 					{OVERLAYS.map((o) => (
-						<ToggleButton key={o.id} id={o.id} className="overlay-btn">
+						<ToggleButton
+							key={o.id}
+							id={o.id}
+							className="overlay-btn"
+							onPress={blurOnPointerPress}
+						>
 							{o.label}
 						</ToggleButton>
 					))}
@@ -116,6 +123,7 @@ export function Sidebar({ store, sim }: SidebarProps): React.ReactElement {
 							id={String(s.id)}
 							className="speed-btn"
 							aria-label={s.aria}
+							onPress={blurOnPointerPress}
 						>
 							{s.label}
 						</ToggleButton>
@@ -196,6 +204,18 @@ function DemandBar({
 			</div>
 		</div>
 	);
+}
+
+/**
+ * After a mouse/touch press on a toggle control, drop focus so the roving
+ * arrow-key navigation of the toggle groups stops swallowing the arrow keys
+ * used to pan the city. Keyboard/virtual presses keep focus so keyboard
+ * navigation of the sidebar still works.
+ */
+function blurOnPointerPress(e: PressEvent): void {
+	if (e.pointerType === "keyboard" || e.pointerType === "virtual") return;
+	const el = document.activeElement;
+	if (el instanceof HTMLElement) el.blur();
 }
 
 function fmtInt(n: number): string {
