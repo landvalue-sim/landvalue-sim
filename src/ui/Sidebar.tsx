@@ -14,6 +14,7 @@ import type { InteractionStore } from "../app/store.ts";
 import type { OverlayMode, Speed, Tool } from "../app/types.ts";
 import { MAX_DEMAND } from "../sim/index.ts";
 import { DevPanel } from "./DevPanel.tsx";
+import { FinancesDialog } from "./FinancesDialog.tsx";
 import { useInteraction, useLiveStats } from "./hooks.ts";
 
 const TOOLS: ReadonlyArray<{ id: Tool; label: string; accent: string }> = [
@@ -126,8 +127,9 @@ export function Sidebar({ store, sim }: SidebarProps): React.ReactElement {
 				<div className="section-title">City</div>
 				<StatRow label="Population" value={fmtInt(stats.pop)} />
 				<StatRow label="Jobs" value={fmtInt(stats.jobs)} />
-				<StatRow label="Treasury" value={`$${fmtInt(stats.treasury)}`} />
+				<StatRow label="Treasury" value={fmtMoney(stats.treasury)} />
 				<StatRow label="Tick" value={fmtInt(stats.tick)} />
+				<FinancesDialog sim={sim} />
 			</section>
 
 			<section>
@@ -198,4 +200,9 @@ function DemandBar({
 
 function fmtInt(n: number): string {
 	return Math.floor(n).toLocaleString();
+}
+
+function fmtMoney(n: number): string {
+	const v = Math.floor(n);
+	return `${v < 0 ? "−" : ""}$${Math.abs(v).toLocaleString()}`;
 }

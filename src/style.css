@@ -332,6 +332,201 @@ body {
 	font-style: italic;
 }
 
+/* ---- Finances button + dialog ---- */
+
+.finances-btn {
+	margin-top: 8px;
+	width: 100%;
+	padding: 7px 10px;
+	background: #111827;
+	border: 1px solid #374151;
+	color: #d1d5db;
+	cursor: pointer;
+	border-radius: 4px;
+	font-size: 12.5px;
+	font-family: inherit;
+}
+
+.finances-btn:hover {
+	background: #1e293b;
+	border-color: #4b5563;
+}
+
+.finances-btn[data-focus-visible] {
+	outline: 2px solid #93c5fd;
+	outline-offset: 1px;
+}
+
+.modal-overlay {
+	position: fixed;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.55);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 100;
+}
+
+.modal {
+	width: 340px;
+	max-width: calc(100vw - 32px);
+}
+
+.dialog {
+	background: #1f2937;
+	border: 1px solid #374151;
+	border-radius: 10px;
+	padding: 18px 20px 20px;
+	outline: none;
+	color: #e5e7eb;
+	box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+}
+
+.dialog-title {
+	font-size: 16px;
+	font-weight: 700;
+	margin-bottom: 12px;
+}
+
+.fin-treasury {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	font-size: 13px;
+	color: #9ca3af;
+	padding-bottom: 10px;
+	border-bottom: 1px solid #374151;
+}
+
+.fin-treasury > span:last-child {
+	font-size: 20px;
+	font-weight: 700;
+	font-variant-numeric: tabular-nums;
+}
+
+.fin-section-title {
+	font-size: 10px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 1.2px;
+	color: #6b7280;
+	margin: 14px 0 6px;
+}
+
+.fin-table {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+}
+
+.fin-row {
+	display: flex;
+	justify-content: space-between;
+	font-size: 13px;
+	font-variant-numeric: tabular-nums;
+}
+
+.fin-row > span:first-child {
+	color: #9ca3af;
+}
+
+.fin-net {
+	margin-top: 4px;
+	padding-top: 6px;
+	border-top: 1px solid #374151;
+	font-weight: 700;
+}
+
+.fin-net > span:first-child {
+	color: #e5e7eb;
+}
+
+.pos {
+	color: #4ade80;
+}
+
+.neg {
+	color: #f87171;
+}
+
+.fin-hint {
+	font-size: 11px;
+	color: #6b7280;
+	line-height: 1.4;
+	margin-bottom: 10px;
+}
+
+.tax-slider {
+	margin-bottom: 12px;
+}
+
+.tax-slider-head {
+	display: flex;
+	justify-content: space-between;
+	font-size: 12.5px;
+	margin-bottom: 4px;
+}
+
+.tax-slider-head [slot="output"],
+.tax-slider-head output {
+	font-weight: 700;
+	font-variant-numeric: tabular-nums;
+	color: #93c5fd;
+}
+
+.tax-slider-track {
+	position: relative;
+	height: 18px;
+	width: 100%;
+}
+
+.tax-slider-track::before {
+	content: "";
+	position: absolute;
+	top: 50%;
+	left: 0;
+	right: 0;
+	height: 4px;
+	transform: translateY(-50%);
+	background: #0f172a;
+	border-radius: 2px;
+}
+
+.tax-slider-thumb {
+	width: 16px;
+	height: 16px;
+	border-radius: 50%;
+	background: #60a5fa;
+	border: 2px solid #1f2937;
+	top: 50%;
+}
+
+.tax-slider-thumb[data-dragging] {
+	background: #93c5fd;
+}
+
+.tax-slider-thumb[data-focus-visible] {
+	outline: 2px solid #93c5fd;
+	outline-offset: 2px;
+}
+
+.dialog-close {
+	margin-top: 6px;
+	width: 100%;
+	padding: 8px;
+	background: #1e3a5f;
+	border: 1px solid #60a5fa;
+	color: #fff;
+	border-radius: 4px;
+	cursor: pointer;
+	font-size: 13px;
+	font-family: inherit;
+}
+
+.dialog-close:hover {
+	background: #234876;
+}
+
 /* ---- Fatal error ---- */
 
 .fatal-error {

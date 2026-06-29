@@ -81,8 +81,14 @@ export const MAX_POLLUTION = 255;
 // Public finance
 // ---------------------------------------------------------------------------
 export const STARTING_TREASURY = 10000;
-export const SERVICE_COST_PER_POP = 0.4;
+// Per-resident upkeep. Tuned so a basic road-served city with some commercial
+// breaks even: break-even residential land value ≈ pop(10) * cost / taxRate
+// ≈ 10 * 0.15 / 0.07 ≈ 21, which road-adjacent tiles reach. Higher values make
+// population an unaffordable liability (see DESIGN.md land-value economics).
+export const SERVICE_COST_PER_POP = 0.15;
 export const ROAD_MAINTENANCE_COST = 0.08;
+export const MIN_TAX_RATE = 0;
+export const MAX_TAX_RATE = 0.2;
 
 // ---------------------------------------------------------------------------
 // Aggregate state layout (indices into Float64Array)
@@ -99,5 +105,9 @@ export const AGG = {
 	TOTAL_POP: 8,
 	TOTAL_C_JOBS: 9,
 	TOTAL_I_JOBS: 10,
-	COUNT: 11,
+	// Last tick's public-finance breakdown (per tick), for the finances UI.
+	REVENUE: 11,
+	SERVICE_COST: 12,
+	ROAD_COST: 13,
+	COUNT: 14,
 } as const;

@@ -58,4 +58,9 @@ export function updatePublicFinance(state: CityState): void {
 	// --- Update treasury ---
 	const treasury = aggregates[AGG.TREASURY] ?? 0;
 	aggregates[AGG.TREASURY] = treasury + revenue - expenses;
+
+	// --- Record this tick's breakdown for the finances UI ---
+	aggregates[AGG.REVENUE] = revenue;
+	aggregates[AGG.SERVICE_COST] = serviceCost;
+	aggregates[AGG.ROAD_COST] = roadCost;
 }

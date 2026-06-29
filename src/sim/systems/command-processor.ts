@@ -6,12 +6,17 @@
 
 import type { CityState } from "../city-state.ts";
 import type { Command } from "../commands.ts";
-import { AGG, BUILDING_EMPTY, TERRAIN_WATER, ZONE_NONE } from "../constants.ts";
+import {
+	AGG,
+	BUILDING_EMPTY,
+	MAX_TAX_RATE,
+	MIN_TAX_RATE,
+	TERRAIN_WATER,
+	ZONE_NONE,
+} from "../constants.ts";
 import { invariant } from "../invariant.ts";
 
 const MAX_COMMANDS_PER_TICK = 256;
-const MIN_TAX_RATE = 0;
-const MAX_TAX_RATE = 0.2;
 
 export function processCommands(
 	state: CityState,

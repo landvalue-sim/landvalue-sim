@@ -4,6 +4,7 @@ import {
 	AGG,
 	BUILDING_LOW,
 	ROAD_MAINTENANCE_COST,
+	SERVICE_COST_PER_POP,
 	ZONE_RESIDENTIAL,
 } from "../constants.ts";
 import { updatePublicFinance } from "./public-finance.ts";
@@ -63,6 +64,28 @@ describe("updatePublicFinance", () => {
 		updatePublicFinance(city);
 
 		expect(city.aggregates[AGG.TREASURY]).toBeLessThan(0);
+	});
+
+	it("records the per-tick budget breakdown in aggregates", () => {
+		const city = smallCity();
+		city.zoning[0] = ZONE_RESIDENTIAL;
+		city.building[0] = BUILDING_LOW;
+		city.landValue[0] = 100;
+		for (let i = 1; i < 6; i++) city.roads[i] = 1;
+		updateRciDemand(city);
+
+		updatePublicFinance(city);
+
+		// Revenue = landValue(100) * taxR(0.07) = 7
+		expect(city.aggregates[AGG.REVENUE]).toBeCloseTo(7);
+		// Service cost = pop(10) * SERVICE_COST_PER_POP
+		expect(city.aggregates[AGG.SERVICE_COST]).toBeCloseTo(
+			10 * SERVICE_COST_PER_POP,
+		);
+		// Road cost = 5 roads * ROAD_MAINTENANCE_COST
+		expect(city.aggregates[AGG.ROAD_COST]).toBeCloseTo(
+			5 * ROAD_MAINTENANCE_COST,
+		);
 	});
 
 	it("higher tax rate produces more revenue", () => {

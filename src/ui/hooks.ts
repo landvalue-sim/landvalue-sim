@@ -21,6 +21,12 @@ export interface LiveStats {
 	readonly rDemand: number;
 	readonly cDemand: number;
 	readonly iDemand: number;
+	readonly revenue: number;
+	readonly serviceCost: number;
+	readonly roadCost: number;
+	readonly taxR: number;
+	readonly taxC: number;
+	readonly taxI: number;
 }
 
 function readStats(city: CityState): LiveStats {
@@ -33,6 +39,12 @@ function readStats(city: CityState): LiveStats {
 		rDemand: a[AGG.R_DEMAND] ?? 0,
 		cDemand: a[AGG.C_DEMAND] ?? 0,
 		iDemand: a[AGG.I_DEMAND] ?? 0,
+		revenue: a[AGG.REVENUE] ?? 0,
+		serviceCost: a[AGG.SERVICE_COST] ?? 0,
+		roadCost: a[AGG.ROAD_COST] ?? 0,
+		taxR: a[AGG.TAX_RATE_R] ?? 0,
+		taxC: a[AGG.TAX_RATE_C] ?? 0,
+		taxI: a[AGG.TAX_RATE_I] ?? 0,
 	};
 }
 
