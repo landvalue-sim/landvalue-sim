@@ -1,0 +1,67 @@
+/**
+ * React hooks bridging the UI to the three data sources: the interaction store
+ * (tool/overlay/speed), the live city aggregates in the SharedArrayBuffer, and
+ * the dev-only profiler/violation snapshots posted by the worker.
+ */
+
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import type { SimClient, SimStats } from "../app/sim-client.ts";
+import type { InteractionSnapshot, InteractionStore } from "../app/store.ts";
+import { AGG, type CityState } from "../sim/index.ts";
+
+export function useInteraction(store: InteractionStore): InteractionSnapshot {
+	return useSyncExternalStore(store.subscribe, store.getSnapshot);
+}
+
+export interface LiveStats {
+	readonly pop: number;
+	readonly jobs: number;
+	readonly treasury: number;
+	readonly tick: number;
+	readonly rDemand: number;
+	readonly cDemand: number;
+	readonly iDemand: number;
+}
+
+function readStats(city: CityState): LiveStats {
+	const a = city.aggregates;
+	return {
+		pop: a[AGG.TOTAL_POP] ?? 0,
+		jobs: (a[AGG.TOTAL_C_JOBS] ?? 0) + (a[AGG.TOTAL_I_JOBS] ?? 0),
+		treasury: a[AGG.TREASURY] ?? 0,
+		tick: a[AGG.TICK] ?? 0,
+		rDemand: a[AGG.R_DEMAND] ?? 0,
+		cDemand: a[AGG.C_DEMAND] ?? 0,
+		iDemand: a[AGG.I_DEMAND] ?? 0,
+	};
+}
+
+const STATS_REFRESH_MS = 150;
+
+/** Poll the shared city aggregates on a throttled rAF loop for display. */
+export function useLiveStats(city: CityState): LiveStats {
+	const [stats, setStats] = useState<LiveStats>(() => readStats(city));
+	const lastRef = useRef(0);
+
+	useEffect(() => {
+		let raf = 0;
+		const loop = (t: number): void => {
+			if (t - lastRef.current >= STATS_REFRESH_MS) {
+				lastRef.current = t;
+				setStats(readStats(city));
+			}
+			raf = requestAnimationFrame(loop);
+		};
+		raf = requestAnimationFrame(loop);
+		return () => cancelAnimationFrame(raf);
+	}, [city]);
+
+	return stats;
+}
+
+/** Subscribe to dev profiler/violation snapshots from the worker. */
+export function useSimStats(sim: SimClient): SimStats | null {
+	const [stats, setStats] = useState<SimStats | null>(null);
+	useEffect(() => sim.onStats(setStats), [sim]);
+	return stats;
+}

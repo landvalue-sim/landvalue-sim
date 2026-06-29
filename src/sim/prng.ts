@@ -26,14 +26,20 @@ function splitmix32(state: { v: number }): number {
 
 // ---- Public API -----------------------------------------------------------
 
-export function createPrng(seed: number): PrngState {
+/** Seed an existing PRNG state in-place (its `s` array may alias a buffer). */
+export function seedPrng(rng: PrngState, seed: number): PrngState {
 	const sm = { v: seed | 0 };
-	const s = new Uint32Array(4);
+	const s = rng.s;
 	s[0] = splitmix32(sm);
 	s[1] = splitmix32(sm);
 	s[2] = splitmix32(sm);
 	s[3] = splitmix32(sm);
-	return { s };
+	return rng;
+}
+
+/** Allocate a fresh PRNG state and seed it. */
+export function createPrng(seed: number): PrngState {
+	return seedPrng({ s: new Uint32Array(4) }, seed);
 }
 
 /** Return next u32 in [0, 2^32). Advances state. */

@@ -1,10 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { createCity, inBounds, tileIndex } from "./city-state.ts";
+import {
+	cityByteLength,
+	createCity,
+	inBounds,
+	tileIndex,
+	viewCity,
+} from "./city-state.ts";
 import {
 	AGG,
 	DEFAULT_HEIGHT,
 	DEFAULT_WIDTH,
 	STARTING_TREASURY,
+	TERRAIN_WATER,
 } from "./constants.ts";
 
 describe("CityState", () => {
@@ -62,6 +69,53 @@ describe("CityState", () => {
 		expect(a.rng.s[1]).toBe(b.rng.s[1]);
 		expect(a.rng.s[2]).toBe(b.rng.s[2]);
 		expect(a.rng.s[3]).toBe(b.rng.s[3]);
+	});
+});
+
+describe("CityState shared buffer backing", () => {
+	it("reports a byte length large enough to back every layer", () => {
+		const w = 64;
+		const h = 48;
+		const size = w * h;
+		const bytes = cityByteLength(w, h);
+		// f64 aggregates + u32 rng + 3 u16 layers + 6 u8 layers, plus alignment.
+		const minimum = AGG.COUNT * 8 + 4 * 4 + 3 * size * 2 + 6 * size * 1;
+		expect(bytes).toBeGreaterThanOrEqual(minimum);
+	});
+
+	it("adopts a provided buffer and initializes it", () => {
+		const buffer = new ArrayBuffer(cityByteLength(16, 16));
+		const city = createCity({ width: 16, height: 16, seed: 7, buffer });
+
+		expect(city.buffer).toBe(buffer);
+		expect(city.aggregates[AGG.TREASURY]).toBe(STARTING_TREASURY);
+	});
+
+	it("shares writes between two views over the same buffer", () => {
+		// Mirrors the worker/main-thread split: one writer, one reader, one buffer.
+		const buffer = new ArrayBuffer(cityByteLength(8, 8));
+		const writer = createCity({ width: 8, height: 8, seed: 1, buffer });
+		const reader = viewCity(buffer, 8, 8);
+
+		const idx = tileIndex(8, 3, 2);
+		writer.zoning[idx] = 2;
+		writer.terrain[idx] = TERRAIN_WATER;
+		writer.landValue[idx] = 4321;
+		writer.aggregates[AGG.TOTAL_POP] = 12345;
+
+		expect(reader.zoning[idx]).toBe(2);
+		expect(reader.terrain[idx]).toBe(TERRAIN_WATER);
+		expect(reader.landValue[idx]).toBe(4321);
+		expect(reader.aggregates[AGG.TOTAL_POP]).toBe(12345);
+	});
+
+	it("viewCity does not re-initialize existing buffer data", () => {
+		const buffer = new ArrayBuffer(cityByteLength(8, 8));
+		const writer = createCity({ width: 8, height: 8, seed: 1, buffer });
+		writer.aggregates[AGG.TREASURY] = 999;
+
+		const view = viewCity(buffer, 8, 8);
+		expect(view.aggregates[AGG.TREASURY]).toBe(999);
 	});
 });
 

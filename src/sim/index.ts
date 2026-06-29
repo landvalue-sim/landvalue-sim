@@ -1,7 +1,13 @@
 // Public API for the simulation core
 
 export type { CityState, CreateCityOptions } from "./city-state.ts";
-export { createCity, inBounds, tileIndex } from "./city-state.ts";
+export {
+	cityByteLength,
+	createCity,
+	inBounds,
+	tileIndex,
+	viewCity,
+} from "./city-state.ts";
 
 export type {
 	BuildRoadCommand,

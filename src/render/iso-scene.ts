@@ -1,0 +1,443 @@
+/**
+ * IsoScene — the Phaser render shell.
+ *
+ * Reads the city `SharedArrayBuffer` view each frame (zero-copy) and paints it
+ * as isometric tiles with a back-to-front diagonal sweep: flat ground/water/
+ * roads, extruded buildings, and a translucent overlay (land value / pollution)
+ * on top. It also owns the camera and pointer input, translating clicks into
+ * sim commands. It writes nothing to the city state — the worker is the only
+ * writer.
+ */
+
+import Phaser from "phaser";
+import type { InteractionStore } from "../app/store.ts";
+import type { Command } from "../sim/commands.ts";
+import {
+	type CityState,
+	TERRAIN_WATER,
+	ZONE_COMMERCIAL,
+	ZONE_INDUSTRIAL,
+	ZONE_NONE,
+	ZONE_RESIDENTIAL,
+} from "../sim/index.ts";
+import { HALF_H, HALF_W, screenToGrid, TIER_HEIGHT } from "./iso.ts";
+
+// ---- Palette (0xRRGGBB) ----------------------------------------------------
+
+const COL_GRASS = 0x3d6b24;
+const COL_WATER = 0x2563eb;
+const COL_ROAD = 0x52525b;
+const COL_R_BUILT = 0x16a34a;
+const COL_C_BUILT = 0x2563eb;
+const COL_I_BUILT = 0xca8a04;
+const COL_R_ZONE = 0x22c55e;
+const COL_C_ZONE = 0x3b82f6;
+const COL_I_ZONE = 0xeab308;
+const COL_CURSOR = 0xffffff;
+
+// Land-value heatmap LUT: green (low) -> red (high), precomputed to ints.
+const LUT_SIZE = 256;
+const LV_MAX = 150;
+const LV_COLOR = new Uint32Array(LUT_SIZE);
+for (let i = 0; i < LUT_SIZE; i++) {
+	const t = Math.min(1, i / LV_MAX);
+	LV_COLOR[i] = hslToInt(120 * (1 - t), 0.8, 0.45);
+}
+const LV_ALPHA = 0.5;
+const COL_POLLUTION = 0xa832a8;
+
+// ---- Camera tuning ---------------------------------------------------------
+
+const MIN_ZOOM = 0.4;
+const MAX_ZOOM = 4;
+const ZOOM_STEP = 1.15;
+const KEY_PAN_SPEED = 600; // world px / second
+
+export interface SceneDeps {
+	readonly city: CityState;
+	readonly store: InteractionStore;
+	readonly sendCommand: (cmd: Command) => void;
+}
+
+export class IsoScene extends Phaser.Scene {
+	private readonly city: CityState;
+	private readonly store: InteractionStore;
+	private readonly sendCommand: (cmd: Command) => void;
+
+	private g!: Phaser.GameObjects.Graphics;
+	private keys!: {
+		up: Phaser.Input.Keyboard.Key;
+		down: Phaser.Input.Keyboard.Key;
+		left: Phaser.Input.Keyboard.Key;
+		right: Phaser.Input.Keyboard.Key;
+		w: Phaser.Input.Keyboard.Key;
+		a: Phaser.Input.Keyboard.Key;
+		s: Phaser.Input.Keyboard.Key;
+		d: Phaser.Input.Keyboard.Key;
+	};
+
+	private hoverX = -1;
+	private hoverY = -1;
+	private applying = false;
+	private panning = false;
+	private lastApplyX = -1;
+	private lastApplyY = -1;
+
+	constructor(deps: SceneDeps) {
+		super({ key: "iso" });
+		this.city = deps.city;
+		this.store = deps.store;
+		this.sendCommand = deps.sendCommand;
+	}
+
+	create(): void {
+		this.g = this.add.graphics();
+
+		const cam = this.cameras.main;
+		cam.setBackgroundColor(0x0f172a);
+		// Center on the middle of the grid in world space.
+		const midX = (this.city.width / 2 - this.city.height / 2) * HALF_W;
+		const midY = (this.city.width / 2 + this.city.height / 2) * HALF_H;
+		cam.centerOn(midX, midY);
+		cam.setZoom(1.4);
+
+		const kb = this.input.keyboard;
+		if (kb !== null) {
+			this.keys = {
+				up: kb.addKey(Phaser.Input.Keyboard.KeyCodes.UP),
+				down: kb.addKey(Phaser.Input.Keyboard.KeyCodes.DOWN),
+				left: kb.addKey(Phaser.Input.Keyboard.KeyCodes.LEFT),
+				right: kb.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT),
+				w: kb.addKey(Phaser.Input.Keyboard.KeyCodes.W),
+				a: kb.addKey(Phaser.Input.Keyboard.KeyCodes.A),
+				s: kb.addKey(Phaser.Input.Keyboard.KeyCodes.S),
+				d: kb.addKey(Phaser.Input.Keyboard.KeyCodes.D),
+			};
+		}
+
+		this.input.mouse?.disableContextMenu();
+		this.input.on(Phaser.Input.Events.POINTER_DOWN, this.onPointerDown, this);
+		this.input.on(Phaser.Input.Events.POINTER_MOVE, this.onPointerMove, this);
+		this.input.on(Phaser.Input.Events.POINTER_UP, this.onPointerUp, this);
+		this.input.on(
+			Phaser.Input.Events.POINTER_UP_OUTSIDE,
+			this.onPointerUp,
+			this,
+		);
+		this.input.on(Phaser.Input.Events.POINTER_WHEEL, this.onWheel, this);
+	}
+
+	update(_time: number, delta: number): void {
+		this.panKeys(delta);
+		this.draw();
+	}
+
+	// ---- Input ---------------------------------------------------------------
+
+	private onPointerDown(pointer: Phaser.Input.Pointer): void {
+		if (pointer.rightButtonDown() || pointer.middleButtonDown()) {
+			this.panning = true;
+			return;
+		}
+		const tool = this.store.getSnapshot().tool;
+		if (tool !== "none") {
+			this.applying = true;
+			const { x, y } = this.pointerTile(pointer);
+			this.applyTool(x, y);
+		}
+	}
+
+	private onPointerMove(pointer: Phaser.Input.Pointer): void {
+		if (this.panning) {
+			const cam = this.cameras.main;
+			cam.scrollX -= (pointer.x - pointer.prevPosition.x) / cam.zoom;
+			cam.scrollY -= (pointer.y - pointer.prevPosition.y) / cam.zoom;
+			return;
+		}
+		const { x, y } = this.pointerTile(pointer);
+		this.hoverX = x;
+		this.hoverY = y;
+		if (this.applying && (x !== this.lastApplyX || y !== this.lastApplyY)) {
+			this.applyTool(x, y);
+		}
+	}
+
+	private onPointerUp(pointer: Phaser.Input.Pointer): void {
+		if (!pointer.rightButtonReleased() && !pointer.middleButtonReleased()) {
+			this.applying = false;
+		}
+		this.panning = false;
+	}
+
+	private onWheel(
+		pointer: Phaser.Input.Pointer,
+		_over: unknown,
+		_dx: number,
+		dy: number,
+	): void {
+		const cam = this.cameras.main;
+		const factor = dy < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
+		const next = Phaser.Math.Clamp(cam.zoom * factor, MIN_ZOOM, MAX_ZOOM);
+		// Zoom toward the pointer: keep the world point under the cursor fixed.
+		const worldX = cam.scrollX + pointer.x / cam.zoom;
+		const worldY = cam.scrollY + pointer.y / cam.zoom;
+		cam.setZoom(next);
+		cam.scrollX = worldX - pointer.x / next;
+		cam.scrollY = worldY - pointer.y / next;
+	}
+
+	private panKeys(delta: number): void {
+		if (this.keys === undefined) return;
+		const cam = this.cameras.main;
+		const step = (KEY_PAN_SPEED * delta) / 1000 / cam.zoom;
+		if (this.keys.left.isDown || this.keys.a.isDown) cam.scrollX -= step;
+		if (this.keys.right.isDown || this.keys.d.isDown) cam.scrollX += step;
+		if (this.keys.up.isDown || this.keys.w.isDown) cam.scrollY -= step;
+		if (this.keys.down.isDown || this.keys.s.isDown) cam.scrollY += step;
+	}
+
+	private pointerTile(pointer: Phaser.Input.Pointer): { x: number; y: number } {
+		const g = screenToGrid(pointer.worldX, pointer.worldY);
+		return { x: Math.floor(g.x), y: Math.floor(g.y) };
+	}
+
+	private applyTool(x: number, y: number): void {
+		this.lastApplyX = x;
+		this.lastApplyY = y;
+		if (x < 0 || x >= this.city.width || y < 0 || y >= this.city.height) return;
+		const cmd = toolToCommand(this.store.getSnapshot().tool, x, y);
+		if (cmd !== null) this.sendCommand(cmd);
+	}
+
+	// ---- Drawing -------------------------------------------------------------
+
+	private draw(): void {
+		const g = this.g;
+		const city = this.city;
+		const w = city.width;
+		const h = city.height;
+		const overlay = this.store.getSnapshot().overlay;
+
+		g.clear();
+
+		// Back-to-front diagonal sweep so extruded buildings occlude correctly.
+		const maxD = w - 1 + (h - 1);
+		for (let d = 0; d <= maxD; d++) {
+			const xStart = Math.max(0, d - (h - 1));
+			const xEnd = Math.min(w - 1, d);
+			for (let x = xStart; x <= xEnd; x++) {
+				const y = d - x;
+				this.drawTile(x, y, overlay);
+			}
+		}
+
+		// Hovered-tile cursor.
+		if (
+			this.hoverX >= 0 &&
+			this.hoverX < w &&
+			this.hoverY >= 0 &&
+			this.hoverY < h
+		) {
+			const cx = (this.hoverX - this.hoverY) * HALF_W;
+			const cy = (this.hoverX + this.hoverY) * HALF_H;
+			g.lineStyle(2, COL_CURSOR, 0.9);
+			diamondPath(g, cx, cy, 0);
+			g.strokePath();
+		}
+	}
+
+	private drawTile(x: number, y: number, overlay: string): void {
+		const g = this.g;
+		const city = this.city;
+		const idx = y * city.width + x;
+		const cx = (x - y) * HALF_W;
+		const cy = (x + y) * HALF_H;
+
+		const isRoad = city.roads[idx] === 1;
+		const isWater = !isRoad && city.terrain[idx] === TERRAIN_WATER;
+		const tier = isRoad || isWater ? 0 : (city.building[idx] ?? 0);
+		const height = tier * TIER_HEIGHT;
+
+		// Base / top surface color.
+		let top: number;
+		if (isRoad) top = COL_ROAD;
+		else if (isWater) top = COL_WATER;
+		else if (tier > 0) top = builtColor(city.zoning[idx] ?? 0);
+		else top = COL_GRASS;
+
+		// Extruded side faces for buildings.
+		if (height > 0) {
+			g.fillStyle(shade(top, 0.6), 1);
+			quad(
+				g,
+				cx - HALF_W,
+				cy,
+				cx,
+				cy + HALF_H,
+				cx,
+				cy + HALF_H - height,
+				cx - HALF_W,
+				cy - height,
+			);
+			g.fillStyle(shade(top, 0.8), 1);
+			quad(
+				g,
+				cx + HALF_W,
+				cy,
+				cx,
+				cy + HALF_H,
+				cx,
+				cy + HALF_H - height,
+				cx + HALF_W,
+				cy - height,
+			);
+		}
+
+		// Top diamond.
+		g.fillStyle(top, 1);
+		diamondPath(g, cx, cy, height);
+		g.fillPath();
+
+		// Empty zoned land: colored outline so zoning reads before it builds.
+		if (tier === 0 && !isRoad && !isWater) {
+			const zoneOutline = zoneOutlineColor(city.zoning[idx] ?? 0);
+			if (zoneOutline >= 0) {
+				g.lineStyle(1.5, zoneOutline, 0.9);
+				diamondPath(g, cx, cy, 0);
+				g.strokePath();
+			}
+		}
+
+		// Overlay tint on the top surface.
+		if (overlay === "land-value") {
+			const lv = city.landValue[idx] ?? 0;
+			if (lv > 0) {
+				const c = LV_COLOR[Math.min(lv, LUT_SIZE - 1)] ?? 0;
+				g.fillStyle(c, LV_ALPHA);
+				diamondPath(g, cx, cy, height);
+				g.fillPath();
+			}
+		} else if (overlay === "pollution") {
+			const pol = city.pollution[idx] ?? 0;
+			if (pol > 0) {
+				g.fillStyle(COL_POLLUTION, Math.min(0.6, (pol / 255) * 0.7));
+				diamondPath(g, cx, cy, height);
+				g.fillPath();
+			}
+		}
+	}
+}
+
+// ---- Geometry helpers ------------------------------------------------------
+
+function diamondPath(
+	g: Phaser.GameObjects.Graphics,
+	cx: number,
+	cy: number,
+	lift: number,
+): void {
+	const yc = cy - lift;
+	g.beginPath();
+	g.moveTo(cx, yc - HALF_H);
+	g.lineTo(cx + HALF_W, yc);
+	g.lineTo(cx, yc + HALF_H);
+	g.lineTo(cx - HALF_W, yc);
+	g.closePath();
+}
+
+function quad(
+	g: Phaser.GameObjects.Graphics,
+	x1: number,
+	y1: number,
+	x2: number,
+	y2: number,
+	x3: number,
+	y3: number,
+	x4: number,
+	y4: number,
+): void {
+	g.beginPath();
+	g.moveTo(x1, y1);
+	g.lineTo(x2, y2);
+	g.lineTo(x3, y3);
+	g.lineTo(x4, y4);
+	g.closePath();
+	g.fillPath();
+}
+
+// ---- Color helpers ---------------------------------------------------------
+
+function builtColor(zone: number): number {
+	if (zone === ZONE_RESIDENTIAL) return COL_R_BUILT;
+	if (zone === ZONE_COMMERCIAL) return COL_C_BUILT;
+	if (zone === ZONE_INDUSTRIAL) return COL_I_BUILT;
+	return COL_GRASS;
+}
+
+function zoneOutlineColor(zone: number): number {
+	if (zone === ZONE_RESIDENTIAL) return COL_R_ZONE;
+	if (zone === ZONE_COMMERCIAL) return COL_C_ZONE;
+	if (zone === ZONE_INDUSTRIAL) return COL_I_ZONE;
+	if (zone === ZONE_NONE) return -1;
+	return -1;
+}
+
+/** Multiply an 0xRRGGBB color's channels by `f` (for shaded side faces). */
+function shade(color: number, f: number): number {
+	const r = Math.min(255, ((color >> 16) & 0xff) * f) | 0;
+	const gch = Math.min(255, ((color >> 8) & 0xff) * f) | 0;
+	const b = Math.min(255, (color & 0xff) * f) | 0;
+	return (r << 16) | (gch << 8) | b;
+}
+
+function hslToInt(h: number, s: number, l: number): number {
+	const c = (1 - Math.abs(2 * l - 1)) * s;
+	const hp = h / 60;
+	const xCol = c * (1 - Math.abs((hp % 2) - 1));
+	let r = 0;
+	let gch = 0;
+	let b = 0;
+	if (hp < 1) {
+		r = c;
+		gch = xCol;
+	} else if (hp < 2) {
+		r = xCol;
+		gch = c;
+	} else if (hp < 3) {
+		gch = c;
+		b = xCol;
+	} else if (hp < 4) {
+		gch = xCol;
+		b = c;
+	} else if (hp < 5) {
+		r = xCol;
+		b = c;
+	} else {
+		r = c;
+		b = xCol;
+	}
+	const m = l - c / 2;
+	const ri = Math.round((r + m) * 255);
+	const gi = Math.round((gch + m) * 255);
+	const bi = Math.round((b + m) * 255);
+	return (ri << 16) | (gi << 8) | bi;
+}
+
+// ---- Command mapping -------------------------------------------------------
+
+function toolToCommand(tool: string, x: number, y: number): Command | null {
+	switch (tool) {
+		case "zone-r":
+			return { kind: "zone", x, y, zoneType: ZONE_RESIDENTIAL };
+		case "zone-c":
+			return { kind: "zone", x, y, zoneType: ZONE_COMMERCIAL };
+		case "zone-i":
+			return { kind: "zone", x, y, zoneType: ZONE_INDUSTRIAL };
+		case "road":
+			return { kind: "build-road", x, y };
+		case "demolish":
+			return { kind: "demolish", x, y };
+		default:
+			return null;
+	}
+}
