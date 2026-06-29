@@ -171,14 +171,20 @@ export class IsoScene extends Phaser.Scene {
 		dy: number,
 	): void {
 		const cam = this.cameras.main;
+		const z0 = cam.zoom;
 		const factor = dy < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
-		const next = Phaser.Math.Clamp(cam.zoom * factor, MIN_ZOOM, MAX_ZOOM);
-		// Zoom toward the pointer: keep the world point under the cursor fixed.
-		const worldX = cam.scrollX + pointer.x / cam.zoom;
-		const worldY = cam.scrollY + pointer.y / cam.zoom;
-		cam.setZoom(next);
-		cam.scrollX = worldX - pointer.x / next;
-		cam.scrollY = worldY - pointer.y / next;
+		const z1 = Phaser.Math.Clamp(z0 * factor, MIN_ZOOM, MAX_ZOOM);
+		if (z1 === z0) return;
+
+		// Phaser zooms about the camera center, so screen->world is
+		//   world = scroll + center + (screen - center) / zoom.
+		// To keep the world point under the cursor fixed across the zoom change,
+		// shift scroll by the cursor's offset from center times the change in
+		// inverse zoom.
+		const dInv = 1 / z0 - 1 / z1;
+		cam.setZoom(z1);
+		cam.scrollX += (pointer.x - cam.centerX) * dInv;
+		cam.scrollY += (pointer.y - cam.centerY) * dInv;
 	}
 
 	private panKeys(delta: number): void {
