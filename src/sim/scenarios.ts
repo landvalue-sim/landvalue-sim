@@ -8,6 +8,7 @@
  */
 
 import { type CityState, inBounds, tileIndex } from "./city-state.ts";
+import { generateTerrain } from "./terrain-gen.ts";
 import {
 	AGG,
 	BUILDING_HIGH,
@@ -27,6 +28,9 @@ import {
 	ZONE_NONE,
 	ZONE_RESIDENTIAL,
 } from "./constants.ts";
+
+// Fixed seed for the demo's terrain so the test city is fully deterministic.
+const TEST_CITY_TERRAIN_SEED = 20240;
 
 const BLOCKS = 6; // blocks per axis
 const BLOCK = 3; // tiles per block edge
@@ -92,6 +96,7 @@ function specForChar(c: string): ZoneSpec | null {
 /** Replace the current city with a deterministic pre-built downtown. */
 export function buildTestCity(state: CityState): void {
 	resetCity(state);
+	buildTestTerrain(state);
 
 	const x0 = Math.max(0, Math.floor((state.width - SPAN) / 2));
 	const y0 = Math.max(0, Math.floor((state.height - SPAN) / 2));
@@ -99,6 +104,17 @@ export function buildTestCity(state: CityState): void {
 	layRoads(state, x0, y0);
 	layBlocks(state, x0, y0);
 	placePowerPlant(state, x0, y0);
+}
+
+/**
+ * Give the demo rolling 3D relief. `generateTerrain` writes both elevation and
+ * water; we then force every tile back to land so the downtown grid always sits
+ * on buildable ground (no roads or buildings stranded on water), while keeping
+ * the varied elevation the renderer extrudes into hills.
+ */
+function buildTestTerrain(state: CityState): void {
+	generateTerrain(state, TEST_CITY_TERRAIN_SEED);
+	state.terrain.fill(TERRAIN_LAND);
 }
 
 function resetCity(state: CityState): void {

@@ -80,6 +80,14 @@ const COL_FIRE_OV = 0xff4500;
 // Civic building extrusion heights (tiles tall)
 const CIVIC_HEIGHT = 3;
 
+// ---- Terrain extrusion -----------------------------------------------------
+// World-pixels of vertical lift per elevation unit (elevation is 0..ELEVATION_MAX).
+const ELEV_HEIGHT = 3;
+// Water renders as a flat plane at this elevation (≈ WATER_THRESHOLD *
+// ELEVATION_MAX), so the sea is level even where the noise floor is uneven.
+const SEA_ELEV = 5;
+const COL_EARTH = 0x6b4f2a; // dirt sides exposed under raised terrain
+
 // ---- Camera tuning ---------------------------------------------------------
 
 const MIN_ZOOM = 0.4;
@@ -361,35 +369,45 @@ export class IsoScene extends Phaser.Scene {
 			if (!this.inBounds(t.x, t.y)) continue;
 			const cx = (t.x - t.y) * HALF_W;
 			const cy = (t.x + t.y) * HALF_H;
+			const lift = this.groundLift(t.y * this.city.width + t.x);
 			g.fillStyle(color, 0.45);
-			diamondPath(g, cx, cy, 0);
+			diamondPath(g, cx, cy, lift);
 			g.fillPath();
 			g.lineStyle(1, color, 0.9);
-			diamondPath(g, cx, cy, 0);
+			diamondPath(g, cx, cy, lift);
 			g.strokePath();
 		}
+	}
+
+	/** World-space lift of a tile's ground (terrain) surface. */
+	private groundLift(idx: number): number {
+		const city = this.city;
+		const isWater = city.terrain[idx] === TERRAIN_WATER;
+		const elev = isWater ? SEA_ELEV : (city.elevation[idx] ?? 0);
+		return elev * ELEV_HEIGHT;
 	}
 
 	/** World-space height of a tile's top surface in the current overlay mode. */
 	private tileTopLift(idx: number, overlay: string): number {
 		const city = this.city;
+		const ground = this.groundLift(idx);
 		const isRoad = city.roads[idx] === 1;
 		const isWater = !isRoad && city.terrain[idx] === TERRAIN_WATER;
 
 		if (overlay === "land-value") {
-			if (isWater) return 0;
+			if (isWater) return ground;
 			const lv = city.landValue[idx] ?? 0;
-			return Math.min(lv, LV_HEIGHT_CLAMP) * LV_HEIGHT_PER_UNIT;
+			return ground + Math.min(lv, LV_HEIGHT_CLAMP) * LV_HEIGHT_PER_UNIT;
 		}
 
-		if (isRoad || isWater) return 0;
-		if (city.rail[idx] === 1 || city.powerLines[idx] === 1) return 0;
+		if (isRoad || isWater) return ground;
+		if (city.rail[idx] === 1 || city.powerLines[idx] === 1) return ground;
 
 		const civicType = city.civic[idx] ?? 0;
-		if (civicType !== 0) return CIVIC_HEIGHT * TIER_HEIGHT;
+		if (civicType !== 0) return ground + CIVIC_HEIGHT * TIER_HEIGHT;
 
 		const tier = city.building[idx] ?? 0;
-		return tier * TIER_HEIGHT;
+		return ground + tier * TIER_HEIGHT;
 	}
 
 	private drawTile(x: number, y: number, overlay: string): void {
@@ -417,39 +435,49 @@ export class IsoScene extends Phaser.Scene {
 				: 0;
 
 		let top: number;
-		let height: number;
+		let buildHeight: number; // extrusion above the terrain surface
 
 		if (isRoad) {
 			top = COL_ROAD;
-			height = 0;
+			buildHeight = 0;
 		} else if (isWater) {
 			top = COL_WATER;
-			height = 0;
+			buildHeight = 0;
 		} else if (isRail) {
 			top = COL_RAIL;
-			height = 0;
+			buildHeight = 0;
 		} else if (isPowerLine) {
 			top = COL_POWER_LINE;
-			height = 0;
+			buildHeight = 0;
 		} else if (civicType !== 0) {
 			top = civicColor(civicType);
-			height = CIVIC_HEIGHT * TIER_HEIGHT;
+			buildHeight = CIVIC_HEIGHT * TIER_HEIGHT;
 		} else {
 			const tier = city.building[idx] ?? 0;
-			height = tier * TIER_HEIGHT;
+			buildHeight = tier * TIER_HEIGHT;
 			top = tier > 0 ? builtColor(city.zoning[idx] ?? 0) : COL_GRASS;
 		}
 
-		if (height > 0) extrudeFaces(g, cx, cy, height, top);
+		// Terrain rises from sea level (0) to its elevation; buildings/civics
+		// extrude further above that surface.
+		const groundLift = this.groundLift(idx);
+		const topLift = groundLift + buildHeight;
+
+		if (groundLift > 0) {
+			extrudeColumn(g, cx, cy, 0, groundLift, isWater ? COL_WATER : COL_EARTH);
+		}
+		if (buildHeight > 0) {
+			extrudeColumn(g, cx, cy, groundLift, topLift, top);
+		}
 
 		// Top diamond.
 		g.fillStyle(top, 1);
-		diamondPath(g, cx, cy, height);
+		diamondPath(g, cx, cy, topLift);
 		g.fillPath();
 
 		// Empty zoned land: colored outline so zoning reads before it builds.
 		if (
-			height === 0 &&
+			buildHeight === 0 &&
 			!isRoad &&
 			!isWater &&
 			!isRail &&
@@ -459,7 +487,7 @@ export class IsoScene extends Phaser.Scene {
 			const zoneOutline = zoneOutlineColor(city.zoning[idx] ?? 0);
 			if (zoneOutline >= 0) {
 				g.lineStyle(1.5, zoneOutline, 0.9);
-				diamondPath(g, cx, cy, 0);
+				diamondPath(g, cx, cy, topLift);
 				g.strokePath();
 			}
 		}
@@ -467,7 +495,7 @@ export class IsoScene extends Phaser.Scene {
 		// Fire indicator (always visible regardless of overlay)
 		if (city.fire[idx] === 1) {
 			g.fillStyle(COL_FIRE_OV, 0.7);
-			diamondPath(g, cx, cy, height);
+			diamondPath(g, cx, cy, topLift);
 			g.fillPath();
 		}
 
@@ -476,63 +504,63 @@ export class IsoScene extends Phaser.Scene {
 			const pol = city.pollution[idx] ?? 0;
 			if (pol > 0) {
 				g.fillStyle(COL_POLLUTION, Math.min(0.6, (pol / 255) * 0.7));
-				diamondPath(g, cx, cy, height);
+				diamondPath(g, cx, cy, topLift);
 				g.fillPath();
 			}
 		} else if (overlay === "power") {
 			if (!isWater) {
 				const powered = city.power[idx] === 1;
 				g.fillStyle(powered ? COL_POWERED : COL_UNPOWERED, 0.45);
-				diamondPath(g, cx, cy, height);
+				diamondPath(g, cx, cy, topLift);
 				g.fillPath();
 			}
 		} else if (overlay === "water") {
 			if (!isWater) {
 				const watered = city.waterCoverage[idx] === 1;
 				g.fillStyle(watered ? COL_WATERED : COL_UNWATERED, 0.45);
-				diamondPath(g, cx, cy, height);
+				diamondPath(g, cx, cy, topLift);
 				g.fillPath();
 			}
 		} else if (overlay === "crime") {
 			const cr = city.crime[idx] ?? 0;
 			if (cr > 0) {
 				g.fillStyle(COL_CRIME, Math.min(0.7, (cr / 255) * 0.8));
-				diamondPath(g, cx, cy, height);
+				diamondPath(g, cx, cy, topLift);
 				g.fillPath();
 			}
 		} else if (overlay === "traffic") {
 			const tr = city.traffic[idx] ?? 0;
 			if (tr > 0) {
 				g.fillStyle(COL_TRAFFIC_OV, Math.min(0.7, (tr / 255) * 0.8));
-				diamondPath(g, cx, cy, height);
+				diamondPath(g, cx, cy, topLift);
 				g.fillPath();
 			}
 		} else if (overlay === "police") {
 			if (!isWater) {
 				const covered = city.policeCoverage[idx] === 1;
 				g.fillStyle(covered ? COL_POWERED : COL_UNPOWERED, 0.45);
-				diamondPath(g, cx, cy, height);
+				diamondPath(g, cx, cy, topLift);
 				g.fillPath();
 			}
 		} else if (overlay === "fire") {
 			if (!isWater) {
 				const covered = city.fireCoverage[idx] === 1;
 				g.fillStyle(covered ? COL_POWERED : COL_UNPOWERED, 0.45);
-				diamondPath(g, cx, cy, height);
+				diamondPath(g, cx, cy, topLift);
 				g.fillPath();
 			}
 		} else if (overlay === "education") {
 			if (!isWater) {
 				const covered = city.educationCoverage[idx] === 1;
 				g.fillStyle(covered ? COL_POWERED : COL_UNPOWERED, 0.45);
-				diamondPath(g, cx, cy, height);
+				diamondPath(g, cx, cy, topLift);
 				g.fillPath();
 			}
 		} else if (overlay === "health") {
 			if (!isWater) {
 				const covered = city.healthCoverage[idx] === 1;
 				g.fillStyle(covered ? COL_POWERED : COL_UNPOWERED, 0.45);
-				diamondPath(g, cx, cy, height);
+				diamondPath(g, cx, cy, topLift);
 				g.fillPath();
 			}
 		}
@@ -552,9 +580,11 @@ export class IsoScene extends Phaser.Scene {
 
 		const isRoad = city.roads[idx] === 1;
 		const isWater = !isRoad && city.terrain[idx] === TERRAIN_WATER;
+		const ground = this.groundLift(idx);
 		if (isWater) {
+			if (ground > 0) extrudeColumn(g, cx, cy, 0, ground, COL_WATER);
 			g.fillStyle(COL_WATER, 1);
-			diamondPath(g, cx, cy, 0);
+			diamondPath(g, cx, cy, ground);
 			g.fillPath();
 			return;
 		}
@@ -563,46 +593,53 @@ export class IsoScene extends Phaser.Scene {
 		const vh = Math.min(lv, LV_HEIGHT_CLAMP) * LV_HEIGHT_PER_UNIT;
 		const col = isRoad ? COL_ROAD : builtColor(city.zoning[idx] ?? 0);
 
-		if (vh > 0) extrudeFaces(g, cx, cy, vh, col);
+		// Earth column up to terrain height, then the land-value column above it.
+		if (ground > 0) extrudeColumn(g, cx, cy, 0, ground, COL_EARTH);
+		if (vh > 0) extrudeColumn(g, cx, cy, ground, ground + vh, col);
 		g.fillStyle(col, 1);
-		diamondPath(g, cx, cy, vh);
+		diamondPath(g, cx, cy, ground + vh);
 		g.fillPath();
 	}
 }
 
 // ---- Geometry helpers ------------------------------------------------------
 
-/** Draw the two visible side faces of a tile column `height` px tall. */
-function extrudeFaces(
+/**
+ * Draw the two visible side faces of a tile column spanning `baseLift` to
+ * `topLift` world-pixels above the tile's flat (lift 0) position. Used for both
+ * terrain blocks (0 → ground) and buildings (ground → ground + height).
+ */
+function extrudeColumn(
 	g: Phaser.GameObjects.Graphics,
 	cx: number,
 	cy: number,
-	height: number,
+	baseLift: number,
+	topLift: number,
 	top: number,
 ): void {
 	g.fillStyle(shade(top, 0.6), 1);
 	quad(
 		g,
 		cx - HALF_W,
-		cy,
+		cy - baseLift,
 		cx,
-		cy + HALF_H,
+		cy + HALF_H - baseLift,
 		cx,
-		cy + HALF_H - height,
+		cy + HALF_H - topLift,
 		cx - HALF_W,
-		cy - height,
+		cy - topLift,
 	);
 	g.fillStyle(shade(top, 0.8), 1);
 	quad(
 		g,
 		cx + HALF_W,
-		cy,
+		cy - baseLift,
 		cx,
-		cy + HALF_H,
+		cy + HALF_H - baseLift,
 		cx,
-		cy + HALF_H - height,
+		cy + HALF_H - topLift,
 		cx + HALF_W,
-		cy - height,
+		cy - topLift,
 	);
 }
 
