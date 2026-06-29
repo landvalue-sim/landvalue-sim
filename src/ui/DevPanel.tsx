@@ -32,6 +32,11 @@ export function DevPanel({
 				</Button>
 			</h3>
 			<DisclosurePanel>
+				<div className="dev-section-title">Debug</div>
+				<Button className="dev-action-btn" onPress={() => sim.loadTestCity()}>
+					Load Test City
+				</Button>
+
 				<div className="dev-section-title">Tick Profiler (ms)</div>
 				<div className="dev-table">
 					<div className="dev-row dev-header">

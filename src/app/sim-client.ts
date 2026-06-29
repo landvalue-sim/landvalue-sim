@@ -30,6 +30,8 @@ export interface SimClient {
 	sendCommands(commands: ReadonlyArray<Command>): void;
 	setSpeed(speed: Speed): void;
 	clearViolations(): void;
+	/** Replace the current city with a deterministic pre-built test city. */
+	loadTestCity(): void;
 	onStats(listener: StatsListener): () => void;
 	dispose(): void;
 }
@@ -96,6 +98,9 @@ export function createSimClient(opts: SimClientOptions): SimClient {
 		},
 		clearViolations() {
 			send({ type: "clear-violations" });
+		},
+		loadTestCity() {
+			send({ type: "load-test-city" });
 		},
 		onStats(listener) {
 			statsListeners.add(listener);

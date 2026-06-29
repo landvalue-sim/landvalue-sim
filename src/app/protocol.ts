@@ -35,11 +35,16 @@ export interface ClearViolationsMessage {
 	readonly type: "clear-violations";
 }
 
+export interface LoadTestCityMessage {
+	readonly type: "load-test-city";
+}
+
 export type ToWorkerMessage =
 	| InitMessage
 	| CommandsMessage
 	| SpeedMessage
-	| ClearViolationsMessage;
+	| ClearViolationsMessage
+	| LoadTestCityMessage;
 
 // ---- Worker -> Main --------------------------------------------------------
 

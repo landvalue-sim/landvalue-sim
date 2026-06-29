@@ -25,6 +25,7 @@ import type {
 import type { Speed } from "../app/types.ts";
 import type { Command } from "../sim/commands.ts";
 import {
+	buildTestCity,
 	type CityState,
 	clearViolations,
 	getProfileSnapshot,
@@ -69,6 +70,9 @@ ctx.addEventListener("message", (event: MessageEvent<ToWorkerMessage>) => {
 		case "clear-violations":
 			handleClearViolations(msg);
 			break;
+		case "load-test-city":
+			handleLoadTestCity();
+			break;
 	}
 });
 
@@ -99,6 +103,17 @@ function handleSpeed(msg: SpeedMessage): void {
 
 function handleClearViolations(_msg: ClearViolationsMessage): void {
 	clearViolations();
+}
+
+function handleLoadTestCity(): void {
+	if (city === null) return;
+	buildTestCity(city);
+	pendingCommands.length = 0;
+	accumulator = 0;
+	lastTime = performance.now();
+	// Run one tick so land value, totals, and the finance breakdown are
+	// populated immediately, even if the sim is paused.
+	stepOnce();
 }
 
 // ---- Tick driver -----------------------------------------------------------
