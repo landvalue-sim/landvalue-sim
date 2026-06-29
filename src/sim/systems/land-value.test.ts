@@ -33,17 +33,21 @@ describe("updateLandValue", () => {
 		expect(city.landValue[idx]).toBe(0);
 	});
 
-	it("road tiles have higher value than empty land", () => {
+	it("road tiles carry no parcel value; the premium goes to adjacent land", () => {
 		const city = smallCity();
 		const roadIdx = 4 * 8 + 4;
-		const emptyIdx = 4 * 8 + 2;
+		const adjIdx = 4 * 8 + 3; // orthogonally adjacent to the road
+		const farIdx = 0; // (0,0), away from the road
 		city.roads[roadIdx] = 1;
 
 		updateLandValue(city);
 
-		const roadValue = city.landValue[roadIdx] ?? 0;
-		const emptyValue = city.landValue[emptyIdx] ?? 0;
-		expect(roadValue).toBeGreaterThan(emptyValue);
+		// The roadbed itself is worth nothing — it is not a taxable parcel.
+		expect(city.landValue[roadIdx]).toBe(0);
+		// The access premium capitalizes into the adjacent developable land.
+		expect(city.landValue[adjIdx] ?? 0).toBeGreaterThan(
+			city.landValue[farIdx] ?? 0,
+		);
 	});
 
 	it("tiles adjacent to roads get a bonus", () => {
@@ -83,20 +87,20 @@ describe("updateLandValue", () => {
 		expect(nearI).toBeLessThan(farFromI);
 	});
 
-	it("diffusion smooths values across neighbors", () => {
+	it("diffusion spreads value outward from road-adjacent parcels", () => {
 		const city = smallCity();
-		// Place a road to create a high-value point
+		// A road creates a ring of high-value adjacent parcels.
 		city.roads[4 * 8 + 4] = 1;
 
 		updateLandValue(city);
 
-		// Neighbors should have picked up some value from diffusion
-		const roadValue = city.landValue[4 * 8 + 4] ?? 0;
-		const neighborValue = city.landValue[4 * 8 + 3] ?? 0;
-		const farValue = city.landValue[0 * 8 + 0] ?? 0;
+		const adj = city.landValue[4 * 8 + 3] ?? 0; // touches the road (peak)
+		const twoAway = city.landValue[4 * 8 + 2] ?? 0; // one tile further out
+		const far = city.landValue[0 * 8 + 0] ?? 0; // corner, away from the road
 
-		expect(neighborValue).toBeGreaterThan(farValue);
-		expect(roadValue).toBeGreaterThanOrEqual(neighborValue);
+		// Value decays with distance, but diffusion still carries some outward.
+		expect(adj).toBeGreaterThan(twoAway);
+		expect(twoAway).toBeGreaterThan(far);
 	});
 
 	it("is deterministic", () => {

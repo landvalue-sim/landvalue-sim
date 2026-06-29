@@ -52,8 +52,9 @@ export const DEFAULT_TAX_RATE = 0.07;
 // Land value
 // ---------------------------------------------------------------------------
 export const LV_BASE = 10;
-export const LV_ROAD_BONUS = 15;
-export const LV_ROAD_ADJ_BONUS = 8;
+// Road access capitalizes into the adjacent developable land, not the roadbed
+// itself (roads carry no parcel value — see land-value.ts).
+export const LV_ROAD_ADJ_BONUS = 12;
 export const LV_COMMERCIAL_BONUS = 4;
 export const LV_POPULATION_BONUS = 3;
 export const LV_INDUSTRIAL_PENALTY = 12;

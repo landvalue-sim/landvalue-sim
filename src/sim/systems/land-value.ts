@@ -24,7 +24,6 @@ import {
 	LV_POLLUTION_FACTOR,
 	LV_POPULATION_BONUS,
 	LV_ROAD_ADJ_BONUS,
-	LV_ROAD_BONUS,
 	MAX_GRID_SIZE,
 	ZONE_COMMERCIAL,
 	ZONE_INDUSTRIAL,
@@ -66,20 +65,22 @@ export function updateLandValue(state: CityState): void {
 			continue;
 		}
 
-		// Road access
+		// Roads are infrastructure, not a taxable parcel: the access premium
+		// capitalizes into the adjacent land below, not the roadbed itself.
 		if (roads[i] === 1) {
-			value += LV_ROAD_BONUS;
-		} else {
-			// Check adjacent for road
-			for (let n = 0; n < NEIGHBOR_COUNT; n++) {
-				const nx = x + (DX[n] ?? 0);
-				const ny = y + (DY[n] ?? 0);
-				if (inBounds(width, height, nx, ny)) {
-					const ni = ny * width + nx;
-					if (roads[ni] === 1) {
-						value += LV_ROAD_ADJ_BONUS;
-						break;
-					}
+			landValue[i] = 0;
+			continue;
+		}
+
+		// Road-access premium for developable parcels next to a road.
+		for (let n = 0; n < NEIGHBOR_COUNT; n++) {
+			const nx = x + (DX[n] ?? 0);
+			const ny = y + (DY[n] ?? 0);
+			if (inBounds(width, height, nx, ny)) {
+				const ni = ny * width + nx;
+				if (roads[ni] === 1) {
+					value += LV_ROAD_ADJ_BONUS;
+					break;
 				}
 			}
 		}
@@ -135,7 +136,8 @@ export function updateLandValue(state: CityState): void {
 		scratch.set(landValue);
 
 		for (let i = 0; i < size; i++) {
-			if (terrain[i] === 1) continue;
+			// Water and roads are not part of the value field; leave them at 0.
+			if (terrain[i] === 1 || roads[i] === 1) continue;
 
 			const x = i % width;
 			const y = (i - x) / width;
@@ -148,6 +150,7 @@ export function updateLandValue(state: CityState): void {
 				const ny = y + (DY[n] ?? 0);
 				if (inBounds(width, height, nx, ny)) {
 					const ni = ny * width + nx;
+					if (roads[ni] === 1) continue; // don't dilute parcels with roads
 					sum += scratch[ni] ?? 0;
 					count++;
 				}
