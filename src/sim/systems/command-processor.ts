@@ -53,11 +53,17 @@ export function processCommands(
 	}
 }
 
+function infiniteMoney(state: CityState): boolean {
+	return (state.aggregates[AGG.DEBUG_INFINITE_MONEY] ?? 0) === 1;
+}
+
 function canAfford(state: CityState, cost: number): boolean {
+	if (infiniteMoney(state)) return true;
 	return (state.aggregates[AGG.TREASURY] ?? 0) >= cost;
 }
 
 function charge(state: CityState, cost: number): void {
+	if (infiniteMoney(state)) return;
 	state.aggregates[AGG.TREASURY] = (state.aggregates[AGG.TREASURY] ?? 0) - cost;
 }
 

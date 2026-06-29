@@ -5,6 +5,7 @@
  * accessible collapse/expand.
  */
 
+import { useState } from "react";
 import { Button, Disclosure, DisclosurePanel } from "react-aria-components";
 import type { SimClient } from "../app/sim-client.ts";
 import { SYSTEM_NAMES } from "../sim/index.ts";
@@ -18,6 +19,7 @@ export function DevPanel({
 	sim: SimClient;
 }): React.ReactElement | null {
 	const stats = useSimStats(sim);
+	const [infiniteMoney, setInfiniteMoney] = useState(false);
 	if (!import.meta.env.DEV) return null;
 
 	const profile = stats?.profile ?? null;
@@ -35,6 +37,16 @@ export function DevPanel({
 				<div className="dev-section-title">Debug</div>
 				<Button className="dev-action-btn" onPress={() => sim.loadTestCity()}>
 					Load Test City
+				</Button>
+				<Button
+					className={`dev-action-btn${infiniteMoney ? " is-active" : ""}`}
+					onPress={() => {
+						const next = !infiniteMoney;
+						setInfiniteMoney(next);
+						sim.setInfiniteMoney(next);
+					}}
+				>
+					Infinite Money: {infiniteMoney ? "ON" : "OFF"}
 				</Button>
 
 				<div className="dev-section-title">Tick Profiler (ms)</div>

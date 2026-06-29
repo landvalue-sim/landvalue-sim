@@ -237,6 +237,9 @@ export const CONNECTION_DEMAND_BONUS = 30;
 // Public finance
 // ---------------------------------------------------------------------------
 export const STARTING_TREASURY = 10000;
+// Treasury value pinned each tick while the infinite-money debug cheat is on.
+// Large enough that no single tick of construction can exhaust it.
+export const INFINITE_TREASURY = 1_000_000_000;
 // Per-resident upkeep. Tuned so a basic road-served city with some commercial
 // breaks even: break-even residential land value ≈ pop(10) * cost / taxRate
 // ≈ 10 * 0.15 / 0.07 ≈ 21, which road-adjacent tiles reach. Higher values make
@@ -302,5 +305,8 @@ export const AGG = {
 	BOND_SLOT_7: 34,
 	BOND_SLOT_8: 35,
 	BOND_SLOT_9: 36,
-	COUNT: 37,
+	// Debug cheats (0 = off, 1 = on). Stored in shared state so the sim systems
+	// running in the worker can read them deterministically.
+	DEBUG_INFINITE_MONEY: 37,
+	COUNT: 38,
 } as const;

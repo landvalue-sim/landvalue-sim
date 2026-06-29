@@ -19,17 +19,20 @@ import type {
 	CommandsMessage,
 	FromWorkerMessage,
 	InitMessage,
+	SetInfiniteMoneyMessage,
 	SpeedMessage,
 	ToWorkerMessage,
 } from "../app/protocol.ts";
 import type { Speed } from "../app/types.ts";
 import type { Command } from "../sim/commands.ts";
 import {
+	AGG,
 	buildTestCity,
 	type CityState,
 	clearViolations,
 	getProfileSnapshot,
 	getViolations,
+	INFINITE_TREASURY,
 	tick,
 	viewCity,
 } from "../sim/index.ts";
@@ -73,6 +76,9 @@ ctx.addEventListener("message", (event: MessageEvent<ToWorkerMessage>) => {
 		case "load-test-city":
 			handleLoadTestCity();
 			break;
+		case "set-infinite-money":
+			handleSetInfiniteMoney(msg);
+			break;
 	}
 });
 
@@ -114,6 +120,14 @@ function handleLoadTestCity(): void {
 	// Run one tick so land value, totals, and the finance breakdown are
 	// populated immediately, even if the sim is paused.
 	stepOnce();
+}
+
+function handleSetInfiniteMoney(msg: SetInfiniteMoneyMessage): void {
+	if (city === null) return;
+	city.aggregates[AGG.DEBUG_INFINITE_MONEY] = msg.enabled ? 1 : 0;
+	// Top up immediately so the change shows even while the sim is paused; the
+	// flag keeps it pinned on every subsequent tick.
+	if (msg.enabled) city.aggregates[AGG.TREASURY] = INFINITE_TREASURY;
 }
 
 // ---- Tick driver -----------------------------------------------------------

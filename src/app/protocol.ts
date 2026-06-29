@@ -39,12 +39,18 @@ export interface LoadTestCityMessage {
 	readonly type: "load-test-city";
 }
 
+export interface SetInfiniteMoneyMessage {
+	readonly type: "set-infinite-money";
+	readonly enabled: boolean;
+}
+
 export type ToWorkerMessage =
 	| InitMessage
 	| CommandsMessage
 	| SpeedMessage
 	| ClearViolationsMessage
-	| LoadTestCityMessage;
+	| LoadTestCityMessage
+	| SetInfiniteMoneyMessage;
 
 // ---- Worker -> Main --------------------------------------------------------
 

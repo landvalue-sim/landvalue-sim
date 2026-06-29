@@ -33,6 +33,8 @@ export interface SimClient {
 	clearViolations(): void;
 	/** Replace the current city with a deterministic pre-built test city. */
 	loadTestCity(): void;
+	/** Toggle the infinite-money debug cheat (dev builds only). */
+	setInfiniteMoney(enabled: boolean): void;
 	onStats(listener: StatsListener): () => void;
 	dispose(): void;
 }
@@ -103,6 +105,9 @@ export function createSimClient(opts: SimClientOptions): SimClient {
 		},
 		loadTestCity() {
 			send({ type: "load-test-city" });
+		},
+		setInfiniteMoney(enabled) {
+			send({ type: "set-infinite-money", enabled });
 		},
 		onStats(listener) {
 			statsListeners.add(listener);

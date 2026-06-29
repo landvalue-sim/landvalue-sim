@@ -386,6 +386,12 @@ body {
 	outline-offset: 1px;
 }
 
+.dev-action-btn.is-active {
+	background: #14532d;
+	border-color: #22c55e;
+	color: #bbf7d0;
+}
+
 .dev-violations {
 	max-height: 120px;
 	overflow-y: auto;

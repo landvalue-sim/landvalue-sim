@@ -16,6 +16,7 @@ import {
 	BUILDING_EMPTY,
 	CIVIC_MAINTENANCE,
 	CIVIC_NONE,
+	INFINITE_TREASURY,
 	MAX_BONDS,
 	RAIL_MAINTENANCE_COST,
 	ROAD_MAINTENANCE_COST,
@@ -86,8 +87,13 @@ export function updatePublicFinance(state: CityState): void {
 	const expenses = serviceCost + roadCost + railCost + civicCost + bondPayment;
 
 	// --- Update treasury ---
-	const treasury = aggregates[AGG.TREASURY] ?? 0;
-	aggregates[AGG.TREASURY] = treasury + revenue - expenses;
+	// Infinite-money debug cheat pins the treasury so it never depletes.
+	if ((aggregates[AGG.DEBUG_INFINITE_MONEY] ?? 0) === 1) {
+		aggregates[AGG.TREASURY] = INFINITE_TREASURY;
+	} else {
+		const treasury = aggregates[AGG.TREASURY] ?? 0;
+		aggregates[AGG.TREASURY] = treasury + revenue - expenses;
+	}
 
 	// --- Record this tick's breakdown for the finances UI ---
 	aggregates[AGG.REVENUE] = revenue;
