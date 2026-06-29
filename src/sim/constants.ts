@@ -29,6 +29,21 @@ export const BUILDING_MED = 2;
 export const BUILDING_HIGH = 3;
 
 // ---------------------------------------------------------------------------
+// Density caps (player-controlled zoning density)
+// ---------------------------------------------------------------------------
+export const DENSITY_LOW = 1;
+export const DENSITY_MED = 2;
+export const DENSITY_HIGH = 3;
+
+// ---------------------------------------------------------------------------
+// Civic building types (stored in the civic layer)
+// ---------------------------------------------------------------------------
+export const CIVIC_NONE = 0;
+export const CIVIC_COAL_PLANT = 1;
+export const CIVIC_SOLAR_PLANT = 2;
+export const CIVIC_WATER_PUMP = 3;
+
+// ---------------------------------------------------------------------------
 // Population / jobs per density tier
 // ---------------------------------------------------------------------------
 export const POP_PER_DENSITY = [0, 10, 30, 80] as const;
@@ -61,6 +76,11 @@ export const LV_INDUSTRIAL_PENALTY = 12;
 export const LV_POLLUTION_FACTOR = 2;
 export const LV_DIFFUSION_RATE = 0.15;
 export const LV_DIFFUSION_ITERATIONS = 3;
+export const LV_WATER_ADJ_BONUS = 6;
+export const LV_ELEVATION_FACTOR = 0.5;
+export const LV_RAIL_ADJ_BONUS = 8;
+export const LV_NO_WATER_PENALTY = 4;
+export const LV_NO_POWER_PENALTY = 8;
 
 // ---------------------------------------------------------------------------
 // Migration / growth
@@ -69,6 +89,8 @@ export const MAX_BUILDS_PER_TICK = 4;
 export const GROWTH_DEMAND_THRESHOLD = 50;
 export const ABANDON_DEMAND_THRESHOLD = -300;
 export const MAX_ABANDONS_PER_TICK = 2;
+export const UPGRADE_DEMAND_THRESHOLD = 200;
+export const MAX_UPGRADES_PER_TICK = 2;
 
 // ---------------------------------------------------------------------------
 // Externalities
@@ -77,6 +99,38 @@ export const POLLUTION_PER_INDUSTRIAL = 25;
 export const POLLUTION_SPREAD_RADIUS = 4;
 export const POLLUTION_DECAY = 0.6;
 export const MAX_POLLUTION = 255;
+
+// ---------------------------------------------------------------------------
+// Power
+// ---------------------------------------------------------------------------
+// Output in MW per civic type (indexed by CIVIC_* constant).
+export const POWER_OUTPUT = [0, 200, 50, 0] as const;
+// Pollution emitted by power plants (indexed by CIVIC_* constant).
+export const POWER_PLANT_POLLUTION = [0, 20, 0, 0] as const;
+export const POWER_DEMAND_PER_BUILDING = 1;
+
+// ---------------------------------------------------------------------------
+// Water
+// ---------------------------------------------------------------------------
+export const WATER_COVERAGE_RADIUS = 12;
+
+// ---------------------------------------------------------------------------
+// Construction costs (deducted from treasury on placement)
+// ---------------------------------------------------------------------------
+export const COST_ROAD = 10;
+export const COST_RAIL = 20;
+export const COST_POWER_LINE = 5;
+export const COST_ZONE_LOW = 5;
+export const COST_ZONE_MED = 10;
+export const COST_ZONE_HIGH = 20;
+export const COST_DEMOLISH = 1;
+export const COST_COAL_PLANT = 5000;
+export const COST_SOLAR_PLANT = 3000;
+export const COST_WATER_PUMP = 500;
+
+// Civic building maintenance per tick (indexed by CIVIC_* constant).
+export const CIVIC_MAINTENANCE = [0, 50, 20, 10] as const;
+export const RAIL_MAINTENANCE_COST = 0.15;
 
 // ---------------------------------------------------------------------------
 // Public finance
@@ -90,6 +144,17 @@ export const SERVICE_COST_PER_POP = 0.15;
 export const ROAD_MAINTENANCE_COST = 0.08;
 export const MIN_TAX_RATE = 0;
 export const MAX_TAX_RATE = 0.2;
+
+// ---------------------------------------------------------------------------
+// Terrain generation
+// ---------------------------------------------------------------------------
+export const WATER_THRESHOLD = 0.35;
+export const ELEVATION_MAX = 15;
+
+// ---------------------------------------------------------------------------
+// Calendar
+// ---------------------------------------------------------------------------
+export const START_YEAR = 1900;
 
 // ---------------------------------------------------------------------------
 // Aggregate state layout (indices into Float64Array)
@@ -110,5 +175,12 @@ export const AGG = {
 	REVENUE: 11,
 	SERVICE_COST: 12,
 	ROAD_COST: 13,
-	COUNT: 14,
+	// Power / water / infrastructure
+	POWER_CAPACITY: 14,
+	POWER_DEMAND: 15,
+	WATER_CAPACITY: 16,
+	WATER_DEMAND: 17,
+	CIVIC_COST: 18,
+	RAIL_COST: 19,
+	COUNT: 20,
 } as const;

@@ -11,12 +11,34 @@ export interface ZoneCommand {
 	readonly y: number;
 	/** 0 = de-zone, 1 = R, 2 = C, 3 = I */
 	readonly zoneType: number;
+	/** DENSITY_LOW / MED / HIGH. Defaults to DENSITY_LOW in the processor. */
+	readonly density?: number;
 }
 
 export interface BuildRoadCommand {
 	readonly kind: "build-road";
 	readonly x: number;
 	readonly y: number;
+}
+
+export interface BuildRailCommand {
+	readonly kind: "build-rail";
+	readonly x: number;
+	readonly y: number;
+}
+
+export interface BuildPowerLineCommand {
+	readonly kind: "build-power-line";
+	readonly x: number;
+	readonly y: number;
+}
+
+export interface PlaceCivicCommand {
+	readonly kind: "place-civic";
+	readonly x: number;
+	readonly y: number;
+	/** CIVIC_COAL_PLANT / CIVIC_SOLAR_PLANT / CIVIC_WATER_PUMP */
+	readonly civicType: number;
 }
 
 export interface DemolishCommand {
@@ -36,5 +58,8 @@ export interface SetTaxRateCommand {
 export type Command =
 	| ZoneCommand
 	| BuildRoadCommand
+	| BuildRailCommand
+	| BuildPowerLineCommand
+	| PlaceCivicCommand
 	| DemolishCommand
 	| SetTaxRateCommand;

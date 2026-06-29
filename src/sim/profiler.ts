@@ -9,6 +9,8 @@
 
 export const SYSTEM_NAMES = [
 	"commands",
+	"power",
+	"water",
 	"rciDemand",
 	"landValue",
 	"migration",

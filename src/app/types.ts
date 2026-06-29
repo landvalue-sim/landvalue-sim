@@ -2,12 +2,28 @@
 
 export type Tool =
 	| "none"
-	| "zone-r"
-	| "zone-c"
-	| "zone-i"
+	| "zone-r-low"
+	| "zone-r-med"
+	| "zone-r-high"
+	| "zone-c-low"
+	| "zone-c-med"
+	| "zone-c-high"
+	| "zone-i-low"
+	| "zone-i-med"
+	| "zone-i-high"
 	| "road"
+	| "rail"
+	| "power-line"
+	| "coal-plant"
+	| "solar-plant"
+	| "water-pump"
 	| "demolish";
 
-export type OverlayMode = "none" | "land-value" | "pollution";
+export type OverlayMode =
+	| "none"
+	| "land-value"
+	| "pollution"
+	| "power"
+	| "water";
 
 export type Speed = 0 | 1 | 2 | 3;

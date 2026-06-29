@@ -3,17 +3,23 @@
  *
  * Reads the city `SharedArrayBuffer` view each frame (zero-copy) and paints it
  * as isometric tiles with a back-to-front diagonal sweep: flat ground/water/
- * roads, extruded buildings, and a translucent overlay (land value / pollution)
- * on top. It also owns the camera and pointer input, translating clicks into
- * sim commands. It writes nothing to the city state — the worker is the only
- * writer.
+ * roads, extruded buildings, and a translucent overlay (land value / pollution
+ * / power / water) on top. It also owns the camera and pointer input,
+ * translating clicks into sim commands. It writes nothing to the city state —
+ * the worker is the only writer.
  */
 
 import Phaser from "phaser";
 import type { InteractionStore } from "../app/store.ts";
 import type { Command } from "../sim/commands.ts";
 import {
+	CIVIC_COAL_PLANT,
+	CIVIC_SOLAR_PLANT,
+	CIVIC_WATER_PUMP,
 	type CityState,
+	DENSITY_HIGH,
+	DENSITY_LOW,
+	DENSITY_MED,
 	TERRAIN_WATER,
 	ZONE_COMMERCIAL,
 	ZONE_INDUSTRIAL,
@@ -28,6 +34,8 @@ import { HALF_H, HALF_W, screenToGrid, TIER_HEIGHT } from "./iso.ts";
 const COL_GRASS = 0x3d6b24;
 const COL_WATER = 0x2563eb;
 const COL_ROAD = 0x52525b;
+const COL_RAIL = 0x71717a;
+const COL_POWER_LINE = 0xfbbf24;
 const COL_R_BUILT = 0x16a34a;
 const COL_C_BUILT = 0x2563eb;
 const COL_I_BUILT = 0xca8a04;
@@ -36,12 +44,22 @@ const COL_C_ZONE = 0x3b82f6;
 const COL_I_ZONE = 0xeab308;
 const COL_DEMOLISH = 0xef4444;
 const COL_CURSOR = 0xffffff;
+const COL_CIVIC = 0x78350f;
+const COL_SOLAR = 0xfde047;
+const COL_WATER_PUMP = 0x38bdf8;
 
 // Land-value overlay renders value as column height, colored by zoning (or
 // road), so you read both what's there and how valuable it is.
 const LV_HEIGHT_PER_UNIT = 0.4; // world px per land-value unit
 const LV_HEIGHT_CLAMP = 160; // cap so the tallest columns stay readable
 const COL_POLLUTION = 0xa832a8;
+const COL_POWERED = 0x22c55e;
+const COL_UNPOWERED = 0xef4444;
+const COL_WATERED = 0x38bdf8;
+const COL_UNWATERED = 0xf97316;
+
+// Civic building extrusion heights (tiles tall)
+const CIVIC_HEIGHT = 3;
 
 // ---- Camera tuning ---------------------------------------------------------
 
@@ -146,6 +164,12 @@ export class IsoScene extends Phaser.Scene {
 		this.hoverX = x;
 		this.hoverY = y;
 
+		// Civic buildings are single-click only (no drag)
+		if (isCivicTool(snap.tool)) {
+			this.placeSingle(x, y);
+			return;
+		}
+
 		if (snap.dragEnabled) {
 			// Begin a drag; the preview/commit happens on move/up.
 			this.dragging = true;
@@ -200,11 +224,6 @@ export class IsoScene extends Phaser.Scene {
 		const z1 = Phaser.Math.Clamp(z0 * factor, MIN_ZOOM, MAX_ZOOM);
 		if (z1 === z0) return;
 
-		// Phaser zooms about the camera center, so screen->world is
-		//   world = scroll + center + (screen - center) / zoom.
-		// To keep the world point under the cursor fixed across the zoom change,
-		// shift scroll by the cursor's offset from center times the change in
-		// inverse zoom.
 		const dInv = 1 / z0 - 1 / z1;
 		cam.setZoom(z1);
 		cam.scrollX += (pointer.x - cam.centerX) * dInv;
@@ -246,13 +265,13 @@ export class IsoScene extends Phaser.Scene {
 		if (cmds.length > 0) this.sendCommands(cmds);
 	}
 
-	/** Tiles covered by the active drag: an L-line for roads, a rect otherwise. */
+	/** Tiles covered by the active drag: an L-line for roads/rail/power, a rect otherwise. */
 	private dragTiles(tool: string): Point[] {
 		const ax = this.clampX(this.dragStartX);
 		const ay = this.clampY(this.dragStartY);
 		const bx = this.clampX(this.hoverX);
 		const by = this.clampY(this.hoverY);
-		if (tool === "road") {
+		if (isLineTool(tool)) {
 			// "v" runs the column first; "h"/"none" run the row first.
 			return roadLineTiles(ax, ay, bx, by, this.dragAxis !== "v");
 		}
@@ -344,7 +363,13 @@ export class IsoScene extends Phaser.Scene {
 			return Math.min(lv, LV_HEIGHT_CLAMP) * LV_HEIGHT_PER_UNIT;
 		}
 
-		const tier = isRoad || isWater ? 0 : (city.building[idx] ?? 0);
+		if (isRoad || isWater) return 0;
+		if (city.rail[idx] === 1 || city.powerLines[idx] === 1) return 0;
+
+		const civicType = city.civic[idx] ?? 0;
+		if (civicType !== 0) return CIVIC_HEIGHT * TIER_HEIGHT;
+
+		const tier = city.building[idx] ?? 0;
 		return tier * TIER_HEIGHT;
 	}
 
@@ -364,15 +389,37 @@ export class IsoScene extends Phaser.Scene {
 
 		const isRoad = city.roads[idx] === 1;
 		const isWater = !isRoad && city.terrain[idx] === TERRAIN_WATER;
-		const tier = isRoad || isWater ? 0 : (city.building[idx] ?? 0);
-		const height = tier * TIER_HEIGHT;
+		const isRail = !isRoad && !isWater && city.rail[idx] === 1;
+		const isPowerLine =
+			!isRoad && !isWater && !isRail && city.powerLines[idx] === 1;
+		const civicType =
+			!isRoad && !isWater && !isRail && !isPowerLine
+				? (city.civic[idx] ?? 0)
+				: 0;
 
-		// Base / top surface color.
 		let top: number;
-		if (isRoad) top = COL_ROAD;
-		else if (isWater) top = COL_WATER;
-		else if (tier > 0) top = builtColor(city.zoning[idx] ?? 0);
-		else top = COL_GRASS;
+		let height: number;
+
+		if (isRoad) {
+			top = COL_ROAD;
+			height = 0;
+		} else if (isWater) {
+			top = COL_WATER;
+			height = 0;
+		} else if (isRail) {
+			top = COL_RAIL;
+			height = 0;
+		} else if (isPowerLine) {
+			top = COL_POWER_LINE;
+			height = 0;
+		} else if (civicType !== 0) {
+			top = civicColor(civicType);
+			height = CIVIC_HEIGHT * TIER_HEIGHT;
+		} else {
+			const tier = city.building[idx] ?? 0;
+			height = tier * TIER_HEIGHT;
+			top = tier > 0 ? builtColor(city.zoning[idx] ?? 0) : COL_GRASS;
+		}
 
 		if (height > 0) extrudeFaces(g, cx, cy, height, top);
 
@@ -382,7 +429,14 @@ export class IsoScene extends Phaser.Scene {
 		g.fillPath();
 
 		// Empty zoned land: colored outline so zoning reads before it builds.
-		if (tier === 0 && !isRoad && !isWater) {
+		if (
+			height === 0 &&
+			!isRoad &&
+			!isWater &&
+			!isRail &&
+			!isPowerLine &&
+			civicType === 0
+		) {
 			const zoneOutline = zoneOutlineColor(city.zoning[idx] ?? 0);
 			if (zoneOutline >= 0) {
 				g.lineStyle(1.5, zoneOutline, 0.9);
@@ -391,11 +445,25 @@ export class IsoScene extends Phaser.Scene {
 			}
 		}
 
-		// Pollution tint on the top surface.
+		// Overlay tints
 		if (overlay === "pollution") {
 			const pol = city.pollution[idx] ?? 0;
 			if (pol > 0) {
 				g.fillStyle(COL_POLLUTION, Math.min(0.6, (pol / 255) * 0.7));
+				diamondPath(g, cx, cy, height);
+				g.fillPath();
+			}
+		} else if (overlay === "power") {
+			if (!isWater) {
+				const powered = city.power[idx] === 1;
+				g.fillStyle(powered ? COL_POWERED : COL_UNPOWERED, 0.45);
+				diamondPath(g, cx, cy, height);
+				g.fillPath();
+			}
+		} else if (overlay === "water") {
+			if (!isWater) {
+				const watered = city.waterCoverage[idx] === 1;
+				g.fillStyle(watered ? COL_WATERED : COL_UNWATERED, 0.45);
 				diamondPath(g, cx, cy, height);
 				g.fillPath();
 			}
@@ -522,6 +590,13 @@ function zoneOutlineColor(zone: number): number {
 	return -1;
 }
 
+function civicColor(civicType: number): number {
+	if (civicType === CIVIC_COAL_PLANT) return COL_CIVIC;
+	if (civicType === CIVIC_SOLAR_PLANT) return COL_SOLAR;
+	if (civicType === CIVIC_WATER_PUMP) return COL_WATER_PUMP;
+	return COL_CIVIC;
+}
+
 /** Multiply an 0xRRGGBB color's channels by `f` (for shaded side faces). */
 function shade(color: number, f: number): number {
 	const r = Math.min(255, ((color >> 16) & 0xff) * f) | 0;
@@ -530,16 +605,44 @@ function shade(color: number, f: number): number {
 	return (r << 16) | (gch << 8) | b;
 }
 
+/** Whether a tool drags as an L-line (like roads) rather than a rectangle. */
+function isLineTool(tool: string): boolean {
+	return tool === "road" || tool === "rail" || tool === "power-line";
+}
+
+/** Whether a tool is a civic building (single-click placement, no drag). */
+function isCivicTool(tool: string): boolean {
+	return (
+		tool === "coal-plant" || tool === "solar-plant" || tool === "water-pump"
+	);
+}
+
 function previewColor(tool: string): number {
 	switch (tool) {
-		case "zone-r":
+		case "zone-r-low":
+		case "zone-r-med":
+		case "zone-r-high":
 			return COL_R_ZONE;
-		case "zone-c":
+		case "zone-c-low":
+		case "zone-c-med":
+		case "zone-c-high":
 			return COL_C_ZONE;
-		case "zone-i":
+		case "zone-i-low":
+		case "zone-i-med":
+		case "zone-i-high":
 			return COL_I_ZONE;
 		case "road":
 			return COL_ROAD;
+		case "rail":
+			return COL_RAIL;
+		case "power-line":
+			return COL_POWER_LINE;
+		case "coal-plant":
+			return COL_CIVIC;
+		case "solar-plant":
+			return COL_SOLAR;
+		case "water-pump":
+			return COL_WATER_PUMP;
 		case "demolish":
 			return COL_DEMOLISH;
 		default:
@@ -551,14 +654,90 @@ function previewColor(tool: string): number {
 
 function toolToCommand(tool: string, x: number, y: number): Command | null {
 	switch (tool) {
-		case "zone-r":
-			return { kind: "zone", x, y, zoneType: ZONE_RESIDENTIAL };
-		case "zone-c":
-			return { kind: "zone", x, y, zoneType: ZONE_COMMERCIAL };
-		case "zone-i":
-			return { kind: "zone", x, y, zoneType: ZONE_INDUSTRIAL };
+		case "zone-r-low":
+			return {
+				kind: "zone",
+				x,
+				y,
+				zoneType: ZONE_RESIDENTIAL,
+				density: DENSITY_LOW,
+			};
+		case "zone-r-med":
+			return {
+				kind: "zone",
+				x,
+				y,
+				zoneType: ZONE_RESIDENTIAL,
+				density: DENSITY_MED,
+			};
+		case "zone-r-high":
+			return {
+				kind: "zone",
+				x,
+				y,
+				zoneType: ZONE_RESIDENTIAL,
+				density: DENSITY_HIGH,
+			};
+		case "zone-c-low":
+			return {
+				kind: "zone",
+				x,
+				y,
+				zoneType: ZONE_COMMERCIAL,
+				density: DENSITY_LOW,
+			};
+		case "zone-c-med":
+			return {
+				kind: "zone",
+				x,
+				y,
+				zoneType: ZONE_COMMERCIAL,
+				density: DENSITY_MED,
+			};
+		case "zone-c-high":
+			return {
+				kind: "zone",
+				x,
+				y,
+				zoneType: ZONE_COMMERCIAL,
+				density: DENSITY_HIGH,
+			};
+		case "zone-i-low":
+			return {
+				kind: "zone",
+				x,
+				y,
+				zoneType: ZONE_INDUSTRIAL,
+				density: DENSITY_LOW,
+			};
+		case "zone-i-med":
+			return {
+				kind: "zone",
+				x,
+				y,
+				zoneType: ZONE_INDUSTRIAL,
+				density: DENSITY_MED,
+			};
+		case "zone-i-high":
+			return {
+				kind: "zone",
+				x,
+				y,
+				zoneType: ZONE_INDUSTRIAL,
+				density: DENSITY_HIGH,
+			};
 		case "road":
 			return { kind: "build-road", x, y };
+		case "rail":
+			return { kind: "build-rail", x, y };
+		case "power-line":
+			return { kind: "build-power-line", x, y };
+		case "coal-plant":
+			return { kind: "place-civic", x, y, civicType: CIVIC_COAL_PLANT };
+		case "solar-plant":
+			return { kind: "place-civic", x, y, civicType: CIVIC_SOLAR_PLANT };
+		case "water-pump":
+			return { kind: "place-civic", x, y, civicType: CIVIC_WATER_PUMP };
 		case "demolish":
 			return { kind: "demolish", x, y };
 		default:

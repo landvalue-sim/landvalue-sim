@@ -43,6 +43,13 @@ export interface CityState {
 	readonly jobs: Uint16Array;
 	readonly pollution: Uint8Array;
 	readonly traffic: Uint8Array;
+	readonly densityCap: Uint8Array;
+	readonly power: Uint8Array;
+	readonly waterCoverage: Uint8Array;
+	readonly civic: Uint8Array;
+	readonly rail: Uint8Array;
+	readonly powerLines: Uint8Array;
+	readonly elevation: Uint8Array;
 
 	// Aggregate scalars (indexed by AGG.*)
 	readonly aggregates: Float64Array;
@@ -56,6 +63,8 @@ export interface CityState {
 // ---------------------------------------------------------------------------
 
 const PRNG_WORDS = 4;
+const U16_LAYER_COUNT = 3;
+const U8_LAYER_COUNT = 13;
 
 /** Round `offset` up to the next multiple of `align` (a power of two). */
 function alignUp(offset: number, align: number): number {
@@ -66,8 +75,8 @@ interface Layout {
 	readonly byteLength: number;
 	readonly aggregates: number;
 	readonly rng: number;
-	readonly u16: number; // start of the three u16 layers
-	readonly u8: number; // start of the six u8 layers
+	readonly u16: number; // start of the u16 layers
+	readonly u8: number; // start of the u8 layers
 }
 
 /**
@@ -85,10 +94,10 @@ function computeLayout(size: number): Layout {
 	offset = rng + PRNG_WORDS * Uint32Array.BYTES_PER_ELEMENT;
 
 	const u16 = alignUp(offset, Uint16Array.BYTES_PER_ELEMENT);
-	offset = u16 + 3 * size * Uint16Array.BYTES_PER_ELEMENT;
+	offset = u16 + U16_LAYER_COUNT * size * Uint16Array.BYTES_PER_ELEMENT;
 
 	const u8 = offset; // u8 needs no alignment
-	offset = u8 + 6 * size * Uint8Array.BYTES_PER_ELEMENT;
+	offset = u8 + U8_LAYER_COUNT * size * Uint8Array.BYTES_PER_ELEMENT;
 
 	return { byteLength: offset, aggregates, rng, u16, u8 };
 }
@@ -135,6 +144,13 @@ function viewLayout(
 		roads: new Uint8Array(buffer, u8 + 3 * u8Stride, size),
 		pollution: new Uint8Array(buffer, u8 + 4 * u8Stride, size),
 		traffic: new Uint8Array(buffer, u8 + 5 * u8Stride, size),
+		densityCap: new Uint8Array(buffer, u8 + 6 * u8Stride, size),
+		power: new Uint8Array(buffer, u8 + 7 * u8Stride, size),
+		waterCoverage: new Uint8Array(buffer, u8 + 8 * u8Stride, size),
+		civic: new Uint8Array(buffer, u8 + 9 * u8Stride, size),
+		rail: new Uint8Array(buffer, u8 + 10 * u8Stride, size),
+		powerLines: new Uint8Array(buffer, u8 + 11 * u8Stride, size),
+		elevation: new Uint8Array(buffer, u8 + 12 * u8Stride, size),
 	};
 }
 
@@ -184,6 +200,13 @@ export function createCity(opts?: CreateCityOptions): CityState {
 	state.jobs.fill(0);
 	state.pollution.fill(0);
 	state.traffic.fill(0);
+	state.densityCap.fill(0);
+	state.power.fill(0);
+	state.waterCoverage.fill(0);
+	state.civic.fill(0);
+	state.rail.fill(0);
+	state.powerLines.fill(0);
+	state.elevation.fill(0);
 	state.aggregates.fill(0);
 
 	state.aggregates[AGG.TREASURY] = STARTING_TREASURY;

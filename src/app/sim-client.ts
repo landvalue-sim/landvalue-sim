@@ -12,6 +12,7 @@ import {
 	type CityState,
 	cityByteLength,
 	createCity,
+	generateTerrain,
 	type ProfileSnapshot,
 	type Violation,
 } from "../sim/index.ts";
@@ -57,6 +58,7 @@ export function createSimClient(opts: SimClientOptions): SimClient {
 	// Initialize the city into the shared buffer on this thread, then hand the
 	// same buffer to the worker, which aliases it without re-initializing.
 	const city = createCity({ width, height, seed, buffer });
+	generateTerrain(city, seed);
 
 	const worker = new Worker(
 		new URL("../worker/sim-worker.ts", import.meta.url),

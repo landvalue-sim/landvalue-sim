@@ -5,7 +5,11 @@
  * Growth picks the highest land-value empty zoned tiles first.
  * Abandonment picks the lowest land-value occupied tiles first.
  *
- * For the MVP all new buildings are density tier 1 (low).
+ * Buildings start at density tier 1 (low) and upgrade toward the player's
+ * density cap when demand stays high.
+ *
+ * Development requires power coverage. Without power a tile will not grow
+ * or upgrade.
  */
 
 import type { CityState } from "../city-state.ts";
@@ -14,22 +18,23 @@ import {
 	AGG,
 	BUILDING_EMPTY,
 	BUILDING_LOW,
+	DENSITY_LOW,
 	GROWTH_DEMAND_THRESHOLD,
 	JOBS_C_PER_DENSITY,
 	JOBS_I_PER_DENSITY,
 	MAX_ABANDONS_PER_TICK,
 	MAX_BUILDS_PER_TICK,
 	MAX_GRID_SIZE,
+	MAX_UPGRADES_PER_TICK,
 	POP_PER_DENSITY,
 	TERRAIN_WATER,
+	UPGRADE_DEMAND_THRESHOLD,
 	ZONE_COMMERCIAL,
 	ZONE_INDUSTRIAL,
 	ZONE_RESIDENTIAL,
 } from "../constants.ts";
 
 // Pre-allocated scratch arrays for candidate tile selection.
-// Sized for max possible grid (MAX_GRID_SIZE² = 65536).
-// Shared across growZone/abandonZone calls within a tick (each resets count).
 const MAX_TILES = MAX_GRID_SIZE * MAX_GRID_SIZE;
 const candIdx = new Uint32Array(MAX_TILES);
 const candVal = new Uint16Array(MAX_TILES);
@@ -43,6 +48,10 @@ export function processMigration(state: CityState): void {
 	growZone(state, ZONE_COMMERCIAL, cDemand);
 	growZone(state, ZONE_INDUSTRIAL, iDemand);
 
+	upgradeZone(state, ZONE_RESIDENTIAL, rDemand);
+	upgradeZone(state, ZONE_COMMERCIAL, cDemand);
+	upgradeZone(state, ZONE_INDUSTRIAL, iDemand);
+
 	abandonZone(state, ZONE_RESIDENTIAL, rDemand);
 	abandonZone(state, ZONE_COMMERCIAL, cDemand);
 	abandonZone(state, ZONE_INDUSTRIAL, iDemand);
@@ -51,15 +60,16 @@ export function processMigration(state: CityState): void {
 function growZone(state: CityState, zoneType: number, demand: number): void {
 	if (demand < GROWTH_DEMAND_THRESHOLD) return;
 
-	const { size, terrain, zoning, building, landValue } = state;
+	const { size, terrain, zoning, building, landValue, power } = state;
 
-	// Collect empty zoned tiles that have road access
+	// Collect empty zoned tiles that have road access and power
 	let count = 0;
 	for (let i = 0; i < size; i++) {
 		if (
 			zoning[i] === zoneType &&
 			building[i] === BUILDING_EMPTY &&
 			terrain[i] !== TERRAIN_WATER &&
+			power[i] === 1 &&
 			hasRoadAccess(state, i)
 		) {
 			candIdx[count] = i;
@@ -92,6 +102,50 @@ function growZone(state: CityState, zoneType: number, demand: number): void {
 		} else if (zoneType === ZONE_INDUSTRIAL) {
 			state.population[idx] = 0;
 			state.jobs[idx] = JOBS_I_PER_DENSITY[BUILDING_LOW] ?? 0;
+		}
+	}
+}
+
+function upgradeZone(state: CityState, zoneType: number, demand: number): void {
+	if (demand < UPGRADE_DEMAND_THRESHOLD) return;
+
+	const { size, zoning, building, densityCap, landValue, power } = state;
+
+	// Collect occupied tiles below their density cap with power
+	let count = 0;
+	for (let i = 0; i < size; i++) {
+		const cap = densityCap[i] ?? DENSITY_LOW;
+		if (
+			zoning[i] === zoneType &&
+			building[i] !== BUILDING_EMPTY &&
+			(building[i] ?? 0) < cap &&
+			power[i] === 1
+		) {
+			candIdx[count] = i;
+			candVal[count] = landValue[i] ?? 0;
+			count++;
+		}
+	}
+
+	if (count === 0) return;
+
+	const upgradeCount = Math.min(MAX_UPGRADES_PER_TICK, count);
+	selectTopK(count, upgradeCount);
+
+	for (let i = 0; i < upgradeCount; i++) {
+		const idx = candIdx[i] ?? 0;
+		const nextTier = (building[idx] ?? 0) + 1;
+		building[idx] = nextTier;
+
+		if (zoneType === ZONE_RESIDENTIAL) {
+			state.population[idx] = POP_PER_DENSITY[nextTier] ?? 0;
+			state.jobs[idx] = 0;
+		} else if (zoneType === ZONE_COMMERCIAL) {
+			state.population[idx] = 0;
+			state.jobs[idx] = JOBS_C_PER_DENSITY[nextTier] ?? 0;
+		} else if (zoneType === ZONE_INDUSTRIAL) {
+			state.population[idx] = 0;
+			state.jobs[idx] = JOBS_I_PER_DENSITY[nextTier] ?? 0;
 		}
 	}
 }

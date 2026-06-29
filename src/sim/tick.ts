@@ -3,12 +3,14 @@
  *
  * Runs all systems in a deterministic order each tick:
  *   1. Command processor (apply player input)
- *   2. RCI demand (economic feedback)
- *   3. Land value (amenity capitalization)
- *   4. Migration (buildings appear / abandon)
- *   5. Externalities (pollution)
- *   6. Public finance (taxes, services)
- *   7. Postcondition invariants (dev only)
+ *   2. Power coverage (BFS from plants)
+ *   3. Water coverage (radius from pumps)
+ *   4. RCI demand (economic feedback)
+ *   5. Land value (amenity capitalization)
+ *   6. Migration (buildings appear / upgrade / abandon)
+ *   7. Externalities (pollution)
+ *   8. Public finance (taxes, services)
+ *   9. Postcondition invariants (dev only)
  *
  * The simulation is fully deterministic: same seed + same commands =
  * same state. Never uses Math.random() or Date.now().
@@ -29,11 +31,15 @@ import { processCommands } from "./systems/command-processor.ts";
 import { updateExternalities } from "./systems/externalities.ts";
 import { updateLandValue } from "./systems/land-value.ts";
 import { processMigration } from "./systems/migration.ts";
+import { updatePower } from "./systems/power.ts";
 import { updatePublicFinance } from "./systems/public-finance.ts";
 import { updateRciDemand } from "./systems/rci-demand.ts";
+import { updateWater } from "./systems/water.ts";
 
 // Pre-compute system indices so we don't look them up every tick
 const IDX_COMMANDS = systemIndex("commands");
+const IDX_POWER = systemIndex("power");
+const IDX_WATER = systemIndex("water");
 const IDX_RCI = systemIndex("rciDemand");
 const IDX_LAND_VALUE = systemIndex("landValue");
 const IDX_MIGRATION = systemIndex("migration");
@@ -49,6 +55,14 @@ export function tick(state: CityState, commands: ReadonlyArray<Command>): void {
 	t = profilerSystemStart();
 	processCommands(state, commands);
 	profilerSystemEnd(IDX_COMMANDS, t);
+
+	t = profilerSystemStart();
+	updatePower(state);
+	profilerSystemEnd(IDX_POWER, t);
+
+	t = profilerSystemStart();
+	updateWater(state);
+	profilerSystemEnd(IDX_WATER, t);
 
 	t = profilerSystemStart();
 	updateRciDemand(state);

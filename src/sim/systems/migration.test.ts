@@ -13,7 +13,11 @@ import {
 import { processMigration } from "./migration.ts";
 
 function smallCity() {
-	return createCity({ width: 8, height: 8, seed: 1 });
+	const city = createCity({ width: 8, height: 8, seed: 1 });
+	// Progressive disclosure: power system fills(1) when no plants exist, but
+	// direct processMigration calls bypass the tick pipeline, so set it here.
+	city.power.fill(1);
+	return city;
 }
 
 describe("processMigration", () => {

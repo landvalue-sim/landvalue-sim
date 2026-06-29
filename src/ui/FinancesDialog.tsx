@@ -33,7 +33,7 @@ export function FinancesDialog({
 }): React.ReactElement {
 	return (
 		<DialogTrigger>
-			<Button className="finances-btn">City Finances…</Button>
+			<Button className="finances-btn">City Finances\u2026</Button>
 			<ModalOverlay className="modal-overlay" isDismissable>
 				<Modal className="modal">
 					<Dialog className="dialog">
@@ -53,7 +53,12 @@ function FinancesPanel({
 	onClose: () => void;
 }): React.ReactElement {
 	const stats = useLiveStats(sim.city);
-	const net = stats.revenue - stats.serviceCost - stats.roadCost;
+	const net =
+		stats.revenue -
+		stats.serviceCost -
+		stats.roadCost -
+		stats.civicCost -
+		stats.railCost;
 
 	return (
 		<>
@@ -71,15 +76,33 @@ function FinancesPanel({
 			<div className="fin-section-title">Budget (per tick)</div>
 			<div className="fin-table">
 				<FinRow label="Property tax" value={stats.revenue} sign="+" />
-				<FinRow label="Service cost" value={-stats.serviceCost} sign="−" />
-				<FinRow label="Road upkeep" value={-stats.roadCost} sign="−" />
+				<FinRow
+					label="Service cost"
+					value={-stats.serviceCost}
+					sign={"\u2212"}
+				/>
+				<FinRow label="Road upkeep" value={-stats.roadCost} sign={"\u2212"} />
+				<FinRow label="Rail upkeep" value={-stats.railCost} sign={"\u2212"} />
+				<FinRow label="Civic upkeep" value={-stats.civicCost} sign={"\u2212"} />
 				<div className="fin-row fin-net">
 					<span>Net</span>
 					<span className={net >= 0 ? "pos" : "neg"}>
-						{net >= 0 ? "+" : "−"}
+						{net >= 0 ? "+" : "\u2212"}
 						{Math.abs(net).toFixed(1)}/tick
 					</span>
 				</div>
+			</div>
+
+			<div className="fin-section-title">Power</div>
+			<div className="fin-table">
+				<FinSimpleRow
+					label="Capacity"
+					value={`${Math.floor(stats.powerCapacity)} MW`}
+				/>
+				<FinSimpleRow
+					label="Demand"
+					value={`${Math.floor(stats.powerDemand)} MW`}
+				/>
 			</div>
 
 			<div className="fin-section-title">Tax Rates</div>
@@ -123,7 +146,7 @@ function FinRow({
 }: {
 	label: string;
 	value: number;
-	sign: "+" | "−";
+	sign: string;
 }): React.ReactElement {
 	return (
 		<div className="fin-row">
@@ -132,6 +155,21 @@ function FinRow({
 				{sign}
 				{Math.abs(value).toFixed(1)}/tick
 			</span>
+		</div>
+	);
+}
+
+function FinSimpleRow({
+	label,
+	value,
+}: {
+	label: string;
+	value: string;
+}): React.ReactElement {
+	return (
+		<div className="fin-row">
+			<span>{label}</span>
+			<span>{value}</span>
 		</div>
 	);
 }
@@ -172,5 +210,5 @@ function TaxSlider({
 
 function fmtMoney(n: number): string {
 	const v = Math.floor(n);
-	return `${v < 0 ? "−" : ""}$${Math.abs(v).toLocaleString()}`;
+	return `${v < 0 ? "\u2212" : ""}$${Math.abs(v).toLocaleString()}`;
 }

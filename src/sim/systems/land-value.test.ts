@@ -10,7 +10,12 @@ import {
 import { updateLandValue } from "./land-value.ts";
 
 function smallCity() {
-	return createCity({ width: 8, height: 8, seed: 1 });
+	const city = createCity({ width: 8, height: 8, seed: 1 });
+	// Progressive disclosure: power/water default to covered when no plants or
+	// pumps exist, but direct updateLandValue calls bypass tick, so set them.
+	city.power.fill(1);
+	city.waterCoverage.fill(1);
+	return city;
 }
 
 describe("updateLandValue", () => {

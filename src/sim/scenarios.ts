@@ -13,10 +13,15 @@ import {
 	BUILDING_HIGH,
 	BUILDING_LOW,
 	BUILDING_MED,
+	CIVIC_COAL_PLANT,
+	DENSITY_HIGH,
+	DENSITY_LOW,
+	DENSITY_MED,
 	JOBS_C_PER_DENSITY,
 	JOBS_I_PER_DENSITY,
 	POP_PER_DENSITY,
 	STARTING_TREASURY,
+	TERRAIN_LAND,
 	ZONE_COMMERCIAL,
 	ZONE_INDUSTRIAL,
 	ZONE_NONE,
@@ -44,20 +49,41 @@ const PLAN = [
 interface ZoneSpec {
 	readonly zone: number;
 	readonly tier: number;
+	readonly density: number;
 }
 
 function specForChar(c: string): ZoneSpec | null {
 	switch (c) {
 		case "X":
-			return { zone: ZONE_COMMERCIAL, tier: BUILDING_HIGH };
+			return {
+				zone: ZONE_COMMERCIAL,
+				tier: BUILDING_HIGH,
+				density: DENSITY_HIGH,
+			};
 		case "C":
-			return { zone: ZONE_COMMERCIAL, tier: BUILDING_MED };
+			return {
+				zone: ZONE_COMMERCIAL,
+				tier: BUILDING_MED,
+				density: DENSITY_MED,
+			};
 		case "R":
-			return { zone: ZONE_RESIDENTIAL, tier: BUILDING_MED };
+			return {
+				zone: ZONE_RESIDENTIAL,
+				tier: BUILDING_MED,
+				density: DENSITY_MED,
+			};
 		case "r":
-			return { zone: ZONE_RESIDENTIAL, tier: BUILDING_LOW };
+			return {
+				zone: ZONE_RESIDENTIAL,
+				tier: BUILDING_LOW,
+				density: DENSITY_LOW,
+			};
 		case "I":
-			return { zone: ZONE_INDUSTRIAL, tier: BUILDING_LOW };
+			return {
+				zone: ZONE_INDUSTRIAL,
+				tier: BUILDING_LOW,
+				density: DENSITY_LOW,
+			};
 		default:
 			return null;
 	}
@@ -72,17 +98,26 @@ export function buildTestCity(state: CityState): void {
 
 	layRoads(state, x0, y0);
 	layBlocks(state, x0, y0);
+	placePowerPlant(state, x0, y0);
 }
 
 function resetCity(state: CityState): void {
+	state.terrain.fill(TERRAIN_LAND);
 	state.roads.fill(0);
+	state.rail.fill(0);
+	state.powerLines.fill(0);
+	state.civic.fill(0);
 	state.zoning.fill(0);
+	state.densityCap.fill(0);
 	state.building.fill(0);
 	state.population.fill(0);
 	state.jobs.fill(0);
 	state.pollution.fill(0);
 	state.traffic.fill(0);
 	state.landValue.fill(0);
+	state.elevation.fill(5);
+	state.power.fill(0);
+	state.waterCoverage.fill(0);
 
 	state.aggregates[AGG.TICK] = 0;
 	state.aggregates[AGG.TREASURY] = STARTING_TREASURY;
@@ -120,11 +155,24 @@ function layBlocks(state: CityState, x0: number, y0: number): void {
 	}
 }
 
+/** Place a coal power plant just outside the grid's top-left corner. */
+function placePowerPlant(state: CityState, x0: number, y0: number): void {
+	const px = Math.max(0, x0 - 2);
+	const py = Math.max(0, y0 - 2);
+	if (!inBounds(state.width, state.height, px, py)) return;
+	const idx = tileIndex(state.width, px, py);
+	state.civic[idx] = CIVIC_COAL_PLANT;
+	state.roads[idx] = 0;
+	state.zoning[idx] = ZONE_NONE;
+	state.building[idx] = 0;
+}
+
 function setRoad(state: CityState, x: number, y: number): void {
 	if (!inBounds(state.width, state.height, x, y)) return;
 	const idx = tileIndex(state.width, x, y);
 	state.roads[idx] = 1;
 	state.zoning[idx] = ZONE_NONE;
+	state.densityCap[idx] = 0;
 	state.building[idx] = 0;
 }
 
@@ -139,6 +187,7 @@ function fillTile(
 	if (state.roads[idx] === 1) return; // never overwrite a road
 
 	state.zoning[idx] = spec.zone;
+	state.densityCap[idx] = spec.density;
 	state.building[idx] = spec.tier;
 
 	if (spec.zone === ZONE_RESIDENTIAL) {

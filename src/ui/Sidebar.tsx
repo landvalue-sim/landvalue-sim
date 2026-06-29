@@ -17,27 +17,55 @@ import type { OverlayMode, Speed, Tool } from "../app/types.ts";
 import { MAX_DEMAND } from "../sim/index.ts";
 import { DevPanel } from "./DevPanel.tsx";
 import { FinancesDialog } from "./FinancesDialog.tsx";
-import { useInteraction, useLiveStats } from "./hooks.ts";
+import { formatDate, useInteraction, useLiveStats } from "./hooks.ts";
 
-const TOOLS: ReadonlyArray<{ id: Tool; label: string; accent: string }> = [
-	{ id: "zone-r", label: "Residential (1)", accent: "#22c55e" },
-	{ id: "zone-c", label: "Commercial (2)", accent: "#3b82f6" },
-	{ id: "zone-i", label: "Industrial (3)", accent: "#eab308" },
-	{ id: "road", label: "Road (R)", accent: "#6b7280" },
-	{ id: "demolish", label: "Demolish (X)", accent: "#ef4444" },
+// ---- Tool definitions -------------------------------------------------------
+
+const ZONE_TOOLS: ReadonlyArray<{ id: Tool; label: string; accent: string }> = [
+	{ id: "zone-r-low", label: "R Low (1)", accent: "#22c55e" },
+	{ id: "zone-r-med", label: "R Med (2)", accent: "#16a34a" },
+	{ id: "zone-r-high", label: "R High (3)", accent: "#15803d" },
+	{ id: "zone-c-low", label: "C Low (4)", accent: "#60a5fa" },
+	{ id: "zone-c-med", label: "C Med (5)", accent: "#3b82f6" },
+	{ id: "zone-c-high", label: "C High (6)", accent: "#2563eb" },
+	{ id: "zone-i-low", label: "I Low (7)", accent: "#facc15" },
+	{ id: "zone-i-med", label: "I Med (8)", accent: "#eab308" },
+	{ id: "zone-i-high", label: "I High (9)", accent: "#ca8a04" },
 ];
+
+const INFRA_TOOLS: ReadonlyArray<{ id: Tool; label: string; accent: string }> =
+	[
+		{ id: "road", label: "Road (R)", accent: "#6b7280" },
+		{ id: "rail", label: "Rail (T)", accent: "#71717a" },
+		{ id: "power-line", label: "Power Line (P)", accent: "#fbbf24" },
+	];
+
+const CIVIC_TOOLS: ReadonlyArray<{ id: Tool; label: string; accent: string }> =
+	[
+		{ id: "coal-plant", label: "Coal Plant", accent: "#78350f" },
+		{ id: "solar-plant", label: "Solar Plant", accent: "#fde047" },
+		{ id: "water-pump", label: "Water Pump", accent: "#38bdf8" },
+	];
+
+const DEMOLISH_TOOL: ReadonlyArray<{
+	id: Tool;
+	label: string;
+	accent: string;
+}> = [{ id: "demolish", label: "Demolish (X)", accent: "#ef4444" }];
 
 const OVERLAYS: ReadonlyArray<{ id: OverlayMode; label: string }> = [
 	{ id: "none", label: "None" },
 	{ id: "land-value", label: "Land Value" },
 	{ id: "pollution", label: "Pollution" },
+	{ id: "power", label: "Power" },
+	{ id: "water", label: "Water" },
 ];
 
 const SPEEDS: ReadonlyArray<{ id: Speed; label: string; aria: string }> = [
-	{ id: 0, label: "⏸", aria: "Pause" },
-	{ id: 1, label: "▶", aria: "Normal speed" },
-	{ id: 2, label: "▶▶", aria: "Fast" },
-	{ id: 3, label: "▶▶▶", aria: "Fastest" },
+	{ id: 0, label: "\u23F8", aria: "Pause" },
+	{ id: 1, label: "\u25B6", aria: "Normal speed" },
+	{ id: 2, label: "\u25B6\u25B6", aria: "Fast" },
+	{ id: 3, label: "\u25B6\u25B6\u25B6", aria: "Fastest" },
 ];
 
 interface SidebarProps {
@@ -54,20 +82,97 @@ export function Sidebar({ store, sim }: SidebarProps): React.ReactElement {
 		return null;
 	}
 
+	function onToolChange(keys: Set<Key>): void {
+		const k = firstKey(keys);
+		store.setTool((k as Tool | null) ?? "none");
+	}
+
 	return (
 		<aside id="sidebar">
 			<section>
-				<div className="section-title">Tools</div>
+				<div className="section-title">Zoning</div>
 				<ToggleButtonGroup
 					selectionMode="single"
 					className="btn-stack"
-					selectedKeys={tool === "none" ? [] : [tool]}
-					onSelectionChange={(keys) => {
-						const k = firstKey(keys);
-						store.setTool((k as Tool | null) ?? "none");
-					}}
+					selectedKeys={tool.startsWith("zone-") ? [tool] : []}
+					onSelectionChange={onToolChange}
 				>
-					{TOOLS.map((t) => (
+					{ZONE_TOOLS.map((t) => (
+						<ToggleButton
+							key={t.id}
+							id={t.id}
+							className="tool-btn"
+							style={{ borderLeftColor: t.accent }}
+							onPress={blurOnPointerPress}
+						>
+							{t.label}
+						</ToggleButton>
+					))}
+				</ToggleButtonGroup>
+			</section>
+
+			<section>
+				<div className="section-title">Infrastructure</div>
+				<ToggleButtonGroup
+					selectionMode="single"
+					className="btn-stack"
+					selectedKeys={
+						tool === "road" || tool === "rail" || tool === "power-line"
+							? [tool]
+							: []
+					}
+					onSelectionChange={onToolChange}
+				>
+					{INFRA_TOOLS.map((t) => (
+						<ToggleButton
+							key={t.id}
+							id={t.id}
+							className="tool-btn"
+							style={{ borderLeftColor: t.accent }}
+							onPress={blurOnPointerPress}
+						>
+							{t.label}
+						</ToggleButton>
+					))}
+				</ToggleButtonGroup>
+			</section>
+
+			<section>
+				<div className="section-title">Utilities</div>
+				<ToggleButtonGroup
+					selectionMode="single"
+					className="btn-stack"
+					selectedKeys={
+						tool === "coal-plant" ||
+						tool === "solar-plant" ||
+						tool === "water-pump"
+							? [tool]
+							: []
+					}
+					onSelectionChange={onToolChange}
+				>
+					{CIVIC_TOOLS.map((t) => (
+						<ToggleButton
+							key={t.id}
+							id={t.id}
+							className="tool-btn"
+							style={{ borderLeftColor: t.accent }}
+							onPress={blurOnPointerPress}
+						>
+							{t.label}
+						</ToggleButton>
+					))}
+				</ToggleButtonGroup>
+			</section>
+
+			<section>
+				<ToggleButtonGroup
+					selectionMode="single"
+					className="btn-stack"
+					selectedKeys={tool === "demolish" ? [tool] : []}
+					onSelectionChange={onToolChange}
+				>
+					{DEMOLISH_TOOL.map((t) => (
 						<ToggleButton
 							key={t.id}
 							id={t.id}
@@ -144,10 +249,10 @@ export function Sidebar({ store, sim }: SidebarProps): React.ReactElement {
 
 			<section>
 				<div className="section-title">City</div>
+				<StatRow label="Date" value={formatDate(stats.month, stats.year)} />
 				<StatRow label="Population" value={fmtInt(stats.pop)} />
 				<StatRow label="Jobs" value={fmtInt(stats.jobs)} />
 				<StatRow label="Treasury" value={fmtMoney(stats.treasury)} />
-				<StatRow label="Tick" value={fmtInt(stats.tick)} />
 				<FinancesDialog sim={sim} />
 			</section>
 
@@ -235,5 +340,5 @@ function fmtInt(n: number): string {
 
 function fmtMoney(n: number): string {
 	const v = Math.floor(n);
-	return `${v < 0 ? "−" : ""}$${Math.abs(v).toLocaleString()}`;
+	return `${v < 0 ? "\u2212" : ""}$${Math.abs(v).toLocaleString()}`;
 }

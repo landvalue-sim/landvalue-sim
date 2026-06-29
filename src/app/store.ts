@@ -100,17 +100,43 @@ export function createStore(sim: SimClient): InteractionStore {
 				let handled = true;
 				switch (e.key) {
 					case "1":
-						store.toggleTool("zone-r");
+						store.toggleTool("zone-r-low");
 						break;
 					case "2":
-						store.toggleTool("zone-c");
+						store.toggleTool("zone-r-med");
 						break;
 					case "3":
-						store.toggleTool("zone-i");
+						store.toggleTool("zone-r-high");
+						break;
+					case "4":
+						store.toggleTool("zone-c-low");
+						break;
+					case "5":
+						store.toggleTool("zone-c-med");
+						break;
+					case "6":
+						store.toggleTool("zone-c-high");
+						break;
+					case "7":
+						store.toggleTool("zone-i-low");
+						break;
+					case "8":
+						store.toggleTool("zone-i-med");
+						break;
+					case "9":
+						store.toggleTool("zone-i-high");
 						break;
 					case "r":
 					case "R":
 						store.toggleTool("road");
+						break;
+					case "t":
+					case "T":
+						store.toggleTool("rail");
+						break;
+					case "p":
+					case "P":
+						store.toggleTool("power-line");
 						break;
 					case "x":
 					case "X":

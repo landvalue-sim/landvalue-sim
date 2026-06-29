@@ -11,6 +11,7 @@ import {
 	AGG,
 	BUILDING_EMPTY,
 	BUILDING_HIGH,
+	DENSITY_HIGH,
 	MAX_DEMAND,
 	MAX_POLLUTION,
 	ZONE_NONE,
@@ -98,15 +99,23 @@ export function checkAggregates(state: CityState): void {
 export function checkGridIntegrity(state: CityState): void {
 	if (!import.meta.env.DEV) return;
 
-	const { size, zoning, building, population, jobs, pollution } = state;
+	const { size, zoning, building, densityCap, population, jobs, pollution } =
+		state;
 	const tick = Math.floor(state.aggregates[AGG.TICK] ?? 0);
 
 	for (let i = 0; i < size; i++) {
 		const zone = zoning[i] ?? 0;
 		const bld = building[i] ?? 0;
 
-		// Building on unzoned land (roads are fine — they clear zoning)
-		if (zone === ZONE_NONE && bld !== BUILDING_EMPTY && state.roads[i] !== 1) {
+		// Building on unzoned land (roads/rail/powerlines/civic are fine)
+		if (
+			zone === ZONE_NONE &&
+			bld !== BUILDING_EMPTY &&
+			state.roads[i] !== 1 &&
+			state.rail[i] !== 1 &&
+			state.powerLines[i] !== 1 &&
+			(state.civic[i] ?? 0) === 0
+		) {
 			addViolation("grid", `tile ${i}: building ${bld} on unzoned land`, tick);
 		}
 
@@ -117,6 +126,21 @@ export function checkGridIntegrity(state: CityState): void {
 				`tile ${i}: building tier ${bld} out of range`,
 				tick,
 			);
+		}
+
+		// Building exceeds density cap (cap of 0 means unzoned, so skip)
+		const cap = densityCap[i] ?? 0;
+		if (cap > 0 && bld > cap) {
+			addViolation(
+				"grid",
+				`tile ${i}: building ${bld} exceeds density cap ${cap}`,
+				tick,
+			);
+		}
+
+		// Density cap out of range
+		if (cap > DENSITY_HIGH) {
+			addViolation("grid", `tile ${i}: density cap ${cap} out of range`, tick);
 		}
 
 		// Pollution over max
