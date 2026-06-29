@@ -35,15 +35,10 @@ const COL_C_ZONE = 0x3b82f6;
 const COL_I_ZONE = 0xeab308;
 const COL_CURSOR = 0xffffff;
 
-// Land-value heatmap LUT: green (low) -> red (high), precomputed to ints.
-const LUT_SIZE = 256;
-const LV_MAX = 150;
-const LV_COLOR = new Uint32Array(LUT_SIZE);
-for (let i = 0; i < LUT_SIZE; i++) {
-	const t = Math.min(1, i / LV_MAX);
-	LV_COLOR[i] = hslToInt(120 * (1 - t), 0.8, 0.45);
-}
-const LV_ALPHA = 0.5;
+// Land-value overlay renders value as column height, colored by zoning (or
+// road), so you read both what's there and how valuable it is.
+const LV_HEIGHT_PER_UNIT = 0.4; // world px per land-value unit
+const LV_HEIGHT_CLAMP = 160; // cap so the tallest columns stay readable
 const COL_POLLUTION = 0xa832a8;
 
 // ---- Camera tuning ---------------------------------------------------------
@@ -231,22 +226,46 @@ export class IsoScene extends Phaser.Scene {
 			}
 		}
 
-		// Hovered-tile cursor.
+		// Hovered-tile cursor, lifted to the top of that tile's column.
 		if (
 			this.hoverX >= 0 &&
 			this.hoverX < w &&
 			this.hoverY >= 0 &&
 			this.hoverY < h
 		) {
+			const idx = this.hoverY * w + this.hoverX;
 			const cx = (this.hoverX - this.hoverY) * HALF_W;
 			const cy = (this.hoverX + this.hoverY) * HALF_H;
 			g.lineStyle(2, COL_CURSOR, 0.9);
-			diamondPath(g, cx, cy, 0);
+			diamondPath(g, cx, cy, this.tileTopLift(idx, overlay));
 			g.strokePath();
 		}
 	}
 
+	/** World-space height of a tile's top surface in the current overlay mode. */
+	private tileTopLift(idx: number, overlay: string): number {
+		const city = this.city;
+		const isRoad = city.roads[idx] === 1;
+		const isWater = !isRoad && city.terrain[idx] === TERRAIN_WATER;
+
+		if (overlay === "land-value") {
+			if (isWater) return 0;
+			const lv = city.landValue[idx] ?? 0;
+			return Math.min(lv, LV_HEIGHT_CLAMP) * LV_HEIGHT_PER_UNIT;
+		}
+
+		const tier = isRoad || isWater ? 0 : (city.building[idx] ?? 0);
+		return tier * TIER_HEIGHT;
+	}
+
 	private drawTile(x: number, y: number, overlay: string): void {
+		// Land value gets its own representation: buildings are hidden and each
+		// tile is extruded by its land value instead.
+		if (overlay === "land-value") {
+			this.drawLandValueTile(x, y);
+			return;
+		}
+
 		const g = this.g;
 		const city = this.city;
 		const idx = y * city.width + x;
@@ -265,33 +284,7 @@ export class IsoScene extends Phaser.Scene {
 		else if (tier > 0) top = builtColor(city.zoning[idx] ?? 0);
 		else top = COL_GRASS;
 
-		// Extruded side faces for buildings.
-		if (height > 0) {
-			g.fillStyle(shade(top, 0.6), 1);
-			quad(
-				g,
-				cx - HALF_W,
-				cy,
-				cx,
-				cy + HALF_H,
-				cx,
-				cy + HALF_H - height,
-				cx - HALF_W,
-				cy - height,
-			);
-			g.fillStyle(shade(top, 0.8), 1);
-			quad(
-				g,
-				cx + HALF_W,
-				cy,
-				cx,
-				cy + HALF_H,
-				cx,
-				cy + HALF_H - height,
-				cx + HALF_W,
-				cy - height,
-			);
-		}
+		if (height > 0) extrudeFaces(g, cx, cy, height, top);
 
 		// Top diamond.
 		g.fillStyle(top, 1);
@@ -308,16 +301,8 @@ export class IsoScene extends Phaser.Scene {
 			}
 		}
 
-		// Overlay tint on the top surface.
-		if (overlay === "land-value") {
-			const lv = city.landValue[idx] ?? 0;
-			if (lv > 0) {
-				const c = LV_COLOR[Math.min(lv, LUT_SIZE - 1)] ?? 0;
-				g.fillStyle(c, LV_ALPHA);
-				diamondPath(g, cx, cy, height);
-				g.fillPath();
-			}
-		} else if (overlay === "pollution") {
+		// Pollution tint on the top surface.
+		if (overlay === "pollution") {
 			const pol = city.pollution[idx] ?? 0;
 			if (pol > 0) {
 				g.fillStyle(COL_POLLUTION, Math.min(0.6, (pol / 255) * 0.7));
@@ -326,9 +311,74 @@ export class IsoScene extends Phaser.Scene {
 			}
 		}
 	}
+
+	/**
+	 * Land-value view: each tile is a solid column whose height encodes its land
+	 * value, colored by what occupies the plot — zoning (R/C/I), road, or bare
+	 * land. Water stays flat for orientation.
+	 */
+	private drawLandValueTile(x: number, y: number): void {
+		const g = this.g;
+		const city = this.city;
+		const idx = y * city.width + x;
+		const cx = (x - y) * HALF_W;
+		const cy = (x + y) * HALF_H;
+
+		const isRoad = city.roads[idx] === 1;
+		const isWater = !isRoad && city.terrain[idx] === TERRAIN_WATER;
+		if (isWater) {
+			g.fillStyle(COL_WATER, 1);
+			diamondPath(g, cx, cy, 0);
+			g.fillPath();
+			return;
+		}
+
+		const lv = city.landValue[idx] ?? 0;
+		const vh = Math.min(lv, LV_HEIGHT_CLAMP) * LV_HEIGHT_PER_UNIT;
+		const col = isRoad ? COL_ROAD : builtColor(city.zoning[idx] ?? 0);
+
+		if (vh > 0) extrudeFaces(g, cx, cy, vh, col);
+		g.fillStyle(col, 1);
+		diamondPath(g, cx, cy, vh);
+		g.fillPath();
+	}
 }
 
 // ---- Geometry helpers ------------------------------------------------------
+
+/** Draw the two visible side faces of a tile column `height` px tall. */
+function extrudeFaces(
+	g: Phaser.GameObjects.Graphics,
+	cx: number,
+	cy: number,
+	height: number,
+	top: number,
+): void {
+	g.fillStyle(shade(top, 0.6), 1);
+	quad(
+		g,
+		cx - HALF_W,
+		cy,
+		cx,
+		cy + HALF_H,
+		cx,
+		cy + HALF_H - height,
+		cx - HALF_W,
+		cy - height,
+	);
+	g.fillStyle(shade(top, 0.8), 1);
+	quad(
+		g,
+		cx + HALF_W,
+		cy,
+		cx,
+		cy + HALF_H,
+		cx,
+		cy + HALF_H - height,
+		cx + HALF_W,
+		cy - height,
+	);
+}
 
 function diamondPath(
 	g: Phaser.GameObjects.Graphics,
@@ -388,39 +438,6 @@ function shade(color: number, f: number): number {
 	const gch = Math.min(255, ((color >> 8) & 0xff) * f) | 0;
 	const b = Math.min(255, (color & 0xff) * f) | 0;
 	return (r << 16) | (gch << 8) | b;
-}
-
-function hslToInt(h: number, s: number, l: number): number {
-	const c = (1 - Math.abs(2 * l - 1)) * s;
-	const hp = h / 60;
-	const xCol = c * (1 - Math.abs((hp % 2) - 1));
-	let r = 0;
-	let gch = 0;
-	let b = 0;
-	if (hp < 1) {
-		r = c;
-		gch = xCol;
-	} else if (hp < 2) {
-		r = xCol;
-		gch = c;
-	} else if (hp < 3) {
-		gch = c;
-		b = xCol;
-	} else if (hp < 4) {
-		gch = xCol;
-		b = c;
-	} else if (hp < 5) {
-		r = xCol;
-		b = c;
-	} else {
-		r = c;
-		b = xCol;
-	}
-	const m = l - c / 2;
-	const ri = Math.round((r + m) * 255);
-	const gi = Math.round((gch + m) * 255);
-	const bi = Math.round((b + m) * 255);
-	return (ri << 16) | (gi << 8) | bi;
 }
 
 // ---- Command mapping -------------------------------------------------------
