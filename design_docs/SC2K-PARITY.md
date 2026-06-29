@@ -5,79 +5,48 @@ by priority tier. Priority reflects both how essential the feature is to a playa
 city-builder experience and how much it reinforces the project's economic-simulation
 thesis (land value, urbanist levers, visible economics).
 
-**Current state summary:** The sim has a 64x64 tile grid with R/C/I zoning, roads,
-a land-value field with diffusion, RCI demand feedback, migration (build/abandon at
-density tier 1 only), industrial pollution, property-tax revenue, per-capita service
-costs, road maintenance, a finances dialog with tax-rate sliders, an isometric
-renderer with building extrusion, land-value and pollution overlays, click-and-drag
-placement, camera pan/zoom, and keyboard shortcuts. There is no terrain generation,
-no water/power infrastructure, no transit, no civic buildings, no disasters, no
-save/load, no density progression, and no time/calendar.
+**Current state summary:** The sim has a 64×64 tile grid with R/C/I zoning at three
+player-controlled density levels (Low/Med/High), roads, rail, power lines, a
+land-value field with diffusion (including road/rail/waterfront/elevation bonuses and
+power/water coverage penalties), RCI demand feedback, migration with density
+upgrades, industrial and coal-plant pollution, property-tax revenue, per-capita
+service costs, road/rail/civic maintenance, a finances dialog with tax-rate sliders
+and power/water stats, an isometric renderer with building extrusion, land-value,
+pollution, power, and water overlays, click-and-drag placement, camera pan/zoom,
+keyboard shortcuts, procedural terrain generation (elevation + water bodies via
+value noise), a power grid (BFS flood fill with progressive disclosure), a water
+system (radius coverage from pumps with progressive disclosure), civic buildings
+(coal plant, solar plant, water pump), construction costs with treasury checks, and
+a calendar (1 tick = 1 month).
 
 ---
 
-## Priority 1 — Core Gameplay Loop (unplayable without these)
+## ~~Priority 1 — Core Gameplay Loop~~ DONE
 
-### 1.1 Power Grid
-SC2K requires power plants and power lines. Without power, buildings don't develop.
-- **Power plants:** Coal, natural gas, nuclear, wind, solar, hydroelectric, fusion.
-  Each has a cost, output (MW), footprint, lifespan, and externalities (pollution
-  for coal/gas, meltdown risk for nuclear).
-- **Power lines:** 1-tile infrastructure like roads. Power conducts through roads
-  and zones automatically within a radius; lines are only needed to bridge gaps.
-- **Power coverage layer:** A boolean grid — tiles without power stall development.
-- **Sim integration:** Migration should refuse to build on unpowered zoned land.
-  Power plants age and must be replaced.
+All Priority 1 systems have been implemented:
 
-### 1.2 Water System
-SC2K has water pumps, treatment plants, pipes, and desalination.
-- **Water pumps/towers:** Placed near fresh water; supply capacity in gallons.
-- **Pipes:** Underground 1-tile infrastructure. Water pressure falls with distance.
-- **Water coverage layer:** Similar to power; low coverage lowers land value and
-  slows R growth.
-- **Implementation note:** Can be simplified for MVP — a single "water service"
-  coverage radius from water buildings, without underground pipe routing.
+- ~~1.1 Power Grid~~ — **Done.** Coal and solar plants, BFS flood fill, brownout,
+  progressive disclosure.
+- ~~1.2 Water System~~ — **Done.** Water pumps with radius coverage, must be adjacent
+  to water, progressive disclosure.
+- ~~1.3 Density Progression~~ — **Done.** Player-controlled density (Low/Med/High per
+  zone type), buildings upgrade toward cap when demand is high.
+- ~~1.4 Transportation: Rail~~ — **Done.** Rail as 1-tile infrastructure, conducts
+  power, boosts land value.
+- ~~1.5 Time/Calendar~~ — **Done.** 1 tick = 1 month, displayed as month/year.
+- ~~1.6 Terrain Generation~~ — **Done.** 3-octave value noise, elevation + water.
+- ~~1.7 Construction Costs~~ — **Done.** All placements deduct from treasury; commands
+  rejected on insufficient funds.
 
-### 1.3 Density Progression
-Currently all buildings spawn at density tier 1 (low). SC2K buildings evolve
-through 3-4 density stages based on demand, land value, and surrounding conditions.
-- **Upgrade system:** Occupied low-density tiles upgrade to medium when demand
-  stays high, land value exceeds a threshold, and infrastructure coverage is met.
-  Medium upgrades to high under stricter conditions.
-- **Downgrade/abandon:** When conditions deteriorate, buildings step down a tier
-  before abandoning.
-- **Visual:** Taller extrusions per tier (already partially supported by the
-  `TIER_HEIGHT` constant and building layer).
-
-### 1.4 Transportation Network
-Only roads exist. SC2K has a full transport hierarchy.
-- **Roads:** Already implemented. Need traffic simulation (see 2.2).
-- **Highways:** Higher capacity, wider footprint (2 tiles), on/off ramps.
-  Reduce commute times but consume land.
-- **Rail/subway:** Fixed-route mass transit. Rail is above-ground (1-tile), subway
-  is underground. Stations act as amenities that capitalize into land value.
-- **Bus depots:** Low-cost transit that boosts R accessibility within a radius.
-- **Connections to neighbors:** Edge-of-map road/rail/highway connections generate
-  external demand and trade.
-
-### 1.5 Time, Calendar, and Budget Cycle
-The sim has a tick counter but no in-game calendar.
-- **Calendar:** Map ticks to months/years. SC2K runs January-December with a
-  monthly budget cycle.
-- **Annual budget:** End-of-year summary showing income vs expenses with the option
-  to adjust allocations. (Current per-tick finance can be reframed as monthly.)
-- **Population milestones:** Unlock new building types and tools at population
-  thresholds (e.g., airport at 10k, seaport at 5k).
-
-### 1.6 Terrain Generation
-Currently all-land, flat. SC2K has varied terrain.
-- **Elevation/hills:** Height map layer (u8). Affects building placement cost and
-  water runoff. Isometric rendering shows elevation steps.
-- **Water bodies:** Rivers, lakes, coastline. Already have `TERRAIN_WATER` constant
-  but no procedural generation.
-- **Trees:** Decorative/environmental. Reduce pollution, slight land-value bonus.
-- **Terrain editor:** Pre-game terrain sculpting mode (SC2K lets you edit terrain
-  before founding the city).
+### Remaining P1 gaps (stretch)
+- **Power plant variety:** Only coal and solar exist. SC2K has gas, nuclear, wind,
+  hydro, fusion — each with unique cost/output/lifespan/externalities.
+- **Power plant aging:** Plants should degrade and eventually need replacement.
+- **Highways:** Higher-capacity 2-tile roads with on/off ramps. Not yet started.
+- **Bus depots:** Low-cost transit amenity. Not yet started.
+- **Neighbor connections:** Edge-of-map road/rail connections for external demand.
+- **Annual budget cycle:** End-of-year summary with allocation adjustments.
+- **Population unlock milestones:** Airport at 10k, seaport at 5k, etc.
 
 ---
 
@@ -174,20 +143,18 @@ population milestones.
   populations.
 
 ### 3.4 Land Value and Desirability Details
-The current land-value model is a good start. SC2K's is richer:
-- **Elevation bonus:** Higher terrain = higher land value (views).
-- **Waterfront bonus:** Tiles adjacent to water get a premium.
+The land-value model already includes road/rail/waterfront/elevation bonuses,
+commercial/population neighbor effects, industrial/pollution penalties, and
+power/water coverage penalties. Remaining SC2K details:
 - **Distance-to-center bonus:** Land value falls off from the city center (or from
   density clusters).
-- **Crime/pollution/traffic penalties:** Already partially implemented; need crime
-  and traffic layers active.
+- **Crime/traffic penalties:** Need crime and traffic layers active (see 2.2, 2.3).
 - **NIMBY effects:** Certain buildings (landfills, prisons) have large negative
   radii.
 
 ### 3.5 Map Overlays
-Currently: land value, pollution. SC2K has ~12 data views.
-- **Power grid coverage**
-- **Water coverage**
+Current overlays: land value, pollution, power grid, water coverage.
+Remaining SC2K data views:
 - **Traffic density**
 - **Crime rate**
 - **Fire coverage / fire risk**
@@ -196,8 +163,6 @@ Currently: land value, pollution. SC2K has ~12 data views.
 - **Health coverage**
 - **Population density**
 - **Growth rate (R/C/I demand per tile)**
-- **Land value** (done)
-- **Pollution** (done)
 
 ### 3.6 Ordinances
 SC2K has ~25 city ordinances (toggleable policies) that affect the sim.
@@ -219,18 +184,9 @@ DESIGN.md specifies the format but nothing is implemented.
   in Firestore.
 
 ### 3.8 Multiple Map Sizes
-SC2K supports small (64x64), medium (128x128), and large (256x256) maps. The
-constants support up to 256x256 already (`MAX_GRID_SIZE = 256`); need UI for
+SC2K supports small (64×64), medium (128×128), and large (256×256) maps. The
+constants support up to 256×256 already (`MAX_GRID_SIZE = 256`); need UI for
 choosing size at city creation.
-
-### 3.9 Bulldozer Cost and Construction Costs
-Currently zoning and roads are free. SC2K charges per tile.
-- **Road cost:** Per-tile construction cost deducted from treasury.
-- **Zone cost:** Small per-tile fee for zoning.
-- **Demolish cost:** Small fee.
-- **Infrastructure cost:** Power lines, water pipes, rails, highways all cost money.
-- **Civic building cost:** Large upfront placement cost.
-- **Insufficient funds:** Block placement when treasury is too low.
 
 ---
 
@@ -239,7 +195,7 @@ Currently zoning and roads are free. SC2K charges per tile.
 ### 4.1 Sprite-Based Tile Art
 Currently all rendering is procedural geometry (colored diamonds and extruded
 boxes). SC2K uses detailed sprite tiles.
-- **Tile atlas:** Sprite sheet with distinct art for each zone type x density tier,
+- **Tile atlas:** Sprite sheet with distinct art for each zone type × density tier,
   roads (with auto-tiling for intersections, curves, dead ends), terrain variants,
   water animation, civic buildings.
 - **Road auto-tiling:** Determine correct road sprite from neighbor connectivity
@@ -276,39 +232,31 @@ per month/year).
 
 ## Implementation Order (suggested)
 
-The tiers above are already in priority order. Within each tier, a reasonable
-sequencing:
-
-**Phase 1 — Playable loop:**
-1. Construction costs and treasury checks (3.9) — quick win, adds consequence
-2. Density progression (1.3) — makes growth visible and strategic
-3. Power grid (1.1) — first infrastructure constraint
-4. Terrain generation (1.6) — gives maps variety and strategic interest
-5. Calendar and budget cycle (1.5) — frames the economic game
+Priority 1 is complete. Remaining work:
 
 **Phase 2 — Strategic depth:**
-6. Traffic simulation (2.2) — activates the traffic layer, enables congestion pricing
-7. Civic buildings: police + fire (2.1, 2.3, 2.4) — first service/externality pair
-8. Crime layer (2.3) — feedback from police coverage
-9. Highways and rail (1.4) — transport hierarchy
-10. Bonds and debt (2.7) — financial strategy
+1. Traffic simulation (2.2) — activates the traffic layer, enables congestion pricing
+2. Civic buildings: police + fire (2.1, 2.3, 2.4) — first service/externality pair
+3. Crime layer (2.3) — feedback from police coverage
+4. Highways (P1 stretch) — transport hierarchy
+5. Bonds and debt (2.7) — financial strategy
 
 **Phase 3 — Content:**
-11. Ordinances (3.6) — especially the urbanist-lever ordinances
-12. Save/load (3.7) — essential for sessions longer than one sitting
-13. Disasters (3.1) — replayability and drama
-14. Advisors and news (3.2) — player feedback
-15. Water system (1.2) — second infrastructure layer
-16. More overlays (3.5) — as each system comes online
-17. Neighbor connections (2.6)
-18. Education and health (2.5)
+6. Ordinances (3.6) — especially the urbanist-lever ordinances
+7. Save/load (3.7) — essential for sessions longer than one sitting
+8. Disasters (3.1) — replayability and drama
+9. Advisors and news (3.2) — player feedback
+10. More overlays (3.5) — as each system comes online
+11. Neighbor connections (2.6)
+12. Education and health (2.5)
+13. More power plant types (P1 stretch)
 
 **Phase 4 — Polish:**
-19. Query tool (4.4)
-20. Sprite tiles and road auto-tiling (4.1)
-21. Minimap (4.3)
-22. Graph panel (4.5)
-23. Map size selection (3.8)
-24. Rewards and arcologies (3.3)
-25. Sound and music (4.2)
-26. City creation screen (4.6)
+14. Query tool (4.4)
+15. Sprite tiles and road auto-tiling (4.1)
+16. Minimap (4.3)
+17. Graph panel (4.5)
+18. Map size selection (3.8)
+19. Rewards and arcologies (3.3)
+20. Sound and music (4.2)
+21. City creation screen (4.6)
