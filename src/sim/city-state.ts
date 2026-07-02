@@ -56,6 +56,16 @@ export interface CityState {
 	readonly fire: Uint8Array;
 	readonly educationCoverage: Uint8Array;
 	readonly healthCoverage: Uint8Array;
+	/** Water surface height (0..ELEVATION_MAX); meaningful only on water tiles. */
+	readonly waterLevel: Uint8Array;
+
+	/**
+	 * Corner heights, RCT-style: one height per grid *vertex*, so this layer is
+	 * (width+1) * (height+1) long, indexed `vy * (width+1) + vx`. Tile (x, y)'s
+	 * four corners are vertices (x, y), (x+1, y), (x+1, y+1), (x, y+1). The
+	 * per-tile `elevation` layer is derived from this (min of the 4 corners).
+	 */
+	readonly vertexHeights: Uint8Array;
 
 	// Aggregate scalars (indexed by AGG.*)
 	readonly aggregates: Float64Array;
@@ -70,7 +80,7 @@ export interface CityState {
 
 const PRNG_WORDS = 4;
 const U16_LAYER_COUNT = 3;
-const U8_LAYER_COUNT = 19;
+const U8_LAYER_COUNT = 20;
 
 /** Round `offset` up to the next multiple of `align` (a power of two). */
 function alignUp(offset: number, align: number): number {
@@ -83,6 +93,7 @@ interface Layout {
 	readonly rng: number;
 	readonly u16: number; // start of the u16 layers
 	readonly u8: number; // start of the u8 layers
+	readonly vertex: number; // start of the vertex-height grid
 }
 
 /**
@@ -90,7 +101,9 @@ interface Layout {
  * alignment requirement (f64 → u32 → u16 → u8) so each starts naturally
  * aligned regardless of grid size.
  */
-function computeLayout(size: number): Layout {
+function computeLayout(width: number, height: number): Layout {
+	const size = width * height;
+	const vertexCount = (width + 1) * (height + 1);
 	let offset = 0;
 
 	const aggregates = offset;
@@ -105,12 +118,15 @@ function computeLayout(size: number): Layout {
 	const u8 = offset; // u8 needs no alignment
 	offset = u8 + U8_LAYER_COUNT * size * Uint8Array.BYTES_PER_ELEMENT;
 
-	return { byteLength: offset, aggregates, rng, u16, u8 };
+	const vertex = offset; // u8-aligned, but (width+1)*(height+1) long
+	offset = vertex + vertexCount * Uint8Array.BYTES_PER_ELEMENT;
+
+	return { byteLength: offset, aggregates, rng, u16, u8, vertex };
 }
 
 /** Total bytes a backing buffer must hold for a `width * height` grid. */
 export function cityByteLength(width: number, height: number): number {
-	return computeLayout(width * height).byteLength;
+	return computeLayout(width, height).byteLength;
 }
 
 /**
@@ -123,7 +139,7 @@ function viewLayout(
 	height: number,
 ): CityState {
 	const size = width * height;
-	const layout = computeLayout(size);
+	const layout = computeLayout(width, height);
 	invariant(
 		buffer.byteLength >= layout.byteLength,
 		"city buffer too small for grid",
@@ -163,6 +179,12 @@ function viewLayout(
 		fire: new Uint8Array(buffer, u8 + 16 * u8Stride, size),
 		educationCoverage: new Uint8Array(buffer, u8 + 17 * u8Stride, size),
 		healthCoverage: new Uint8Array(buffer, u8 + 18 * u8Stride, size),
+		waterLevel: new Uint8Array(buffer, u8 + 19 * u8Stride, size),
+		vertexHeights: new Uint8Array(
+			buffer,
+			layout.vertex,
+			(width + 1) * (height + 1),
+		),
 	};
 }
 
@@ -225,6 +247,8 @@ export function createCity(opts?: CreateCityOptions): CityState {
 	state.fire.fill(0);
 	state.educationCoverage.fill(0);
 	state.healthCoverage.fill(0);
+	state.waterLevel.fill(0);
+	state.vertexHeights.fill(0);
 	state.aggregates.fill(0);
 
 	state.aggregates[AGG.TREASURY] = STARTING_TREASURY;
@@ -265,6 +289,14 @@ export function viewCity(
 /** Convert (x, y) to flat index. No bounds check — caller must validate. */
 export function tileIndex(width: number, x: number, y: number): number {
 	return y * width + x;
+}
+
+/**
+ * Convert vertex (vx, vy) to an index into `vertexHeights`. Vertices run
+ * 0..width and 0..height inclusive. No bounds check — caller must validate.
+ */
+export function vertexIndex(width: number, vx: number, vy: number): number {
+	return vy * (width + 1) + vx;
 }
 
 /** Check if (x, y) is within grid bounds. */

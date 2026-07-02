@@ -11,6 +11,15 @@ export const MAX_GRID_SIZE = 256;
 export const TERRAIN_LAND = 0;
 export const TERRAIN_WATER = 1;
 
+// Tile corners, named by their position in the iso view. Each maps to a vertex
+// of the (width+1) x (height+1) corner-height grid: N = (x, y), E = (x+1, y),
+// S = (x+1, y+1), W = (x, y+1). CORNER_ALL targets the whole tile.
+export const CORNER_N = 0;
+export const CORNER_E = 1;
+export const CORNER_S = 2;
+export const CORNER_W = 3;
+export const CORNER_ALL = 4;
+
 // ---------------------------------------------------------------------------
 // Zoning
 // ---------------------------------------------------------------------------
@@ -198,6 +207,9 @@ export const COST_COLLEGE = 1000;
 export const COST_LIBRARY = 400;
 export const COST_PARK = 100;
 export const COST_STADIUM = 3000;
+export const COST_TERRAFORM = 25;
+export const COST_PLACE_WATER = 50;
+export const COST_DRAIN_WATER = 25;
 
 // Civic building maintenance per tick (indexed by CIVIC_* constant).
 // Indices: 0=none, 1=coal, 2=solar, 3=pump, 4=police, 5=fire, 6=hospital,
@@ -254,6 +266,8 @@ export const MAX_TAX_RATE = 0.2;
 // ---------------------------------------------------------------------------
 export const WATER_THRESHOLD = 0.35;
 export const ELEVATION_MAX = 15;
+// Generated water fills every tile fully at or below this corner height.
+export const SEA_LEVEL = Math.floor(WATER_THRESHOLD * ELEVATION_MAX);
 
 // ---------------------------------------------------------------------------
 // Calendar

@@ -47,6 +47,24 @@ export interface DemolishCommand {
 	readonly y: number;
 }
 
+export interface TerraformCommand {
+	readonly kind: "terraform";
+	readonly x: number;
+	readonly y: number;
+	/** CORNER_N/E/S/W to move one corner, or CORNER_ALL for the whole tile. */
+	readonly corner: number;
+	/** +1 = raise, -1 = lower. */
+	readonly dir: 1 | -1;
+}
+
+export interface SetWaterCommand {
+	readonly kind: "set-water";
+	readonly x: number;
+	readonly y: number;
+	/** true = flood the tile, false = drain it back to land. */
+	readonly place: boolean;
+}
+
 export interface SetTaxRateCommand {
 	readonly kind: "set-tax-rate";
 	/** "r" | "c" | "i" */
@@ -66,5 +84,7 @@ export type Command =
 	| BuildPowerLineCommand
 	| PlaceCivicCommand
 	| DemolishCommand
+	| TerraformCommand
+	| SetWaterCommand
 	| SetTaxRateCommand
 	| IssueBondCommand;

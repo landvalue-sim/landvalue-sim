@@ -6,6 +6,7 @@ export {
 	createCity,
 	inBounds,
 	tileIndex,
+	vertexIndex,
 	viewCity,
 } from "./city-state.ts";
 
@@ -18,6 +19,8 @@ export type {
 	IssueBondCommand,
 	PlaceCivicCommand,
 	SetTaxRateCommand,
+	SetWaterCommand,
+	TerraformCommand,
 	ZoneCommand,
 } from "./commands.ts";
 export {
@@ -41,6 +44,11 @@ export {
 	CIVIC_STADIUM,
 	CIVIC_TYPE_COUNT,
 	CIVIC_WATER_PUMP,
+	CORNER_ALL,
+	CORNER_E,
+	CORNER_N,
+	CORNER_S,
+	CORNER_W,
 	COST_COAL_PLANT,
 	COST_COLLEGE,
 	COST_FIRE_STATION,
@@ -57,11 +65,13 @@ export {
 	DENSITY_HIGH,
 	DENSITY_LOW,
 	DENSITY_MED,
+	ELEVATION_MAX,
 	INFINITE_TREASURY,
 	MAX_BONDS,
 	MAX_DEMAND,
 	MAX_TAX_RATE,
 	MIN_TAX_RATE,
+	SEA_LEVEL,
 	START_YEAR,
 	TERRAIN_LAND,
 	TERRAIN_WATER,
@@ -78,4 +88,5 @@ export { buildTestCity } from "./scenarios.ts";
 export type { Violation } from "./sim-invariants.ts";
 export { clearViolations, getViolations } from "./sim-invariants.ts";
 export { generateTerrain } from "./terrain-gen.ts";
+export { setWaterTile, terraformTile } from "./terraform.ts";
 export { tick } from "./tick.ts";

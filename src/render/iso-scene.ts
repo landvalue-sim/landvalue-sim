@@ -2,11 +2,12 @@
  * IsoScene — the Phaser render shell.
  *
  * Reads the city `SharedArrayBuffer` view each frame (zero-copy) and paints it
- * as isometric tiles with a back-to-front diagonal sweep: flat ground/water/
- * roads, extruded buildings, and a translucent overlay (land value / pollution
- * / power / water) on top. It also owns the camera and pointer input,
- * translating clicks into sim commands. It writes nothing to the city state —
- * the worker is the only writer.
+ * as isometric tiles with a back-to-front diagonal sweep: RCT-style sloped
+ * terrain from per-corner heights, flat water planes, extruded buildings, and
+ * a translucent overlay (land value / pollution / power / water) on top. It
+ * also owns the camera and pointer input, translating clicks into sim
+ * commands (including corner-precision terraforming). It writes nothing to
+ * the city state — the worker is the only writer.
  */
 
 import Phaser from "phaser";
@@ -25,9 +26,15 @@ import {
 	CIVIC_STADIUM,
 	CIVIC_WATER_PUMP,
 	type CityState,
+	CORNER_ALL,
+	CORNER_E,
+	CORNER_N,
+	CORNER_S,
+	CORNER_W,
 	DENSITY_HIGH,
 	DENSITY_LOW,
 	DENSITY_MED,
+	ELEVATION_MAX,
 	TERRAIN_WATER,
 	ZONE_COMMERCIAL,
 	ZONE_INDUSTRIAL,
@@ -81,12 +88,14 @@ const COL_FIRE_OV = 0xff4500;
 const CIVIC_HEIGHT = 3;
 
 // ---- Terrain extrusion -----------------------------------------------------
-// World-pixels of vertical lift per elevation unit (elevation is 0..ELEVATION_MAX).
+// World-pixels of vertical lift per corner-height unit (0..ELEVATION_MAX).
+// Tiles are RCT-style: each of the four diamond corners has its own height
+// from `city.vertexHeights`, so tile tops render as sloped faces. Water tiles
+// render as a flat plane at their per-tile `waterLevel`.
 const ELEV_HEIGHT = 3;
-// Water renders as a flat plane at this elevation (≈ WATER_THRESHOLD *
-// ELEVATION_MAX), so the sea is level even where the noise floor is uneven.
-const SEA_ELEV = 5;
 const COL_EARTH = 0x6b4f2a; // dirt sides exposed under raised terrain
+// Directional shading strength for sloped grass (per unit of corner tilt).
+const SLOPE_SHADE = 0.07;
 
 // ---- Camera tuning ---------------------------------------------------------
 
@@ -120,6 +129,10 @@ export class IsoScene extends Phaser.Scene {
 
 	private hoverX = -1; // current tile under the pointer (also the drag end)
 	private hoverY = -1;
+	// Fractional position within the hovered tile (0..1), for corner-precision
+	// terraforming: near a corner edits that corner, near the center the tile.
+	private hoverFx = 0.5;
+	private hoverFy = 0.5;
 	private panning = false;
 	private dragging = false;
 	private dragStartX = -1;
@@ -197,6 +210,12 @@ export class IsoScene extends Phaser.Scene {
 			return;
 		}
 
+		// Raise/lower edits one corner or tile per click (repeat to go higher).
+		if (isTerraformTool(snap.tool)) {
+			this.placeTerraform(x, y, snap.tool);
+			return;
+		}
+
 		if (snap.dragEnabled) {
 			// Begin a drag; the preview/commit happens on move/up.
 			this.dragging = true;
@@ -267,15 +286,63 @@ export class IsoScene extends Phaser.Scene {
 		if (this.keys.down.isDown || this.keys.s.isDown) cam.scrollY += step;
 	}
 
+	/**
+	 * Elevation-aware picking: probe each height plane from the top down and
+	 * take the first tile whose surface (highest corner, or water plane) sits at
+	 * that height — the front-most surface under the cursor. Also records the
+	 * fractional in-tile position for corner-precision terraforming.
+	 */
 	private pointerTile(pointer: Phaser.Input.Pointer): { x: number; y: number } {
-		const g = screenToGrid(pointer.worldX, pointer.worldY);
-		return { x: Math.floor(g.x), y: Math.floor(g.y) };
+		const sx = pointer.worldX;
+		const sy = pointer.worldY;
+		for (let e = ELEVATION_MAX; e >= 0; e--) {
+			const gpt = screenToGrid(sx, sy + e * ELEV_HEIGHT);
+			const tx = Math.floor(gpt.x);
+			const ty = Math.floor(gpt.y);
+			if (!this.inBounds(tx, ty)) continue;
+			if (this.tileSurfaceHeight(tx, ty) !== e) continue;
+			this.hoverFx = gpt.x - tx;
+			this.hoverFy = gpt.y - ty;
+			return { x: tx, y: ty };
+		}
+		const gpt = screenToGrid(sx, sy);
+		const tx = Math.floor(gpt.x);
+		const ty = Math.floor(gpt.y);
+		this.hoverFx = gpt.x - tx;
+		this.hoverFy = gpt.y - ty;
+		return { x: tx, y: ty };
+	}
+
+	/** Which part of the hovered tile a terraform click targets. */
+	private hoverCorner(): number {
+		const dx = this.hoverFx - 0.5;
+		const dy = this.hoverFy - 0.5;
+		if (Math.abs(dx) < 0.25 && Math.abs(dy) < 0.25) return CORNER_ALL;
+		const east = this.hoverFx >= 0.5;
+		const south = this.hoverFy >= 0.5;
+		if (east && south) return CORNER_S;
+		if (east) return CORNER_E;
+		if (south) return CORNER_W;
+		return CORNER_N;
 	}
 
 	private placeSingle(x: number, y: number): void {
 		if (!this.inBounds(x, y)) return;
 		const cmd = toolToCommand(this.store.getSnapshot().tool, x, y);
 		if (cmd !== null) this.sendCommands([cmd]);
+	}
+
+	private placeTerraform(x: number, y: number, tool: string): void {
+		if (!this.inBounds(x, y)) return;
+		this.sendCommands([
+			{
+				kind: "terraform",
+				x,
+				y,
+				corner: this.hoverCorner(),
+				dir: tool === "terraform-raise" ? 1 : -1,
+			},
+		]);
 	}
 
 	/** Commit the current drag as one batch of commands (line or rectangle). */
@@ -324,7 +391,8 @@ export class IsoScene extends Phaser.Scene {
 		const city = this.city;
 		const w = city.width;
 		const h = city.height;
-		const overlay = this.store.getSnapshot().overlay;
+		const snap = this.store.getSnapshot();
+		const overlay = snap.overlay;
 
 		g.clear();
 
@@ -349,13 +417,83 @@ export class IsoScene extends Phaser.Scene {
 			this.hoverY >= 0 &&
 			this.hoverY < h
 		) {
-			const idx = this.hoverY * w + this.hoverX;
-			const cx = (this.hoverX - this.hoverY) * HALF_W;
-			const cy = (this.hoverX + this.hoverY) * HALF_H;
 			g.lineStyle(2, COL_CURSOR, 0.9);
-			diamondPath(g, cx, cy, this.tileTopLift(idx, overlay));
+			this.pathHoverFace(this.hoverX, this.hoverY, overlay);
 			g.strokePath();
+			if (isTerraformTool(snap.tool)) this.drawCornerMarker();
 		}
+	}
+
+	/** Path the visible top face of a tile: sloped ground, or the flat top of whatever sits on it. */
+	private pathHoverFace(x: number, y: number, overlay: string): void {
+		const city = this.city;
+		const idx = y * city.width + x;
+		const flat =
+			overlay === "land-value" ||
+			city.terrain[idx] === TERRAIN_WATER ||
+			city.roads[idx] === 1 ||
+			city.rail[idx] === 1 ||
+			city.powerLines[idx] === 1 ||
+			(city.civic[idx] ?? 0) !== 0 ||
+			(city.building[idx] ?? 0) > 0;
+		if (flat) {
+			const cx = (x - y) * HALF_W;
+			const cy = (x + y) * HALF_H;
+			diamondPath(this.g, cx, cy, this.tileTopLift(x, y, overlay));
+			return;
+		}
+		this.pathGroundFace(x, y);
+	}
+
+	/** Path the terrain surface of a tile: flat water plane or sloped land face. */
+	private pathGroundFace(x: number, y: number): void {
+		const city = this.city;
+		const idx = y * city.width + x;
+		const cx = (x - y) * HALF_W;
+		const cy = (x + y) * HALF_H;
+		if (city.terrain[idx] === TERRAIN_WATER) {
+			diamondPath(this.g, cx, cy, (city.waterLevel[idx] ?? 0) * ELEV_HEIGHT);
+			return;
+		}
+		const vw = city.width + 1;
+		const heights = city.vertexHeights;
+		surfacePath(
+			this.g,
+			cx,
+			cy,
+			(heights[y * vw + x] ?? 0) * ELEV_HEIGHT,
+			(heights[y * vw + x + 1] ?? 0) * ELEV_HEIGHT,
+			(heights[(y + 1) * vw + x + 1] ?? 0) * ELEV_HEIGHT,
+			(heights[(y + 1) * vw + x] ?? 0) * ELEV_HEIGHT,
+		);
+	}
+
+	/** Small marker on the corner a terraform click would edit. */
+	private drawCornerMarker(): void {
+		const corner = this.hoverCorner();
+		if (corner === CORNER_ALL) return; // whole tile — the outline suffices
+		let vx = this.hoverX;
+		let vy = this.hoverY;
+		if (corner === CORNER_E) {
+			vx += 1;
+		} else if (corner === CORNER_S) {
+			vx += 1;
+			vy += 1;
+		} else if (corner === CORNER_W) {
+			vy += 1;
+		}
+		const lift = this.vertexHeight(vx, vy) * ELEV_HEIGHT;
+		const px = (vx - vy) * HALF_W;
+		const py = (vx + vy) * HALF_H - lift;
+		const g = this.g;
+		g.fillStyle(COL_CURSOR, 0.9);
+		g.beginPath();
+		g.moveTo(px, py - 3);
+		g.lineTo(px + 6, py);
+		g.lineTo(px, py + 3);
+		g.lineTo(px - 6, py);
+		g.closePath();
+		g.fillPath();
 	}
 
 	/** Draw a translucent footprint of the tiles the current drag would place. */
@@ -367,30 +505,45 @@ export class IsoScene extends Phaser.Scene {
 		const color = previewColor(tool);
 		for (const t of this.dragTiles(tool)) {
 			if (!this.inBounds(t.x, t.y)) continue;
-			const cx = (t.x - t.y) * HALF_W;
-			const cy = (t.x + t.y) * HALF_H;
-			const lift = this.groundLift(t.y * this.city.width + t.x);
 			g.fillStyle(color, 0.45);
-			diamondPath(g, cx, cy, lift);
+			this.pathGroundFace(t.x, t.y);
 			g.fillPath();
 			g.lineStyle(1, color, 0.9);
-			diamondPath(g, cx, cy, lift);
+			this.pathGroundFace(t.x, t.y);
 			g.strokePath();
 		}
 	}
 
-	/** World-space lift of a tile's ground (terrain) surface. */
-	private groundLift(idx: number): number {
+	/** Corner height (0..ELEVATION_MAX) at vertex (vx, vy) of the corner grid. */
+	private vertexHeight(vx: number, vy: number): number {
+		return this.city.vertexHeights[vy * (this.city.width + 1) + vx] ?? 0;
+	}
+
+	/** Height of the tile's surface: its water plane, or its highest corner. */
+	private tileSurfaceHeight(x: number, y: number): number {
 		const city = this.city;
-		const isWater = city.terrain[idx] === TERRAIN_WATER;
-		const elev = isWater ? SEA_ELEV : (city.elevation[idx] ?? 0);
-		return elev * ELEV_HEIGHT;
+		const idx = y * city.width + x;
+		if (city.terrain[idx] === TERRAIN_WATER) return city.waterLevel[idx] ?? 0;
+		const vw = city.width + 1;
+		const heights = city.vertexHeights;
+		return Math.max(
+			heights[y * vw + x] ?? 0,
+			heights[y * vw + x + 1] ?? 0,
+			heights[(y + 1) * vw + x + 1] ?? 0,
+			heights[(y + 1) * vw + x] ?? 0,
+		);
+	}
+
+	/** World-px lift of the flat pad that structures on tile (x, y) sit on. */
+	private tileBaseLift(x: number, y: number): number {
+		return this.tileSurfaceHeight(x, y) * ELEV_HEIGHT;
 	}
 
 	/** World-space height of a tile's top surface in the current overlay mode. */
-	private tileTopLift(idx: number, overlay: string): number {
+	private tileTopLift(x: number, y: number, overlay: string): number {
 		const city = this.city;
-		const ground = this.groundLift(idx);
+		const idx = y * city.width + x;
+		const ground = this.tileBaseLift(x, y);
 		const isRoad = city.roads[idx] === 1;
 		const isWater = !isRoad && city.terrain[idx] === TERRAIN_WATER;
 
@@ -458,36 +611,72 @@ export class IsoScene extends Phaser.Scene {
 			top = tier > 0 ? builtColor(city.zoning[idx] ?? 0) : COL_GRASS;
 		}
 
-		// Terrain rises from sea level (0) to its elevation; buildings/civics
-		// extrude further above that surface.
-		const groundLift = this.groundLift(idx);
-		const topLift = groundLift + buildHeight;
+		// Per-corner terrain lifts; water is a flat plane at its surface level.
+		const vw = city.width + 1;
+		const heights = city.vertexHeights;
+		const hn = heights[y * vw + x] ?? 0;
+		const he = heights[y * vw + x + 1] ?? 0;
+		const hs = heights[(y + 1) * vw + x + 1] ?? 0;
+		const hw = heights[(y + 1) * vw + x] ?? 0;
 
-		if (groundLift > 0) {
-			extrudeColumn(g, cx, cy, 0, groundLift, isWater ? COL_WATER : COL_EARTH);
+		let ln: number;
+		let le: number;
+		let ls: number;
+		let lw: number;
+		if (isWater) {
+			const wl = (city.waterLevel[idx] ?? 0) * ELEV_HEIGHT;
+			ln = wl;
+			le = wl;
+			ls = wl;
+			lw = wl;
+		} else {
+			ln = hn * ELEV_HEIGHT;
+			le = he * ELEV_HEIGHT;
+			ls = hs * ELEV_HEIGHT;
+			lw = hw * ELEV_HEIGHT;
 		}
-		if (buildHeight > 0) {
-			extrudeColumn(g, cx, cy, groundLift, topLift, top);
-		}
+		const baseLift = Math.max(ln, le, ls, lw);
+		const minLift = Math.min(ln, le, ls, lw);
 
-		// Top diamond.
-		g.fillStyle(top, 1);
-		diamondPath(g, cx, cy, topLift);
+		// Terrain block: side skirts plus the (sloped) surface.
+		skirts(g, cx, cy, le, ls, lw, isWater ? COL_WATER : COL_EARTH);
+		if (isWater) {
+			g.fillStyle(COL_WATER, 1);
+		} else {
+			g.fillStyle(shade(COL_GRASS, slopeShade(hn, he, hs, hw)), 1);
+		}
+		surfacePath(g, cx, cy, ln, le, ls, lw);
 		g.fillPath();
 
+		// Anything built sits on a flat pad at the tile's highest corner; on a
+		// sloped tile the pad gets an earth foundation, RCT-style.
+		const flatTop =
+			isRoad || isRail || isPowerLine || civicType !== 0 || buildHeight > 0;
+		const topLift = baseLift + buildHeight;
+		if (flatTop) {
+			if (minLift < baseLift) {
+				extrudeColumn(g, cx, cy, minLift, baseLift, COL_EARTH);
+			}
+			if (buildHeight > 0) {
+				extrudeColumn(g, cx, cy, baseLift, topLift, top);
+			}
+			g.fillStyle(top, 1);
+			diamondPath(g, cx, cy, topLift);
+			g.fillPath();
+		}
+
+		// The visible top face, for zone outlines and overlay tints.
+		const tn = flatTop ? topLift : ln;
+		const te = flatTop ? topLift : le;
+		const ts = flatTop ? topLift : ls;
+		const tw = flatTop ? topLift : lw;
+
 		// Empty zoned land: colored outline so zoning reads before it builds.
-		if (
-			buildHeight === 0 &&
-			!isRoad &&
-			!isWater &&
-			!isRail &&
-			!isPowerLine &&
-			civicType === 0
-		) {
+		if (!flatTop && !isWater) {
 			const zoneOutline = zoneOutlineColor(city.zoning[idx] ?? 0);
 			if (zoneOutline >= 0) {
 				g.lineStyle(1.5, zoneOutline, 0.9);
-				diamondPath(g, cx, cy, topLift);
+				surfacePath(g, cx, cy, tn, te, ts, tw);
 				g.strokePath();
 			}
 		}
@@ -495,7 +684,7 @@ export class IsoScene extends Phaser.Scene {
 		// Fire indicator (always visible regardless of overlay)
 		if (city.fire[idx] === 1) {
 			g.fillStyle(COL_FIRE_OV, 0.7);
-			diamondPath(g, cx, cy, topLift);
+			surfacePath(g, cx, cy, tn, te, ts, tw);
 			g.fillPath();
 		}
 
@@ -504,63 +693,63 @@ export class IsoScene extends Phaser.Scene {
 			const pol = city.pollution[idx] ?? 0;
 			if (pol > 0) {
 				g.fillStyle(COL_POLLUTION, Math.min(0.6, (pol / 255) * 0.7));
-				diamondPath(g, cx, cy, topLift);
+				surfacePath(g, cx, cy, tn, te, ts, tw);
 				g.fillPath();
 			}
 		} else if (overlay === "power") {
 			if (!isWater) {
 				const powered = city.power[idx] === 1;
 				g.fillStyle(powered ? COL_POWERED : COL_UNPOWERED, 0.45);
-				diamondPath(g, cx, cy, topLift);
+				surfacePath(g, cx, cy, tn, te, ts, tw);
 				g.fillPath();
 			}
 		} else if (overlay === "water") {
 			if (!isWater) {
 				const watered = city.waterCoverage[idx] === 1;
 				g.fillStyle(watered ? COL_WATERED : COL_UNWATERED, 0.45);
-				diamondPath(g, cx, cy, topLift);
+				surfacePath(g, cx, cy, tn, te, ts, tw);
 				g.fillPath();
 			}
 		} else if (overlay === "crime") {
 			const cr = city.crime[idx] ?? 0;
 			if (cr > 0) {
 				g.fillStyle(COL_CRIME, Math.min(0.7, (cr / 255) * 0.8));
-				diamondPath(g, cx, cy, topLift);
+				surfacePath(g, cx, cy, tn, te, ts, tw);
 				g.fillPath();
 			}
 		} else if (overlay === "traffic") {
 			const tr = city.traffic[idx] ?? 0;
 			if (tr > 0) {
 				g.fillStyle(COL_TRAFFIC_OV, Math.min(0.7, (tr / 255) * 0.8));
-				diamondPath(g, cx, cy, topLift);
+				surfacePath(g, cx, cy, tn, te, ts, tw);
 				g.fillPath();
 			}
 		} else if (overlay === "police") {
 			if (!isWater) {
 				const covered = city.policeCoverage[idx] === 1;
 				g.fillStyle(covered ? COL_POWERED : COL_UNPOWERED, 0.45);
-				diamondPath(g, cx, cy, topLift);
+				surfacePath(g, cx, cy, tn, te, ts, tw);
 				g.fillPath();
 			}
 		} else if (overlay === "fire") {
 			if (!isWater) {
 				const covered = city.fireCoverage[idx] === 1;
 				g.fillStyle(covered ? COL_POWERED : COL_UNPOWERED, 0.45);
-				diamondPath(g, cx, cy, topLift);
+				surfacePath(g, cx, cy, tn, te, ts, tw);
 				g.fillPath();
 			}
 		} else if (overlay === "education") {
 			if (!isWater) {
 				const covered = city.educationCoverage[idx] === 1;
 				g.fillStyle(covered ? COL_POWERED : COL_UNPOWERED, 0.45);
-				diamondPath(g, cx, cy, topLift);
+				surfacePath(g, cx, cy, tn, te, ts, tw);
 				g.fillPath();
 			}
 		} else if (overlay === "health") {
 			if (!isWater) {
 				const covered = city.healthCoverage[idx] === 1;
 				g.fillStyle(covered ? COL_POWERED : COL_UNPOWERED, 0.45);
-				diamondPath(g, cx, cy, topLift);
+				surfacePath(g, cx, cy, tn, te, ts, tw);
 				g.fillPath();
 			}
 		}
@@ -580,34 +769,130 @@ export class IsoScene extends Phaser.Scene {
 
 		const isRoad = city.roads[idx] === 1;
 		const isWater = !isRoad && city.terrain[idx] === TERRAIN_WATER;
-		const ground = this.groundLift(idx);
 		if (isWater) {
-			if (ground > 0) extrudeColumn(g, cx, cy, 0, ground, COL_WATER);
+			const wl = (city.waterLevel[idx] ?? 0) * ELEV_HEIGHT;
+			skirts(g, cx, cy, wl, wl, wl, COL_WATER);
 			g.fillStyle(COL_WATER, 1);
-			diamondPath(g, cx, cy, ground);
+			diamondPath(g, cx, cy, wl);
 			g.fillPath();
 			return;
 		}
 
+		const vw = city.width + 1;
+		const heights = city.vertexHeights;
+		const hn = heights[y * vw + x] ?? 0;
+		const he = heights[y * vw + x + 1] ?? 0;
+		const hs = heights[(y + 1) * vw + x + 1] ?? 0;
+		const hw = heights[(y + 1) * vw + x] ?? 0;
+		const ln = hn * ELEV_HEIGHT;
+		const le = he * ELEV_HEIGHT;
+		const ls = hs * ELEV_HEIGHT;
+		const lw = hw * ELEV_HEIGHT;
+		const ground = Math.max(ln, le, ls, lw);
+
 		const lv = city.landValue[idx] ?? 0;
-		const vh = Math.min(lv, LV_HEIGHT_CLAMP) * LV_HEIGHT_PER_UNIT;
+		const valueH = Math.min(lv, LV_HEIGHT_CLAMP) * LV_HEIGHT_PER_UNIT;
 		const col = isRoad ? COL_ROAD : builtColor(city.zoning[idx] ?? 0);
 
-		// Earth column up to terrain height, then the land-value column above it.
-		if (ground > 0) extrudeColumn(g, cx, cy, 0, ground, COL_EARTH);
-		if (vh > 0) extrudeColumn(g, cx, cy, ground, ground + vh, col);
+		// Sloped terrain in earth tones, then the land-value column rising from
+		// the tile's highest corner.
+		skirts(g, cx, cy, le, ls, lw, COL_EARTH);
+		g.fillStyle(shade(COL_EARTH, slopeShade(hn, he, hs, hw)), 1);
+		surfacePath(g, cx, cy, ln, le, ls, lw);
+		g.fillPath();
+
+		if (valueH > 0) extrudeColumn(g, cx, cy, ground, ground + valueH, col);
 		g.fillStyle(col, 1);
-		diamondPath(g, cx, cy, ground + vh);
+		diamondPath(g, cx, cy, ground + valueH);
 		g.fillPath();
 	}
 }
 
 // ---- Geometry helpers ------------------------------------------------------
+// Tile (x, y)'s screen origin (cx, cy) = ((x-y)*HALF_W, (x+y)*HALF_H) is its
+// NORTH corner (vertex (x, y)) at lift 0. The other corners sit at
+// E = (cx+HALF_W, cy+HALF_H), S = (cx, cy+2*HALF_H), W = (cx-HALF_W, cy+HALF_H);
+// lifts subtract from screen y. This matches `screenToGrid`, so picking and
+// geometry agree.
 
 /**
- * Draw the two visible side faces of a tile column spanning `baseLift` to
- * `topLift` world-pixels above the tile's flat (lift 0) position. Used for both
- * terrain blocks (0 → ground) and buildings (ground → ground + height).
+ * Path the (possibly sloped) top face of a tile, with an independent lift in
+ * world-px at each corner (N, E, S, W).
+ */
+function surfacePath(
+	g: Phaser.GameObjects.Graphics,
+	cx: number,
+	cy: number,
+	ln: number,
+	le: number,
+	ls: number,
+	lw: number,
+): void {
+	g.beginPath();
+	g.moveTo(cx, cy - ln);
+	g.lineTo(cx + HALF_W, cy + HALF_H - le);
+	g.lineTo(cx, cy + 2 * HALF_H - ls);
+	g.lineTo(cx - HALF_W, cy + HALF_H - lw);
+	g.closePath();
+}
+
+/** Flat diamond at a uniform lift (building pads, water planes, column tops). */
+function diamondPath(
+	g: Phaser.GameObjects.Graphics,
+	cx: number,
+	cy: number,
+	lift: number,
+): void {
+	surfacePath(g, cx, cy, lift, lift, lift, lift);
+}
+
+/**
+ * Terrain side skirts: the two viewer-facing faces dropping from the tile's
+ * E/S/W corner lifts down to lift 0. Mostly hidden behind nearer tiles;
+ * visible at the map edge and along water lines.
+ */
+function skirts(
+	g: Phaser.GameObjects.Graphics,
+	cx: number,
+	cy: number,
+	le: number,
+	ls: number,
+	lw: number,
+	color: number,
+): void {
+	if (lw > 0 || ls > 0) {
+		g.fillStyle(shade(color, 0.6), 1);
+		quad(
+			g,
+			cx - HALF_W,
+			cy + HALF_H,
+			cx,
+			cy + 2 * HALF_H,
+			cx,
+			cy + 2 * HALF_H - ls,
+			cx - HALF_W,
+			cy + HALF_H - lw,
+		);
+	}
+	if (ls > 0 || le > 0) {
+		g.fillStyle(shade(color, 0.8), 1);
+		quad(
+			g,
+			cx,
+			cy + 2 * HALF_H,
+			cx + HALF_W,
+			cy + HALF_H,
+			cx + HALF_W,
+			cy + HALF_H - le,
+			cx,
+			cy + 2 * HALF_H - ls,
+		);
+	}
+}
+
+/**
+ * Draw the two visible side faces of a flat-topped column spanning `baseLift`
+ * to `topLift` world-pixels. Used for buildings and foundation pads.
  */
 function extrudeColumn(
 	g: Phaser.GameObjects.Graphics,
@@ -621,41 +906,40 @@ function extrudeColumn(
 	quad(
 		g,
 		cx - HALF_W,
-		cy - baseLift,
-		cx,
 		cy + HALF_H - baseLift,
 		cx,
-		cy + HALF_H - topLift,
+		cy + 2 * HALF_H - baseLift,
+		cx,
+		cy + 2 * HALF_H - topLift,
 		cx - HALF_W,
-		cy - topLift,
+		cy + HALF_H - topLift,
 	);
 	g.fillStyle(shade(top, 0.8), 1);
 	quad(
 		g,
-		cx + HALF_W,
-		cy - baseLift,
 		cx,
+		cy + 2 * HALF_H - baseLift,
+		cx + HALF_W,
 		cy + HALF_H - baseLift,
-		cx,
-		cy + HALF_H - topLift,
 		cx + HALF_W,
-		cy - topLift,
+		cy + HALF_H - topLift,
+		cx,
+		cy + 2 * HALF_H - topLift,
 	);
 }
 
-function diamondPath(
-	g: Phaser.GameObjects.Graphics,
-	cx: number,
-	cy: number,
-	lift: number,
-): void {
-	const yc = cy - lift;
-	g.beginPath();
-	g.moveTo(cx, yc - HALF_H);
-	g.lineTo(cx + HALF_W, yc);
-	g.lineTo(cx, yc + HALF_H);
-	g.lineTo(cx - HALF_W, yc);
-	g.closePath();
+/**
+ * Brightness multiplier for a sloped grass face — corners tilting toward the
+ * upper-left light source brighten, away darken. Flat tiles return 1.
+ */
+function slopeShade(
+	hn: number,
+	he: number,
+	hs: number,
+	hw: number,
+): number {
+	const f = 1 + (hn + hw - he - hs) * SLOPE_SHADE;
+	return Math.max(0.7, Math.min(1.3, f));
 }
 
 function quad(
@@ -723,6 +1007,11 @@ function isLineTool(tool: string): boolean {
 	return tool === "road" || tool === "rail" || tool === "power-line";
 }
 
+/** Whether a tool raises/lowers terrain (single-click, corner-aware). */
+function isTerraformTool(tool: string): boolean {
+	return tool === "terraform-raise" || tool === "terraform-lower";
+}
+
 /** Whether a tool is a civic building (single-click placement, no drag). */
 function isCivicTool(tool: string): boolean {
 	return (
@@ -784,6 +1073,10 @@ function previewColor(tool: string): number {
 			return COL_STADIUM_BLDG;
 		case "demolish":
 			return COL_DEMOLISH;
+		case "water":
+			return COL_WATER;
+		case "drain":
+			return COL_EARTH;
 		default:
 			return COL_CURSOR;
 	}
@@ -895,6 +1188,10 @@ function toolToCommand(tool: string, x: number, y: number): Command | null {
 			return { kind: "place-civic", x, y, civicType: CIVIC_STADIUM };
 		case "demolish":
 			return { kind: "demolish", x, y };
+		case "water":
+			return { kind: "set-water", x, y, place: true };
+		case "drain":
+			return { kind: "set-water", x, y, place: false };
 		default:
 			return null;
 	}

@@ -21,6 +21,17 @@ import { formatDate, useInteraction, useLiveStats } from "./hooks.ts";
 
 // ---- Tool definitions -------------------------------------------------------
 
+const TERRAIN_TOOLS: ReadonlyArray<{
+	id: Tool;
+	label: string;
+	accent: string;
+}> = [
+	{ id: "terraform-raise", label: "Raise Land", accent: "#a16207" },
+	{ id: "terraform-lower", label: "Lower Land", accent: "#78350f" },
+	{ id: "water", label: "Water", accent: "#2563eb" },
+	{ id: "drain", label: "Drain", accent: "#0ea5e9" },
+];
+
 const ZONE_TOOLS: ReadonlyArray<{ id: Tool; label: string; accent: string }> = [
 	{ id: "zone-r-low", label: "R Low (1)", accent: "#22c55e" },
 	{ id: "zone-r-med", label: "R Med (2)", accent: "#16a34a" },
@@ -110,6 +121,28 @@ export function Sidebar({ store, sim }: SidebarProps): React.ReactElement {
 
 	return (
 		<aside id="sidebar">
+			<section>
+				<div className="section-title">Terrain</div>
+				<ToggleButtonGroup
+					selectionMode="single"
+					className="btn-stack"
+					selectedKeys={TERRAIN_TOOLS.some((t) => t.id === tool) ? [tool] : []}
+					onSelectionChange={onToolChange}
+				>
+					{TERRAIN_TOOLS.map((t) => (
+						<ToggleButton
+							key={t.id}
+							id={t.id}
+							className="tool-btn"
+							style={{ borderLeftColor: t.accent }}
+							onPress={blurOnPointerPress}
+						>
+							{t.label}
+						</ToggleButton>
+					))}
+				</ToggleButtonGroup>
+			</section>
+
 			<section>
 				<div className="section-title">Zoning</div>
 				<ToggleButtonGroup

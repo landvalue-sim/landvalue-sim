@@ -18,9 +18,12 @@ import {
 	CIVIC_COST_TABLE,
 	CIVIC_NONE,
 	COST_DEMOLISH,
+	COST_DRAIN_WATER,
+	COST_PLACE_WATER,
 	COST_POWER_LINE,
 	COST_RAIL,
 	COST_ROAD,
+	COST_TERRAFORM,
 	COST_ZONE_HIGH,
 	COST_ZONE_LOW,
 	COST_ZONE_MED,
@@ -35,6 +38,7 @@ import {
 	ZONE_NONE,
 } from "../constants.ts";
 import { invariant } from "../invariant.ts";
+import { setWaterTile, terraformTile } from "../terraform.ts";
 
 // A single rectangle drag can zone an entire grid at once, so the cap is the
 // whole-grid tile count (still a fixed, provable upper bound — NASA rule 2).
@@ -96,6 +100,12 @@ function applyCommand(state: CityState, cmd: Command): void {
 			break;
 		case "demolish":
 			applyDemolish(state, cmd.x, cmd.y);
+			break;
+		case "terraform":
+			applyTerraform(state, cmd.x, cmd.y, cmd.corner, cmd.dir);
+			break;
+		case "set-water":
+			applySetWater(state, cmd.x, cmd.y, cmd.place);
 			break;
 		case "set-tax-rate":
 			applySetTaxRate(state, cmd.sector, cmd.rate);
@@ -208,6 +218,32 @@ function applyDemolish(state: CityState, x: number, y: number): void {
 	charge(state, COST_DEMOLISH);
 
 	clearTile(state, idx);
+}
+
+function applyTerraform(
+	state: CityState,
+	x: number,
+	y: number,
+	corner: number,
+	dir: number,
+): void {
+	if (!canAfford(state, COST_TERRAFORM)) return;
+	if (terraformTile(state, x, y, corner, dir)) {
+		charge(state, COST_TERRAFORM);
+	}
+}
+
+function applySetWater(
+	state: CityState,
+	x: number,
+	y: number,
+	place: boolean,
+): void {
+	const cost = place ? COST_PLACE_WATER : COST_DRAIN_WATER;
+	if (!canAfford(state, cost)) return;
+	if (setWaterTile(state, x, y, place)) {
+		charge(state, cost);
+	}
 }
 
 /** Reset all layers on a single tile to empty land. */

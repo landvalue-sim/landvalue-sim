@@ -25,7 +25,11 @@ export type Tool =
 	| "library"
 	| "park"
 	| "stadium"
-	| "demolish";
+	| "demolish"
+	| "terraform-raise"
+	| "terraform-lower"
+	| "water"
+	| "drain";
 
 export type OverlayMode =
 	| "none"

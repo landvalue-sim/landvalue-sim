@@ -115,6 +115,7 @@ export function buildTestCity(state: CityState): void {
 function buildTestTerrain(state: CityState): void {
 	generateTerrain(state, TEST_CITY_TERRAIN_SEED);
 	state.terrain.fill(TERRAIN_LAND);
+	state.waterLevel.fill(0);
 }
 
 function resetCity(state: CityState): void {
@@ -132,6 +133,8 @@ function resetCity(state: CityState): void {
 	state.traffic.fill(0);
 	state.landValue.fill(0);
 	state.elevation.fill(5);
+	state.vertexHeights.fill(5);
+	state.waterLevel.fill(0);
 	state.power.fill(0);
 	state.waterCoverage.fill(0);
 	state.crime.fill(0);
