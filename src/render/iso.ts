@@ -14,6 +14,9 @@ export const HALF_H = 8;
 /** Vertical world-pixels a building rises per density tier. */
 export const TIER_HEIGHT = 11;
 
+/** Vertical world-pixels of terrain lift per corner-height unit. */
+export const ELEV_HEIGHT = 3;
+
 export interface Point {
 	x: number;
 	y: number;

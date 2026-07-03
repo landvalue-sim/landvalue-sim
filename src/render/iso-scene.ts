@@ -34,7 +34,6 @@ import {
 	DENSITY_HIGH,
 	DENSITY_LOW,
 	DENSITY_MED,
-	ELEVATION_MAX,
 	TERRAIN_WATER,
 	ZONE_COMMERCIAL,
 	ZONE_INDUSTRIAL,
@@ -42,7 +41,8 @@ import {
 	ZONE_RESIDENTIAL,
 } from "../sim/index.ts";
 import { type Point, rectTiles, roadLineTiles } from "./drag.ts";
-import { HALF_H, HALF_W, screenToGrid, TIER_HEIGHT } from "./iso.ts";
+import { ELEV_HEIGHT, HALF_H, HALF_W, TIER_HEIGHT } from "./iso.ts";
+import { pickTile, tileSurfaceHeight } from "./picking.ts";
 
 // ---- Palette (0xRRGGBB) ----------------------------------------------------
 
@@ -88,11 +88,10 @@ const COL_FIRE_OV = 0xff4500;
 const CIVIC_HEIGHT = 3;
 
 // ---- Terrain extrusion -----------------------------------------------------
-// World-pixels of vertical lift per corner-height unit (0..ELEVATION_MAX).
 // Tiles are RCT-style: each of the four diamond corners has its own height
-// from `city.vertexHeights`, so tile tops render as sloped faces. Water tiles
-// render as a flat plane at their per-tile `waterLevel`.
-const ELEV_HEIGHT = 3;
+// from `city.vertexHeights` (lifted ELEV_HEIGHT world-px per unit), so tile
+// tops render as sloped faces. Water tiles render as a flat plane at their
+// per-tile `waterLevel`.
 const COL_EARTH = 0x6b4f2a; // dirt sides exposed under raised terrain
 // Directional shading strength for sloped grass (per unit of corner tilt).
 const SLOPE_SHADE = 0.07;
@@ -287,30 +286,15 @@ export class IsoScene extends Phaser.Scene {
 	}
 
 	/**
-	 * Elevation-aware picking: probe each height plane from the top down and
-	 * take the first tile whose surface (highest corner, or water plane) sits at
-	 * that height — the front-most surface under the cursor. Also records the
-	 * fractional in-tile position for corner-precision terraforming.
+	 * Elevation-aware picking: front-most surface under the cursor (see
+	 * `pickTile`). Also records the fractional in-tile position for
+	 * corner-precision terraforming.
 	 */
 	private pointerTile(pointer: Phaser.Input.Pointer): { x: number; y: number } {
-		const sx = pointer.worldX;
-		const sy = pointer.worldY;
-		for (let e = ELEVATION_MAX; e >= 0; e--) {
-			const gpt = screenToGrid(sx, sy + e * ELEV_HEIGHT);
-			const tx = Math.floor(gpt.x);
-			const ty = Math.floor(gpt.y);
-			if (!this.inBounds(tx, ty)) continue;
-			if (this.tileSurfaceHeight(tx, ty) !== e) continue;
-			this.hoverFx = gpt.x - tx;
-			this.hoverFy = gpt.y - ty;
-			return { x: tx, y: ty };
-		}
-		const gpt = screenToGrid(sx, sy);
-		const tx = Math.floor(gpt.x);
-		const ty = Math.floor(gpt.y);
-		this.hoverFx = gpt.x - tx;
-		this.hoverFy = gpt.y - ty;
-		return { x: tx, y: ty };
+		const pick = pickTile(this.city, pointer.worldX, pointer.worldY);
+		this.hoverFx = pick.fx;
+		this.hoverFy = pick.fy;
+		return { x: pick.x, y: pick.y };
 	}
 
 	/** Which part of the hovered tile a terraform click targets. */
@@ -519,24 +503,9 @@ export class IsoScene extends Phaser.Scene {
 		return this.city.vertexHeights[vy * (this.city.width + 1) + vx] ?? 0;
 	}
 
-	/** Height of the tile's surface: its water plane, or its highest corner. */
-	private tileSurfaceHeight(x: number, y: number): number {
-		const city = this.city;
-		const idx = y * city.width + x;
-		if (city.terrain[idx] === TERRAIN_WATER) return city.waterLevel[idx] ?? 0;
-		const vw = city.width + 1;
-		const heights = city.vertexHeights;
-		return Math.max(
-			heights[y * vw + x] ?? 0,
-			heights[y * vw + x + 1] ?? 0,
-			heights[(y + 1) * vw + x + 1] ?? 0,
-			heights[(y + 1) * vw + x] ?? 0,
-		);
-	}
-
 	/** World-px lift of the flat pad that structures on tile (x, y) sit on. */
 	private tileBaseLift(x: number, y: number): number {
-		return this.tileSurfaceHeight(x, y) * ELEV_HEIGHT;
+		return tileSurfaceHeight(this.city, x, y) * ELEV_HEIGHT;
 	}
 
 	/** World-space height of a tile's top surface in the current overlay mode. */
