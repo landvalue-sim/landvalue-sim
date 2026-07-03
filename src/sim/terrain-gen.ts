@@ -4,9 +4,14 @@
  *
  * Noise is generated on the (width+1) x (height+1) *vertex* grid, quantized to
  * integer corner heights, then slope-limited so adjacent vertices differ by at
- * most 1 (every tile is flat or a unit slope). Per-tile layers are derived
- * from the corners: `elevation` = min corner, and tiles whose corners all sit
- * at or below `SEA_LEVEL` are flooded with a flat water surface.
+ * most 1 (every tile is flat or a unit slope). Land heights are eased
+ * quadratically so most terrain sits within a level or two of the shoreline
+ * (buildable plains) with occasional hills up to `GEN_LAND_RELIEF` above it.
+ * Shoreline vertices are then snapped up to exactly `SEA_LEVEL` so coastal
+ * tiles slope down into the water surface rather than dipping beneath the
+ * neighboring water plane. Per-tile layers are derived from the corners:
+ * `elevation` = min corner, and tiles whose corners all sit at or below
+ * `SEA_LEVEL` are flooded with a flat water surface.
  *
  * Runs once at city creation (cold path), not per tick.
  */
@@ -14,28 +19,36 @@
 import type { CityState } from "./city-state.ts";
 import {
 	ELEVATION_MAX,
+	GEN_LAND_RELIEF,
 	MAX_GRID_SIZE,
 	SEA_LEVEL,
 	TERRAIN_LAND,
 	TERRAIN_WATER,
+	WATER_THRESHOLD,
 } from "./constants.ts";
 import { createPrng, nextFloat, type PrngState } from "./prng.ts";
 
 // The noise grids cover vertices, not tiles: one more sample per axis.
 const MAX_VERTEX_SIDE = MAX_GRID_SIZE + 1;
 
-// Scratch array for coarse noise grids. Max coarse grid size for scale=4
-// on a 257-wide vertex grid: ceil(257/4)+2 = 67 -> 67*67 = 4489.
+// Scratch array for coarse noise grids, sized for the smallest scale the
+// octave table may use (4) on a 257-wide vertex grid: ceil(257/4)+2 = 67.
 const MAX_COARSE_SIDE = Math.ceil(MAX_VERTEX_SIDE / 4) + 2;
 const coarseGrid = new Float64Array(MAX_COARSE_SIDE * MAX_COARSE_SIDE);
 
-// Octave configuration: [scale, weight] pairs.
-const OCTAVE_SCALES = [16, 8, 4] as const;
-const OCTAVE_WEIGHTS = [0.5, 0.3, 0.2] as const;
+// Octave configuration: [scale, weight] pairs. Large scales dominate so maps
+// read as a few broad landforms; the light fine octave adds texture without
+// making the terrain bumpy.
+const OCTAVE_SCALES = [32, 16, 8] as const;
+const OCTAVE_WEIGHTS = [0.55, 0.3, 0.15] as const;
 const OCTAVE_COUNT = 3;
 
 // Scratch for accumulated floating-point heights before quantization.
 const accumScratch = new Float64Array(MAX_VERTEX_SIDE * MAX_VERTEX_SIDE);
+
+// Histogram scratch for the water-cutoff quantile.
+const QUANTILE_BINS = 256;
+const binCounts = new Uint32Array(QUANTILE_BINS);
 
 /** Generate terrain (corner heights + water) for a freshly created city. */
 export function generateTerrain(state: CityState, seed: number): void {
@@ -73,13 +86,104 @@ export function generateTerrain(state: CityState, seed: number): void {
 		return;
 	}
 
+	const waterCut = waterCutoff(vertexCount, minE, range);
 	for (let i = 0; i < vertexCount; i++) {
 		const normalized = ((accumScratch[i] ?? 0) - minE) / range;
-		vertexHeights[i] = Math.floor(normalized * ELEVATION_MAX);
+		if (normalized < waterCut) {
+			// Seabed: spread strictly below the waterline.
+			vertexHeights[i] = Math.floor((normalized / waterCut) * SEA_LEVEL);
+		} else {
+			// Land: quadratic easing keeps most terrain within a level or two of
+			// the shoreline, rising to GEN_LAND_RELIEF above it at the peaks.
+			const t = (normalized - waterCut) / (1 - waterCut);
+			vertexHeights[i] = SEA_LEVEL + 1 + Math.floor(t * t * GEN_LAND_RELIEF);
+		}
 	}
 
 	limitSlopes(vertexHeights, vw, vh);
+	snapShoreline(state);
+	// Snapping can leave a >1 step between a raised shore vertex and the seabed
+	// next to it; re-limiting restores unit slopes (it only raises, and never
+	// past SEA_LEVEL here, so no water tile flips to land).
+	limitSlopes(vertexHeights, vw, vh);
 	deriveTileLayers(state);
+}
+
+/**
+ * Water cutoff as the WATER_THRESHOLD quantile of the accumulated vertex
+ * noise (via a fixed-bin histogram), so every seed devotes a similar share of
+ * the map to water regardless of how the octaves happen to distribute. A
+ * fixed cutoff on the normalized value drifts badly seed-to-seed because
+ * smooth noise clusters around the middle of its range.
+ */
+function waterCutoff(vertexCount: number, minE: number, range: number): number {
+	binCounts.fill(0);
+	for (let i = 0; i < vertexCount; i++) {
+		const normalized = ((accumScratch[i] ?? 0) - minE) / range;
+		let bin = Math.floor(normalized * QUANTILE_BINS);
+		if (bin >= QUANTILE_BINS) bin = QUANTILE_BINS - 1;
+		binCounts[bin] = (binCounts[bin] ?? 0) + 1;
+	}
+	const target = WATER_THRESHOLD * vertexCount;
+	let cumulative = 0;
+	for (let b = 0; b < QUANTILE_BINS - 1; b++) {
+		cumulative += binCounts[b] ?? 0;
+		if (cumulative >= target) return (b + 1) / QUANTILE_BINS;
+	}
+	return (QUANTILE_BINS - 1) / QUANTILE_BINS;
+}
+
+/**
+ * Raise every below-sea-level vertex that touches a land tile up to exactly
+ * SEA_LEVEL, so shorelines descend into the water surface. Without this, a
+ * diagonal-incline land tile can carry one corner below SEA_LEVEL, and the
+ * neighboring water plane (flat at SEA_LEVEL) stands above it as a visible
+ * water-block wall. Raising a corner to SEA_LEVEL cannot lift a water tile's
+ * highest corner past SEA_LEVEL, so tile classification is unaffected and a
+ * single sweep suffices.
+ */
+function snapShoreline(state: CityState): void {
+	const { width, height, vertexHeights } = state;
+	const vw = width + 1;
+	const vh = height + 1;
+	for (let vy = 0; vy < vh; vy++) {
+		for (let vx = 0; vx < vw; vx++) {
+			const i = vy * vw + vx;
+			if ((vertexHeights[i] ?? 0) >= SEA_LEVEL) continue;
+			if (touchesLandTile(vertexHeights, vw, width, height, vx, vy)) {
+				vertexHeights[i] = SEA_LEVEL;
+			}
+		}
+	}
+}
+
+/**
+ * Whether vertex (vx, vy) is a corner of at least one land tile (a tile whose
+ * highest corner exceeds SEA_LEVEL).
+ */
+function touchesLandTile(
+	heights: Uint8Array,
+	vw: number,
+	width: number,
+	height: number,
+	vx: number,
+	vy: number,
+): boolean {
+	for (let dy = -1; dy <= 0; dy++) {
+		for (let dx = -1; dx <= 0; dx++) {
+			const tx = vx + dx;
+			const ty = vy + dy;
+			if (tx < 0 || ty < 0 || tx >= width || ty >= height) continue;
+			const maxC = Math.max(
+				heights[ty * vw + tx] ?? 0,
+				heights[ty * vw + tx + 1] ?? 0,
+				heights[(ty + 1) * vw + tx + 1] ?? 0,
+				heights[(ty + 1) * vw + tx] ?? 0,
+			);
+			if (maxC > SEA_LEVEL) return true;
+		}
+	}
+	return false;
 }
 
 /**

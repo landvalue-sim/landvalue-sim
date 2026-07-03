@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createCity } from "./city-state.ts";
-import { SEA_LEVEL, TERRAIN_WATER } from "./constants.ts";
+import { GEN_LAND_RELIEF, SEA_LEVEL, TERRAIN_WATER } from "./constants.ts";
 import { generateTerrain } from "./terrain-gen.ts";
 
 const W = 64;
@@ -64,5 +64,38 @@ describe("generateTerrain", () => {
 		}
 		// The default seed should produce some water so the map is interesting.
 		expect(waterTiles).toBeGreaterThan(0);
+	});
+
+	it("keeps every land-tile corner at or above the water surface", () => {
+		// A land corner below SEA_LEVEL would sit under the flat water plane of a
+		// neighboring water tile, rendering as a water-block wall on the shore.
+		const city = createCity({ width: W, height: H, seed: 1 });
+		generateTerrain(city, 123);
+		const vw = W + 1;
+		const heights = city.vertexHeights;
+		for (let y = 0; y < H; y++) {
+			for (let x = 0; x < W; x++) {
+				if (city.terrain[y * W + x] === TERRAIN_WATER) continue;
+				const minC = Math.min(
+					heights[y * vw + x] ?? 0,
+					heights[y * vw + x + 1] ?? 0,
+					heights[(y + 1) * vw + x + 1] ?? 0,
+					heights[(y + 1) * vw + x] ?? 0,
+				);
+				expect(minC).toBeGreaterThanOrEqual(SEA_LEVEL);
+			}
+		}
+	});
+
+	it("keeps generated relief within GEN_LAND_RELIEF of the shoreline", () => {
+		const city = createCity({ width: W, height: H, seed: 1 });
+		generateTerrain(city, 123);
+		const vertexCount = (W + 1) * (H + 1);
+		let maxH = 0;
+		for (let i = 0; i < vertexCount; i++) {
+			const h = city.vertexHeights[i] ?? 0;
+			if (h > maxH) maxH = h;
+		}
+		expect(maxH).toBeLessThanOrEqual(SEA_LEVEL + 1 + GEN_LAND_RELIEF);
 	});
 });

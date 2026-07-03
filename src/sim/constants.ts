@@ -268,6 +268,10 @@ export const WATER_THRESHOLD = 0.35;
 export const ELEVATION_MAX = 15;
 // Generated water fills every tile fully at or below this corner height.
 export const SEA_LEVEL = Math.floor(WATER_THRESHOLD * ELEVATION_MAX);
+// Highest generated land rises this far above the shoreline. Kept well below
+// ELEVATION_MAX so fresh maps are mostly buildable plains; players can still
+// terraform up to ELEVATION_MAX by hand.
+export const GEN_LAND_RELIEF = 5;
 
 // ---------------------------------------------------------------------------
 // Calendar
