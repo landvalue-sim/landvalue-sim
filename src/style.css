@@ -90,6 +90,145 @@ body {
 	outline-offset: 1px;
 }
 
+/* ---- Category flyout (branching tool menu) ---- */
+
+.category-stack {
+	display: flex;
+	flex-direction: column;
+}
+
+.category-btn {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	padding: 8px 10px;
+	margin-bottom: 3px;
+	background: #111827;
+	border: 1px solid #374151;
+	color: #d1d5db;
+	cursor: pointer;
+	border-radius: 4px;
+	text-align: left;
+	font-size: 12.5px;
+	font-family: inherit;
+}
+
+.category-btn:hover,
+.category-btn[data-hovered] {
+	background: #1e293b;
+	border-color: #4b5563;
+}
+
+.category-btn[data-pressed] {
+	background: #172033;
+}
+
+.category-btn[aria-expanded="true"] {
+	border-color: #60a5fa;
+}
+
+.category-btn.is-active {
+	background: #1e3a5f;
+	border-color: #60a5fa;
+	color: #fff;
+}
+
+.category-btn[data-focus-visible] {
+	outline: 2px solid #93c5fd;
+	outline-offset: 1px;
+}
+
+.category-icon {
+	width: 18px;
+	text-align: center;
+	font-size: 14px;
+	line-height: 1;
+}
+
+.category-label {
+	flex: 1;
+}
+
+.category-caret {
+	color: #6b7280;
+	font-size: 10px;
+	transition: transform 0.12s ease;
+}
+
+.category-btn.is-active .category-caret {
+	color: #93c5fd;
+}
+
+.category-btn[aria-expanded="true"] .category-caret {
+	transform: translateX(2px);
+	color: #93c5fd;
+}
+
+/* Demolish is a direct button, not a flyout — give it a destructive accent. */
+.demolish-btn.is-active {
+	background: #7f1d1d;
+	border-color: #ef4444;
+	color: #fecaca;
+}
+
+/* The flyout popover renders in a portal at document root. */
+.tool-flyout {
+	background: #1f2937;
+	border: 1px solid #374151;
+	border-radius: 6px;
+	padding: 6px;
+	min-width: 152px;
+	box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+
+.tool-flyout[data-entering] {
+	animation: flyout-in 0.1s ease;
+}
+
+@keyframes flyout-in {
+	from {
+		opacity: 0;
+		transform: translateX(-4px);
+	}
+}
+
+.tool-flyout-menu {
+	display: flex;
+	flex-direction: column;
+	outline: none;
+}
+
+.flyout-item {
+	display: block;
+	padding: 7px 10px;
+	margin-bottom: 3px;
+	background: #111827;
+	border: 1px solid #374151;
+	border-left: 3px solid transparent;
+	color: #d1d5db;
+	cursor: pointer;
+	border-radius: 4px;
+	font-size: 12.5px;
+	outline: none;
+}
+
+.flyout-item:last-child {
+	margin-bottom: 0;
+}
+
+.flyout-item[data-hovered],
+.flyout-item[data-focused] {
+	background: #1e293b;
+	border-color: #4b5563;
+}
+
+.flyout-item.is-active {
+	background: #1e3a5f;
+	border-color: #60a5fa;
+	color: #fff;
+}
+
 /* ---- Click & drag switch ---- */
 
 .drag-switch {

@@ -5,7 +5,12 @@
  */
 
 import {
+	Button,
 	type Key,
+	Menu,
+	MenuItem,
+	MenuTrigger,
+	Popover,
 	type PressEvent,
 	Switch,
 	ToggleButton,
@@ -21,63 +26,89 @@ import { formatDate, useInteraction, useLiveStats } from "./hooks.ts";
 
 // ---- Tool definitions -------------------------------------------------------
 
-const TERRAIN_TOOLS: ReadonlyArray<{
+interface ToolDef {
 	id: Tool;
 	label: string;
 	accent: string;
-}> = [
-	{ id: "terraform-raise", label: "Raise Land", accent: "#a16207" },
-	{ id: "terraform-lower", label: "Lower Land", accent: "#78350f" },
-	{ id: "water", label: "Water", accent: "#2563eb" },
-	{ id: "drain", label: "Drain", accent: "#0ea5e9" },
-];
+}
 
-const ZONE_TOOLS: ReadonlyArray<{ id: Tool; label: string; accent: string }> = [
-	{ id: "zone-r-low", label: "R Low (1)", accent: "#22c55e" },
-	{ id: "zone-r-med", label: "R Med (2)", accent: "#16a34a" },
-	{ id: "zone-r-high", label: "R High (3)", accent: "#15803d" },
-	{ id: "zone-c-low", label: "C Low (4)", accent: "#60a5fa" },
-	{ id: "zone-c-med", label: "C Med (5)", accent: "#3b82f6" },
-	{ id: "zone-c-high", label: "C High (6)", accent: "#2563eb" },
-	{ id: "zone-i-low", label: "I Low (7)", accent: "#facc15" },
-	{ id: "zone-i-med", label: "I Med (8)", accent: "#eab308" },
-	{ id: "zone-i-high", label: "I High (9)", accent: "#ca8a04" },
-];
-
-const INFRA_TOOLS: ReadonlyArray<{ id: Tool; label: string; accent: string }> =
-	[
-		{ id: "road", label: "Road (R)", accent: "#6b7280" },
-		{ id: "rail", label: "Rail (T)", accent: "#71717a" },
-		{ id: "power-line", label: "Power Line (P)", accent: "#fbbf24" },
-	];
-
-const CIVIC_TOOLS: ReadonlyArray<{ id: Tool; label: string; accent: string }> =
-	[
-		{ id: "coal-plant", label: "Coal Plant", accent: "#78350f" },
-		{ id: "solar-plant", label: "Solar Plant", accent: "#fde047" },
-		{ id: "water-pump", label: "Water Pump", accent: "#38bdf8" },
-	];
-
-const SERVICE_TOOLS: ReadonlyArray<{
-	id: Tool;
+interface ToolCategory {
+	id: string;
 	label: string;
-	accent: string;
-}> = [
-	{ id: "police", label: "Police", accent: "#1d4ed8" },
-	{ id: "fire-station", label: "Fire Stn", accent: "#dc2626" },
-	{ id: "hospital", label: "Hospital", accent: "#f472b6" },
-	{ id: "school", label: "School", accent: "#fbbf24" },
-	{ id: "college", label: "College", accent: "#7c3aed" },
-	{ id: "library", label: "Library", accent: "#ea580c" },
-	{ id: "park", label: "Park", accent: "#4ade80" },
-	{ id: "stadium", label: "Stadium", accent: "#9ca3af" },
-];
+	icon: string;
+	tools: ReadonlyArray<ToolDef>;
+}
 
-const DEMOLISH_TOOL: ReadonlyArray<{
-	id: Tool;
-	label: string;
-	accent: string;
-}> = [{ id: "demolish", label: "Demolish (X)", accent: "#ef4444" }];
+/**
+ * The build tools grouped into SimCity-style categories. Each category is a
+ * flyout: the sidebar shows the category button and its tools appear in a
+ * popover menu to the right. Demolish is a direct button (see below), not a
+ * category, since it holds a single tool.
+ */
+const TOOL_CATEGORIES: ReadonlyArray<ToolCategory> = [
+	{
+		id: "terrain",
+		label: "Terrain",
+		icon: "⛰️",
+		tools: [
+			{ id: "terraform-raise", label: "Raise Land", accent: "#a16207" },
+			{ id: "terraform-lower", label: "Lower Land", accent: "#78350f" },
+			{ id: "water", label: "Water", accent: "#2563eb" },
+			{ id: "drain", label: "Drain", accent: "#0ea5e9" },
+		],
+	},
+	{
+		id: "zoning",
+		label: "Zoning",
+		icon: "🏘️",
+		tools: [
+			{ id: "zone-r-low", label: "R Low (1)", accent: "#22c55e" },
+			{ id: "zone-r-med", label: "R Med (2)", accent: "#16a34a" },
+			{ id: "zone-r-high", label: "R High (3)", accent: "#15803d" },
+			{ id: "zone-c-low", label: "C Low (4)", accent: "#60a5fa" },
+			{ id: "zone-c-med", label: "C Med (5)", accent: "#3b82f6" },
+			{ id: "zone-c-high", label: "C High (6)", accent: "#2563eb" },
+			{ id: "zone-i-low", label: "I Low (7)", accent: "#facc15" },
+			{ id: "zone-i-med", label: "I Med (8)", accent: "#eab308" },
+			{ id: "zone-i-high", label: "I High (9)", accent: "#ca8a04" },
+		],
+	},
+	{
+		id: "infrastructure",
+		label: "Infrastructure",
+		icon: "🛣️",
+		tools: [
+			{ id: "road", label: "Road (R)", accent: "#6b7280" },
+			{ id: "rail", label: "Rail (T)", accent: "#71717a" },
+			{ id: "power-line", label: "Power Line (P)", accent: "#fbbf24" },
+		],
+	},
+	{
+		id: "utilities",
+		label: "Utilities",
+		icon: "⚡",
+		tools: [
+			{ id: "coal-plant", label: "Coal Plant", accent: "#78350f" },
+			{ id: "solar-plant", label: "Solar Plant", accent: "#fde047" },
+			{ id: "water-pump", label: "Water Pump", accent: "#38bdf8" },
+		],
+	},
+	{
+		id: "services",
+		label: "Services",
+		icon: "🚒",
+		tools: [
+			{ id: "police", label: "Police", accent: "#1d4ed8" },
+			{ id: "fire-station", label: "Fire Stn", accent: "#dc2626" },
+			{ id: "hospital", label: "Hospital", accent: "#f472b6" },
+			{ id: "school", label: "School", accent: "#fbbf24" },
+			{ id: "college", label: "College", accent: "#7c3aed" },
+			{ id: "library", label: "Library", accent: "#ea580c" },
+			{ id: "park", label: "Park", accent: "#4ade80" },
+			{ id: "stadium", label: "Stadium", accent: "#9ca3af" },
+		],
+	},
+];
 
 const OVERLAYS: ReadonlyArray<{ id: OverlayMode; label: string }> = [
 	{ id: "none", label: "None" },
@@ -114,152 +145,31 @@ export function Sidebar({ store, sim }: SidebarProps): React.ReactElement {
 		return null;
 	}
 
-	function onToolChange(keys: Set<Key>): void {
-		const k = firstKey(keys);
-		store.setTool((k as Tool | null) ?? "none");
-	}
-
 	return (
 		<aside id="sidebar">
 			<section>
-				<div className="section-title">Terrain</div>
-				<ToggleButtonGroup
-					selectionMode="single"
-					className="btn-stack"
-					selectedKeys={TERRAIN_TOOLS.some((t) => t.id === tool) ? [tool] : []}
-					onSelectionChange={onToolChange}
-				>
-					{TERRAIN_TOOLS.map((t) => (
-						<ToggleButton
-							key={t.id}
-							id={t.id}
-							className="tool-btn"
-							style={{ borderLeftColor: t.accent }}
-							onPress={blurOnPointerPress}
-						>
-							{t.label}
-						</ToggleButton>
+				<div className="section-title">Build</div>
+				<div className="category-stack">
+					{TOOL_CATEGORIES.map((c) => (
+						<CategoryFlyout
+							key={c.id}
+							category={c}
+							activeTool={tool}
+							onSelect={store.setTool}
+						/>
 					))}
-				</ToggleButtonGroup>
-			</section>
-
-			<section>
-				<div className="section-title">Zoning</div>
-				<ToggleButtonGroup
-					selectionMode="single"
-					className="btn-stack"
-					selectedKeys={tool.startsWith("zone-") ? [tool] : []}
-					onSelectionChange={onToolChange}
-				>
-					{ZONE_TOOLS.map((t) => (
-						<ToggleButton
-							key={t.id}
-							id={t.id}
-							className="tool-btn"
-							style={{ borderLeftColor: t.accent }}
-							onPress={blurOnPointerPress}
-						>
-							{t.label}
-						</ToggleButton>
-					))}
-				</ToggleButtonGroup>
-			</section>
-
-			<section>
-				<div className="section-title">Infrastructure</div>
-				<ToggleButtonGroup
-					selectionMode="single"
-					className="btn-stack"
-					selectedKeys={
-						tool === "road" || tool === "rail" || tool === "power-line"
-							? [tool]
-							: []
-					}
-					onSelectionChange={onToolChange}
-				>
-					{INFRA_TOOLS.map((t) => (
-						<ToggleButton
-							key={t.id}
-							id={t.id}
-							className="tool-btn"
-							style={{ borderLeftColor: t.accent }}
-							onPress={blurOnPointerPress}
-						>
-							{t.label}
-						</ToggleButton>
-					))}
-				</ToggleButtonGroup>
-			</section>
-
-			<section>
-				<div className="section-title">Utilities</div>
-				<ToggleButtonGroup
-					selectionMode="single"
-					className="btn-stack"
-					selectedKeys={
-						tool === "coal-plant" ||
-						tool === "solar-plant" ||
-						tool === "water-pump"
-							? [tool]
-							: []
-					}
-					onSelectionChange={onToolChange}
-				>
-					{CIVIC_TOOLS.map((t) => (
-						<ToggleButton
-							key={t.id}
-							id={t.id}
-							className="tool-btn"
-							style={{ borderLeftColor: t.accent }}
-							onPress={blurOnPointerPress}
-						>
-							{t.label}
-						</ToggleButton>
-					))}
-				</ToggleButtonGroup>
-			</section>
-
-			<section>
-				<div className="section-title">Services</div>
-				<ToggleButtonGroup
-					selectionMode="single"
-					className="btn-stack"
-					selectedKeys={SERVICE_TOOLS.some((t) => t.id === tool) ? [tool] : []}
-					onSelectionChange={onToolChange}
-				>
-					{SERVICE_TOOLS.map((t) => (
-						<ToggleButton
-							key={t.id}
-							id={t.id}
-							className="tool-btn"
-							style={{ borderLeftColor: t.accent }}
-							onPress={blurOnPointerPress}
-						>
-							{t.label}
-						</ToggleButton>
-					))}
-				</ToggleButtonGroup>
-			</section>
-
-			<section>
-				<ToggleButtonGroup
-					selectionMode="single"
-					className="btn-stack"
-					selectedKeys={tool === "demolish" ? [tool] : []}
-					onSelectionChange={onToolChange}
-				>
-					{DEMOLISH_TOOL.map((t) => (
-						<ToggleButton
-							key={t.id}
-							id={t.id}
-							className="tool-btn"
-							style={{ borderLeftColor: t.accent }}
-							onPress={blurOnPointerPress}
-						>
-							{t.label}
-						</ToggleButton>
-					))}
-				</ToggleButtonGroup>
+					<Button
+						className={`category-btn demolish-btn${
+							tool === "demolish" ? " is-active" : ""
+						}`}
+						onPress={() => store.toggleTool("demolish")}
+					>
+						<span className="category-icon" aria-hidden="true">
+							🚜
+						</span>
+						<span className="category-label">Demolish (X)</span>
+					</Button>
+				</div>
 				<Switch
 					className="drag-switch"
 					isSelected={dragEnabled}
@@ -341,6 +251,54 @@ export function Sidebar({ store, sim }: SidebarProps): React.ReactElement {
 
 			<DevPanel sim={sim} />
 		</aside>
+	);
+}
+
+/**
+ * A single category button that reveals its tools in a popover flyout to the
+ * right (SimCity-style branching). Selecting a tool arms it and closes the
+ * flyout; the button stays highlighted while one of its tools is active.
+ */
+function CategoryFlyout({
+	category,
+	activeTool,
+	onSelect,
+}: {
+	category: ToolCategory;
+	activeTool: Tool;
+	onSelect: (tool: Tool) => void;
+}): React.ReactElement {
+	const isActive = category.tools.some((t) => t.id === activeTool);
+	return (
+		<MenuTrigger>
+			<Button className={`category-btn${isActive ? " is-active" : ""}`}>
+				<span className="category-icon" aria-hidden="true">
+					{category.icon}
+				</span>
+				<span className="category-label">{category.label}</span>
+				<span className="category-caret" aria-hidden="true">
+					▸
+				</span>
+			</Button>
+			<Popover className="tool-flyout" placement="right top" offset={4}>
+				<Menu
+					className="tool-flyout-menu"
+					aria-label={category.label}
+					onAction={(key) => onSelect(key as Tool)}
+				>
+					{category.tools.map((t) => (
+						<MenuItem
+							key={t.id}
+							id={t.id}
+							className={`flyout-item${t.id === activeTool ? " is-active" : ""}`}
+							style={{ borderLeftColor: t.accent }}
+						>
+							{t.label}
+						</MenuItem>
+					))}
+				</Menu>
+			</Popover>
+		</MenuTrigger>
 	);
 }
 
