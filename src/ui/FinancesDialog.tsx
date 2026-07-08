@@ -23,6 +23,7 @@ import type { SimClient } from "../app/sim-client.ts";
 import {
 	BOND_AMOUNT,
 	BOND_MONTHLY_PAYMENT,
+	DAYS_PER_WEEK,
 	MAX_BONDS,
 	MAX_TAX_RATE,
 } from "../sim/index.ts";
@@ -79,7 +80,7 @@ function FinancesPanel({
 				</span>
 			</div>
 
-			<div className="fin-section-title">Budget (per tick)</div>
+			<div className="fin-section-title">Budget (per week)</div>
 			<div className="fin-table">
 				<FinRow label="Property tax" value={stats.revenue} sign="+" />
 				<FinRow
@@ -99,7 +100,7 @@ function FinancesPanel({
 					<span>Net</span>
 					<span className={net >= 0 ? "pos" : "neg"}>
 						{net >= 0 ? "+" : "\u2212"}
-						{Math.abs(net).toFixed(1)}/tick
+						{Math.abs(net).toFixed(1)}/wk
 					</span>
 				</div>
 			</div>
@@ -145,8 +146,9 @@ function FinancesPanel({
 
 			<div className="fin-section-title">Bonds</div>
 			<p className="fin-hint">
-				Issue a ${BOND_AMOUNT.toLocaleString()} bond (${BOND_MONTHLY_PAYMENT}/mo
-				for {MAX_BONDS * 12} months max). Up to {MAX_BONDS} bonds.
+				Issue a ${BOND_AMOUNT.toLocaleString()} bond ($
+				{BOND_MONTHLY_PAYMENT * DAYS_PER_WEEK}/wk until repaid). Up to{" "}
+				{MAX_BONDS} bonds.
 			</p>
 			<Button
 				className="finances-btn"
@@ -200,7 +202,7 @@ function FinRow({
 			<span>{label}</span>
 			<span className={value >= 0 ? "pos" : "neg"}>
 				{sign}
-				{Math.abs(value).toFixed(1)}/tick
+				{Math.abs(value).toFixed(1)}/wk
 			</span>
 		</div>
 	);

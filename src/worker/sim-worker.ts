@@ -38,9 +38,10 @@ import {
 } from "../sim/index.ts";
 
 // Milliseconds per sim tick at each speed level (index = speed). 0 = paused.
-const TICK_INTERVALS: readonly [number, number, number, number] = [
-	0, 250, 83, 33,
-];
+// Index 4 (Normal) keeps the historical 250 ms cadence; 7 (Fastest) runs the
+// sim about as fast as the ~60 Hz driver allows ("real time").
+// slowest, slower, slow, normal, fast, faster, fastest
+const TICK_INTERVALS: readonly number[] = [0, 1200, 700, 450, 250, 130, 60, 20];
 const MAX_TICKS_PER_STEP = 10;
 const DRIVER_INTERVAL_MS = 16; // ~60 Hz accumulator cadence
 const STATS_INTERVAL_MS = 200; // dev panel refresh cadence
@@ -50,7 +51,7 @@ const ctx = self as DedicatedWorkerGlobalScope;
 // ---- Mutable worker state (single owner, this thread only) -----------------
 
 let city: CityState | null = null;
-let speed: Speed = 1;
+let speed: Speed = 4; // Normal
 let accumulator = 0;
 let lastTime = 0;
 let lastStatsTime = 0;

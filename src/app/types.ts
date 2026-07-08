@@ -44,4 +44,6 @@ export type OverlayMode =
 	| "education"
 	| "health";
 
-export type Speed = 0 | 1 | 2 | 3;
+// Sim speed: 0 = paused, then seven ascending tiers (slowest … fastest),
+// mirroring the Cities: Skylines / Stellaris speed ladder.
+export type Speed = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;

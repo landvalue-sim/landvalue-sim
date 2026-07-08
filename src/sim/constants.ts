@@ -277,6 +277,12 @@ export const GEN_LAND_RELIEF = 5;
 // Calendar
 // ---------------------------------------------------------------------------
 export const START_YEAR = 1900;
+// One tick advances the sim by one in-game day. Months and years use a fixed
+// 30-day / 360-day calendar (no variable month lengths) so the date math stays
+// trivial and deterministic. Public finance settles once per 7-day week.
+export const DAYS_PER_WEEK = 7;
+export const DAYS_PER_MONTH = 30;
+export const DAYS_PER_YEAR = 360;
 
 // ---------------------------------------------------------------------------
 // Aggregate state layout (indices into Float64Array)
@@ -293,7 +299,7 @@ export const AGG = {
 	TOTAL_POP: 8,
 	TOTAL_C_JOBS: 9,
 	TOTAL_I_JOBS: 10,
-	// Last tick's public-finance breakdown (per tick), for the finances UI.
+	// Last weekly settlement's public-finance breakdown, for the finances UI.
 	REVENUE: 11,
 	SERVICE_COST: 12,
 	ROAD_COST: 13,

@@ -124,11 +124,18 @@ const OVERLAYS: ReadonlyArray<{ id: OverlayMode; label: string }> = [
 	{ id: "health", label: "Health" },
 ];
 
-const SPEEDS: ReadonlyArray<{ id: Speed; label: string; aria: string }> = [
-	{ id: 0, label: "\u23F8", aria: "Pause" },
-	{ id: 1, label: "\u25B6", aria: "Normal speed" },
-	{ id: 2, label: "\u25B6\u25B6", aria: "Fast" },
-	{ id: 3, label: "\u25B6\u25B6\u25B6", aria: "Fastest" },
+// Pause plus seven ascending tiers (Cities: Skylines / Stellaris style). The
+// numeral is the compact button face; `name` is the accessible label and the
+// caption shown beneath the row.
+const SPEEDS: ReadonlyArray<{ id: Speed; label: string; name: string }> = [
+	{ id: 0, label: "\u23F8", name: "Paused" },
+	{ id: 1, label: "1", name: "Slowest" },
+	{ id: 2, label: "2", name: "Slower" },
+	{ id: 3, label: "3", name: "Slow" },
+	{ id: 4, label: "4", name: "Normal" },
+	{ id: 5, label: "5", name: "Fast" },
+	{ id: 6, label: "6", name: "Faster" },
+	{ id: 7, label: "7", name: "Fastest" },
 ];
 
 interface SidebarProps {
@@ -224,18 +231,24 @@ export function Sidebar({ store, sim }: SidebarProps): React.ReactElement {
 							key={s.id}
 							id={String(s.id)}
 							className="speed-btn"
-							aria-label={s.aria}
+							aria-label={s.name}
 							onPress={blurOnPointerPress}
 						>
 							{s.label}
 						</ToggleButton>
 					))}
 				</ToggleButtonGroup>
+				<div className="speed-name">
+					{SPEEDS.find((s) => s.id === speed)?.name ?? ""}
+				</div>
 			</section>
 
 			<section>
 				<div className="section-title">City</div>
-				<StatRow label="Date" value={formatDate(stats.month, stats.year)} />
+				<StatRow
+					label="Date"
+					value={formatDate(stats.day, stats.month, stats.year)}
+				/>
 				<StatRow label="Population" value={fmtInt(stats.pop)} />
 				<StatRow label="Jobs" value={fmtInt(stats.jobs)} />
 				<StatRow label="Treasury" value={fmtMoney(stats.treasury)} />

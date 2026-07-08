@@ -3,6 +3,7 @@ import { createCity } from "../city-state.ts";
 import {
 	AGG,
 	BUILDING_LOW,
+	DAYS_PER_WEEK,
 	ROAD_MAINTENANCE_COST,
 	SERVICE_COST_PER_POP,
 	ZONE_RESIDENTIAL,
@@ -47,8 +48,9 @@ describe("updatePublicFinance", () => {
 		updatePublicFinance(city);
 		const after = city.aggregates[AGG.TREASURY] ?? 0;
 
-		// With no buildings (no revenue) and roads (maintenance cost), treasury should decrease
-		const expectedCost = 10 * ROAD_MAINTENANCE_COST;
+		// With no buildings (no revenue) and roads (maintenance cost), treasury
+		// should decrease. Finances settle a full week per settlement.
+		const expectedCost = 10 * ROAD_MAINTENANCE_COST * DAYS_PER_WEEK;
 		expect(after).toBeCloseTo(before - expectedCost);
 	});
 
@@ -66,7 +68,7 @@ describe("updatePublicFinance", () => {
 		expect(city.aggregates[AGG.TREASURY]).toBeLessThan(0);
 	});
 
-	it("records the per-tick budget breakdown in aggregates", () => {
+	it("records the weekly budget breakdown in aggregates", () => {
 		const city = smallCity();
 		city.zoning[0] = ZONE_RESIDENTIAL;
 		city.building[0] = BUILDING_LOW;
@@ -76,15 +78,16 @@ describe("updatePublicFinance", () => {
 
 		updatePublicFinance(city);
 
-		// Revenue = landValue(100) * taxR(0.07) = 7
-		expect(city.aggregates[AGG.REVENUE]).toBeCloseTo(7);
-		// Service cost = pop(10) * SERVICE_COST_PER_POP
+		// Breakdown is recorded per weekly settlement = per-day rate * DAYS_PER_WEEK.
+		// Revenue = landValue(100) * taxR(0.07) = 7/day
+		expect(city.aggregates[AGG.REVENUE]).toBeCloseTo(7 * DAYS_PER_WEEK);
+		// Service cost = pop(10) * SERVICE_COST_PER_POP/day
 		expect(city.aggregates[AGG.SERVICE_COST]).toBeCloseTo(
-			10 * SERVICE_COST_PER_POP,
+			10 * SERVICE_COST_PER_POP * DAYS_PER_WEEK,
 		);
-		// Road cost = 5 roads * ROAD_MAINTENANCE_COST
+		// Road cost = 5 roads * ROAD_MAINTENANCE_COST/day
 		expect(city.aggregates[AGG.ROAD_COST]).toBeCloseTo(
-			5 * ROAD_MAINTENANCE_COST,
+			5 * ROAD_MAINTENANCE_COST * DAYS_PER_WEEK,
 		);
 	});
 

@@ -10,6 +10,9 @@
 import type { SimClient } from "./sim-client.ts";
 import type { OverlayMode, Speed, Tool } from "./types.ts";
 
+/** Highest (fastest) speed tier — see the Speed union in types.ts. */
+const MAX_SPEED = 7;
+
 export interface InteractionSnapshot {
 	readonly tool: Tool;
 	readonly overlay: OverlayMode;
@@ -35,9 +38,11 @@ export function createStore(sim: SimClient): InteractionStore {
 	let snapshot: InteractionSnapshot = {
 		tool: "none",
 		overlay: "none",
-		speed: 1,
+		speed: 4, // Normal
 		dragEnabled: true,
 	};
+	// Speed to restore when unpausing (the last non-paused tier the player chose).
+	let lastRunningSpeed: Speed = 4;
 	const listeners = new Set<() => void>();
 
 	function emit(): void {
@@ -59,8 +64,17 @@ export function createStore(sim: SimClient): InteractionStore {
 	}
 
 	function setSpeed(speed: Speed): void {
+		if (speed !== 0) lastRunningSpeed = speed;
 		if (speed !== snapshot.speed) sim.setSpeed(speed);
 		update({ speed });
+	}
+
+	// Step the speed up or down one tier, clamped to the [1, MAX_SPEED] running
+	// range (stepping never lands on pause — that is what togglePause is for).
+	function stepSpeed(delta: number): void {
+		const base = snapshot.speed === 0 ? lastRunningSpeed : snapshot.speed;
+		const next = Math.min(MAX_SPEED, Math.max(1, base + delta));
+		setSpeed(next as Speed);
 	}
 
 	const store: InteractionStore = {
@@ -87,7 +101,7 @@ export function createStore(sim: SimClient): InteractionStore {
 		},
 		setSpeed,
 		togglePause() {
-			setSpeed(snapshot.speed === 0 ? 1 : 0);
+			setSpeed(snapshot.speed === 0 ? lastRunningSpeed : 0);
 		},
 		installKeyboard() {
 			function onKeyDown(e: KeyboardEvent): void {
@@ -147,6 +161,14 @@ export function createStore(sim: SimClient): InteractionStore {
 						break;
 					case " ":
 						store.togglePause();
+						break;
+					case "+":
+					case "=":
+						stepSpeed(1);
+						break;
+					case "-":
+					case "_":
+						stepSpeed(-1);
 						break;
 					default:
 						handled = false;

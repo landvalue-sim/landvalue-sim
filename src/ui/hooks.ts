@@ -7,7 +7,13 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { SimClient, SimStats } from "../app/sim-client.ts";
 import type { InteractionSnapshot, InteractionStore } from "../app/store.ts";
-import { AGG, type CityState, START_YEAR } from "../sim/index.ts";
+import {
+	AGG,
+	type CityState,
+	DAYS_PER_MONTH,
+	DAYS_PER_YEAR,
+	START_YEAR,
+} from "../sim/index.ts";
 
 export function useInteraction(store: InteractionStore): InteractionSnapshot {
 	return useSyncExternalStore(store.subscribe, store.getSnapshot);
@@ -40,6 +46,7 @@ export interface LiveStats {
 	readonly trafficCongestion: number;
 	readonly educationLevel: number;
 	readonly healthLevel: number;
+	readonly day: number;
 	readonly month: number;
 	readonly year: number;
 }
@@ -47,6 +54,7 @@ export interface LiveStats {
 function readStats(city: CityState): LiveStats {
 	const a = city.aggregates;
 	const tick = a[AGG.TICK] ?? 0;
+	const days = Math.floor(tick);
 	return {
 		pop: a[AGG.TOTAL_POP] ?? 0,
 		jobs: (a[AGG.TOTAL_C_JOBS] ?? 0) + (a[AGG.TOTAL_I_JOBS] ?? 0),
@@ -74,8 +82,10 @@ function readStats(city: CityState): LiveStats {
 		trafficCongestion: a[AGG.TRAFFIC_CONGESTION] ?? 0,
 		educationLevel: a[AGG.EDUCATION_LEVEL] ?? 0,
 		healthLevel: a[AGG.HEALTH_LEVEL] ?? 0,
-		month: (Math.floor(tick) % 12) + 1,
-		year: START_YEAR + Math.floor(Math.floor(tick) / 12),
+		// One tick = one day, on a fixed 30-day / 360-day calendar.
+		day: (days % DAYS_PER_MONTH) + 1,
+		month: (Math.floor(days / DAYS_PER_MONTH) % 12) + 1,
+		year: START_YEAR + Math.floor(days / DAYS_PER_YEAR),
 	};
 }
 
@@ -124,6 +134,6 @@ const MONTH_NAMES = [
 	"Dec",
 ] as const;
 
-export function formatDate(month: number, year: number): string {
-	return `${MONTH_NAMES[month - 1] ?? "???"} ${year}`;
+export function formatDate(day: number, month: number, year: number): string {
+	return `${MONTH_NAMES[month - 1] ?? "???"} ${day}, ${year}`;
 }
