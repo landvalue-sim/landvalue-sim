@@ -120,7 +120,9 @@ export function getCivicSprite(civicType: number): TileSpriteEntry | undefined {
 
 // ---- Placeholder textures ---------------------------------------------------
 
-/** Pixels per floor for floor-line spacing. */
+/** Procedural textures are rendered at 2x and scaled down for crispness. */
+const PROC_RES = 2;
+/** Pixels per floor for floor-line spacing (at 1x). */
 const FLOOR_H = 7;
 
 /**
@@ -159,8 +161,12 @@ function genSolo(
 	wallHeight: number,
 ): void {
 	const key = `bldg_${zone}${density}`;
-	drawIsoBuilding(scene, key, color, wallHeight, 1, 1);
-	registerBuildingSprite(zone, density, tileSpriteEntry(key));
+	drawIsoBuilding(scene, key, color, wallHeight * PROC_RES, PROC_RES, PROC_RES);
+	registerBuildingSprite(
+		zone,
+		density,
+		tileSpriteEntry(key, { scale: 1 / PROC_RES }),
+	);
 }
 
 function genCluster(
@@ -172,11 +178,22 @@ function genCluster(
 	footprint: number,
 ): void {
 	const key = `bldg_${zone}${density}_${footprint}x${footprint}`;
-	drawIsoBuilding(scene, key, color, wallHeight, footprint, footprint);
+	drawIsoBuilding(
+		scene,
+		key,
+		color,
+		wallHeight * PROC_RES,
+		footprint * PROC_RES,
+		footprint * PROC_RES,
+	);
 	registerClusterSprite(
 		zone,
 		density,
-		tileSpriteEntry(key, { tileW: footprint, tileH: footprint }),
+		tileSpriteEntry(key, {
+			tileW: footprint,
+			tileH: footprint,
+			scale: 1 / PROC_RES,
+		}),
 	);
 }
 
