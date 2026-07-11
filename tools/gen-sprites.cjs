@@ -677,6 +677,486 @@ function canvasSize(tileW, tileH, wallHeight) {
 	return { w, h };
 }
 
+// ---- Civic building generators ----------------------------------------------
+
+/** Coal plant: dark building with tall smokestack, industrial look. */
+function drawCivicCoalPlant(c, iso) {
+	const OL = [45, 35, 30];
+	const x0 = 0.08, x1 = 0.92, y0 = 0.08, y1 = 0.92;
+	const wh = 16;
+
+	// Main building
+	const pal = {
+		wallLight: [140, 120, 95],
+		wallDark: [115, 98, 78],
+		roofDark: [100, 85, 70],
+	};
+	drawFlatBox(c, iso, x0, y0, x1, y1, wh, pal);
+
+	// Smokestack
+	const sx0 = 0.6, sx1 = 0.78, sy0 = 0.5, sy1 = 0.68;
+	const sh = 38;
+	fillPoly(c, quad(iso, [sx0, sy0, sh], [sx1, sy0, sh], [sx1, sy1, sh], [sx0, sy1, sh]), 70, 60, 50);
+	fillPoly(c, quad(iso, [sx0, sy1, wh], [sx0, sy0, wh], [sx0, sy0, sh], [sx0, sy1, sh]), 105, 88, 68);
+	fillPoly(c, quad(iso, [sx0, sy0, wh], [sx1, sy0, wh], [sx1, sy0, sh], [sx0, sy0, sh]), 130, 112, 88);
+	drawLine(c, ...iso(sx0, sy1, wh), ...iso(sx0, sy1, sh), ...OL);
+	drawLine(c, ...iso(sx0, sy0, wh), ...iso(sx0, sy0, sh), ...OL);
+	drawLine(c, ...iso(sx1, sy0, wh), ...iso(sx1, sy0, sh), ...OL);
+	drawLine(c, ...iso(sx0, sy0, sh), ...iso(sx1, sy0, sh), ...OL);
+	drawLine(c, ...iso(sx1, sy0, sh), ...iso(sx1, sy1, sh), ...OL);
+	drawLine(c, ...iso(sx0, sy0, sh), ...iso(sx0, sy1, sh), ...OL);
+	drawLine(c, ...iso(sx0, sy1, sh), ...iso(sx1, sy1, sh), ...OL);
+
+	// Smoke wisps (small translucent marks)
+	set(c, ...iso(0.68, 0.58, sh + 3), 100, 95, 90, 120);
+	set(c, ...iso(0.66, 0.56, sh + 6), 110, 105, 100, 90);
+	set(c, ...iso(0.70, 0.60, sh + 5), 105, 100, 95, 80);
+
+	// Loading door
+	fillPoly(c, quad(iso, [0.15, y0, 0], [0.45, y0, 0], [0.45, y0, 10], [0.15, y0, 10]), 85, 70, 50);
+	for (let s = 2; s < 10; s += 2) {
+		drawLine(c, ...iso(0.15, y0, s), ...iso(0.45, y0, s), ...OL);
+	}
+
+	// Coal pile detail on left wall
+	fillPoly(c, quad(iso, [x0, 0.3, 0], [x0, 0.7, 0], [x0, 0.7, 5], [x0, 0.3, 5]), 50, 45, 40);
+
+	drawFlatBoxOutlines(c, iso, x0, y0, x1, y1, wh, OL);
+}
+
+/** Solar plant: low building with angled solar panels on roof. */
+function drawCivicSolarPlant(c, iso) {
+	const OL = [50, 55, 40];
+	const x0 = 0.05, x1 = 0.95, y0 = 0.05, y1 = 0.95;
+	const wh = 8;
+
+	// Low base building
+	const pal = {
+		wallLight: [200, 195, 185],
+		wallDark: [175, 170, 160],
+		roofDark: [160, 155, 145],
+	};
+	drawFlatBox(c, iso, x0, y0, x1, y1, wh, pal);
+
+	// Solar panels on roof (3 rows of tilted blue panels)
+	for (let row = 0; row < 3; row++) {
+		const py0 = 0.15 + row * 0.28;
+		const py1 = py0 + 0.2;
+		const panelBase = wh;
+		const panelTop = wh + 4;
+		// Panel face (tilted toward camera = ty=py0 face visible)
+		fillPoly(c, quad(iso, [0.15, py0, panelTop], [0.85, py0, panelTop], [0.85, py1, panelBase], [0.15, py1, panelBase]), 60, 100, 180);
+		// Panel top edge highlight
+		drawLine(c, ...iso(0.15, py0, panelTop), ...iso(0.85, py0, panelTop), 80, 130, 220);
+		// Grid lines on panel
+		drawLine(c, ...iso(0.5, py0, panelTop), ...iso(0.5, py1, panelBase), 50, 85, 155);
+		drawLine(c, ...iso(0.15, (py0 + py1) / 2, (panelBase + panelTop) / 2), ...iso(0.85, (py0 + py1) / 2, (panelBase + panelTop) / 2), 50, 85, 155);
+		// Panel outline
+		drawLine(c, ...iso(0.15, py0, panelTop), ...iso(0.15, py1, panelBase), ...OL);
+		drawLine(c, ...iso(0.85, py0, panelTop), ...iso(0.85, py1, panelBase), ...OL);
+		drawLine(c, ...iso(0.15, py1, panelBase), ...iso(0.85, py1, panelBase), ...OL);
+	}
+
+	drawFlatBoxOutlines(c, iso, x0, y0, x1, y1, wh, OL);
+}
+
+/** Water pump: blue-accented utility building with water tower / tank. */
+function drawCivicWaterPump(c, iso) {
+	const OL = [30, 50, 65];
+	const x0 = 0.1, x1 = 0.9, y0 = 0.1, y1 = 0.9;
+	const wh = 10;
+
+	// Base building
+	const pal = {
+		wallLight: [170, 200, 220],
+		wallDark: [140, 170, 195],
+		roofDark: [120, 150, 175],
+	};
+	drawFlatBox(c, iso, x0, y0, x1, y1, wh, pal);
+
+	// Water tank (cylindrical, approximated as box)
+	const tx0 = 0.3, tx1 = 0.7, ty0 = 0.3, ty1 = 0.7;
+	const th = 30;
+	// Tank cap (oval-ish diamond)
+	fillPoly(c, quad(iso, [tx0, ty0, th], [tx1, ty0, th], [tx1, ty1, th], [tx0, ty1, th]), 80, 160, 220);
+	// Tank walls
+	fillPoly(c, quad(iso, [tx0, ty1, wh], [tx0, ty0, wh], [tx0, ty0, th], [tx0, ty1, th]), 56, 140, 200);
+	fillPoly(c, quad(iso, [tx0, ty0, wh], [tx1, ty0, wh], [tx1, ty0, th], [tx0, ty0, th]), 70, 155, 215);
+	// Tank band stripes
+	for (const h of [wh + 5, wh + 12]) {
+		drawLine(c, ...iso(tx0, ty1, h), ...iso(tx0, ty0, h), 45, 120, 180);
+		drawLine(c, ...iso(tx0, ty0, h), ...iso(tx1, ty0, h), 55, 130, 190);
+	}
+	// Tank outlines
+	drawLine(c, ...iso(tx0, ty1, wh), ...iso(tx0, ty1, th), ...OL);
+	drawLine(c, ...iso(tx0, ty0, wh), ...iso(tx0, ty0, th), ...OL);
+	drawLine(c, ...iso(tx1, ty0, wh), ...iso(tx1, ty0, th), ...OL);
+	drawLine(c, ...iso(tx0, ty0, th), ...iso(tx1, ty0, th), ...OL);
+	drawLine(c, ...iso(tx1, ty0, th), ...iso(tx1, ty1, th), ...OL);
+	drawLine(c, ...iso(tx0, ty0, th), ...iso(tx0, ty1, th), ...OL);
+	drawLine(c, ...iso(tx0, ty1, th), ...iso(tx1, ty1, th), ...OL);
+
+	// Pipe from tank to ground (visible on right wall side)
+	drawLine(c, ...iso(tx1 - 0.05, ty0, th - 2), ...iso(tx1 - 0.05, ty0, 0), 45, 120, 180);
+	drawLine(c, ...iso(tx1 - 0.03, ty0, th - 2), ...iso(tx1 - 0.03, ty0, 0), 60, 140, 200);
+
+	drawFlatBoxOutlines(c, iso, x0, y0, x1, y1, wh, OL);
+}
+
+/** Police station: dark blue building with badge-like accent, garage door. */
+function drawCivicPolice(c, iso) {
+	const OL = [20, 35, 60];
+	const x0 = 0.08, x1 = 0.92, y0 = 0.08, y1 = 0.92;
+	const wh = 18;
+
+	const pal = {
+		wallLight: [160, 175, 200],
+		wallDark: [130, 145, 175],
+		roofDark: [100, 115, 145],
+	};
+	drawFlatBox(c, iso, x0, y0, x1, y1, wh, pal);
+
+	// Garage door (for patrol cars)
+	fillPoly(c, quad(iso, [0.15, y0, 0], [0.48, y0, 0], [0.48, y0, 12], [0.15, y0, 12]), 80, 95, 120);
+	for (let s = 3; s < 12; s += 3) {
+		drawLine(c, ...iso(0.15, y0, s), ...iso(0.48, y0, s), ...OL);
+	}
+	drawLine(c, ...iso(0.15, y0, 0), ...iso(0.15, y0, 12), ...OL);
+	drawLine(c, ...iso(0.15, y0, 12), ...iso(0.48, y0, 12), ...OL);
+	drawLine(c, ...iso(0.48, y0, 12), ...iso(0.48, y0, 0), ...OL);
+
+	// Front door
+	fillPoly(c, quad(iso, [0.6, y0, 0], [0.78, y0, 0], [0.78, y0, 11], [0.6, y0, 11]), 70, 80, 110);
+	drawLine(c, ...iso(0.6, y0, 0), ...iso(0.6, y0, 11), ...OL);
+	drawLine(c, ...iso(0.6, y0, 11), ...iso(0.78, y0, 11), ...OL);
+	drawLine(c, ...iso(0.78, y0, 11), ...iso(0.78, y0, 0), ...OL);
+
+	// Windows on left wall
+	for (const wy of [0.25, 0.55]) {
+		fillPoly(c, quad(iso, [x0, wy, 6], [x0, wy + 0.18, 6], [x0, wy + 0.18, 13], [x0, wy, 13]), 145, 190, 230);
+		drawLine(c, ...iso(x0, wy, 6), ...iso(x0, wy + 0.18, 6), ...OL);
+		drawLine(c, ...iso(x0, wy + 0.18, 6), ...iso(x0, wy + 0.18, 13), ...OL);
+		drawLine(c, ...iso(x0, wy + 0.18, 13), ...iso(x0, wy, 13), ...OL);
+		drawLine(c, ...iso(x0, wy, 13), ...iso(x0, wy, 6), ...OL);
+	}
+
+	// Blue accent stripe at top
+	fillPoly(c, quad(iso, [x0, y0, wh - 2], [x1, y0, wh - 2], [x1, y0, wh], [x0, y0, wh]), 29, 78, 216);
+	fillPoly(c, quad(iso, [x0, y0, wh - 2], [x0, y1, wh - 2], [x0, y1, wh], [x0, y0, wh]), 20, 60, 180);
+
+	drawFlatBoxOutlines(c, iso, x0, y0, x1, y1, wh, OL);
+}
+
+/** Fire station: red building with large garage door and tower. */
+function drawCivicFireStation(c, iso) {
+	const OL = [70, 25, 20];
+	const x0 = 0.08, x1 = 0.92, y0 = 0.08, y1 = 0.92;
+	const wh = 16;
+
+	const pal = {
+		wallLight: [220, 100, 80],
+		wallDark: [190, 80, 60],
+		roofDark: [160, 65, 50],
+	};
+	drawFlatBox(c, iso, x0, y0, x1, y1, wh, pal);
+
+	// Large garage door
+	fillPoly(c, quad(iso, [0.15, y0, 0], [0.7, y0, 0], [0.7, y0, 13], [0.15, y0, 13]), 180, 175, 165);
+	for (let s = 3; s < 13; s += 3) {
+		drawLine(c, ...iso(0.15, y0, s), ...iso(0.7, y0, s), ...OL);
+	}
+	drawLine(c, ...iso(0.15, y0, 0), ...iso(0.15, y0, 13), ...OL);
+	drawLine(c, ...iso(0.15, y0, 13), ...iso(0.7, y0, 13), ...OL);
+	drawLine(c, ...iso(0.7, y0, 13), ...iso(0.7, y0, 0), ...OL);
+
+	// Hose tower (small tower on back-right of roof)
+	const tx0 = 0.65, tx1 = 0.82, ty0 = 0.6, ty1 = 0.78;
+	const th = 28;
+	fillPoly(c, quad(iso, [tx0, ty0, th], [tx1, ty0, th], [tx1, ty1, th], [tx0, ty1, th]), 180, 70, 55);
+	fillPoly(c, quad(iso, [tx0, ty1, wh], [tx0, ty0, wh], [tx0, ty0, th], [tx0, ty1, th]), 175, 65, 48);
+	fillPoly(c, quad(iso, [tx0, ty0, wh], [tx1, ty0, wh], [tx1, ty0, th], [tx0, ty0, th]), 200, 85, 65);
+	drawLine(c, ...iso(tx0, ty1, wh), ...iso(tx0, ty1, th), ...OL);
+	drawLine(c, ...iso(tx0, ty0, wh), ...iso(tx0, ty0, th), ...OL);
+	drawLine(c, ...iso(tx1, ty0, wh), ...iso(tx1, ty0, th), ...OL);
+	drawLine(c, ...iso(tx0, ty0, th), ...iso(tx1, ty0, th), ...OL);
+	drawLine(c, ...iso(tx1, ty0, th), ...iso(tx1, ty1, th), ...OL);
+	drawLine(c, ...iso(tx0, ty0, th), ...iso(tx0, ty1, th), ...OL);
+	drawLine(c, ...iso(tx0, ty1, th), ...iso(tx1, ty1, th), ...OL);
+
+	// White stripe at garage level
+	fillPoly(c, quad(iso, [x0, y0, 14], [x1, y0, 14], [x1, y0, wh], [x0, y0, wh]), 240, 235, 230);
+	fillPoly(c, quad(iso, [x0, y0, 14], [x0, y1, 14], [x0, y1, wh], [x0, y0, wh]), 220, 215, 210);
+
+	drawFlatBoxOutlines(c, iso, x0, y0, x1, y1, wh, OL);
+}
+
+/** Hospital: white/pink building with cross symbol, taller. */
+function drawCivicHospital(c, iso) {
+	const OL = [80, 50, 60];
+	const x0 = 0.06, x1 = 0.94, y0 = 0.06, y1 = 0.94;
+	const wh = 26;
+
+	const pal = {
+		wallLight: [240, 230, 235],
+		wallDark: [215, 205, 212],
+		roofDark: [195, 185, 192],
+	};
+	drawFlatBox(c, iso, x0, y0, x1, y1, wh, pal);
+
+	// Red cross on right wall
+	fillPoly(c, quad(iso, [0.42, y0, 14], [0.58, y0, 14], [0.58, y0, 24], [0.42, y0, 24]), 220, 50, 50);
+	fillPoly(c, quad(iso, [0.35, y0, 17], [0.65, y0, 17], [0.65, y0, 21], [0.35, y0, 21]), 220, 50, 50);
+
+	// Red cross on left wall
+	fillPoly(c, quad(iso, [x0, 0.42, 14], [x0, 0.58, 14], [x0, 0.58, 24], [x0, 0.42, 24]), 200, 40, 40);
+	fillPoly(c, quad(iso, [x0, 0.35, 17], [x0, 0.65, 17], [x0, 0.65, 21], [x0, 0.35, 21]), 200, 40, 40);
+
+	// Entrance
+	fillPoly(c, quad(iso, [0.35, y0, 0], [0.65, y0, 0], [0.65, y0, 12], [0.35, y0, 12]), 160, 210, 240);
+	drawLine(c, ...iso(0.35, y0, 0), ...iso(0.35, y0, 12), ...OL);
+	drawLine(c, ...iso(0.35, y0, 12), ...iso(0.65, y0, 12), ...OL);
+	drawLine(c, ...iso(0.65, y0, 12), ...iso(0.65, y0, 0), ...OL);
+	drawLine(c, ...iso(0.5, y0, 0), ...iso(0.5, y0, 12), ...OL);
+
+	// Window rows
+	for (let floor = 0; floor < 2; floor++) {
+		const fBase = 4 + floor * 10;
+		const fTop = fBase + 5;
+		for (const wy of [0.2, 0.5, 0.72]) {
+			fillPoly(c, quad(iso, [x0, wy, fBase], [x0, wy + 0.12, fBase], [x0, wy + 0.12, fTop], [x0, wy, fTop]), 160, 210, 240);
+		}
+	}
+
+	// Pink accent stripe
+	fillPoly(c, quad(iso, [x0, y0, wh - 2], [x1, y0, wh - 2], [x1, y0, wh], [x0, y0, wh]), 244, 114, 182);
+	fillPoly(c, quad(iso, [x0, y0, wh - 2], [x0, y1, wh - 2], [x0, y1, wh], [x0, y0, wh]), 220, 95, 160);
+
+	drawFlatBoxOutlines(c, iso, x0, y0, x1, y1, wh, OL);
+}
+
+/** School: gold/warm building with windows, flag. */
+function drawCivicSchool(c, iso) {
+	const OL = [65, 55, 30];
+	const x0 = 0.06, x1 = 0.94, y0 = 0.06, y1 = 0.94;
+	const wh = 16;
+
+	const pal = {
+		wallLight: [235, 210, 160],
+		wallDark: [210, 185, 135],
+		roofDark: [185, 160, 110],
+	};
+	drawFlatBox(c, iso, x0, y0, x1, y1, wh, pal);
+
+	// Door
+	fillPoly(c, quad(iso, [0.4, y0, 0], [0.6, y0, 0], [0.6, y0, 11], [0.4, y0, 11]), 120, 85, 50);
+	drawLine(c, ...iso(0.4, y0, 0), ...iso(0.4, y0, 11), ...OL);
+	drawLine(c, ...iso(0.4, y0, 11), ...iso(0.6, y0, 11), ...OL);
+	drawLine(c, ...iso(0.6, y0, 11), ...iso(0.6, y0, 0), ...OL);
+
+	// Windows (two rows)
+	for (const wx of [0.14, 0.7]) {
+		fillPoly(c, quad(iso, [wx, y0, 5], [wx + 0.14, y0, 5], [wx + 0.14, y0, 12], [wx, y0, 12]), 160, 210, 240);
+		drawLine(c, ...iso(wx, y0, 5), ...iso(wx + 0.14, y0, 5), ...OL);
+		drawLine(c, ...iso(wx + 0.14, y0, 5), ...iso(wx + 0.14, y0, 12), ...OL);
+		drawLine(c, ...iso(wx + 0.14, y0, 12), ...iso(wx, y0, 12), ...OL);
+		drawLine(c, ...iso(wx, y0, 12), ...iso(wx, y0, 5), ...OL);
+		drawLine(c, ...iso(wx + 0.07, y0, 5), ...iso(wx + 0.07, y0, 12), ...OL);
+	}
+
+	// Left wall windows
+	for (const wy of [0.2, 0.5, 0.75]) {
+		fillPoly(c, quad(iso, [x0, wy, 5], [x0, wy + 0.1, 5], [x0, wy + 0.1, 12], [x0, wy, 12]), 160, 210, 240);
+		drawLine(c, ...iso(x0, wy, 5), ...iso(x0, wy + 0.1, 5), ...OL);
+		drawLine(c, ...iso(x0, wy + 0.1, 5), ...iso(x0, wy + 0.1, 12), ...OL);
+		drawLine(c, ...iso(x0, wy + 0.1, 12), ...iso(x0, wy, 12), ...OL);
+		drawLine(c, ...iso(x0, wy, 12), ...iso(x0, wy, 5), ...OL);
+	}
+
+	// Flagpole on roof
+	drawLine(c, ...iso(0.8, 0.2, wh), ...iso(0.8, 0.2, wh + 14), 100, 100, 100);
+	// Flag
+	fillPoly(c, [iso(0.8, 0.2, wh + 14), iso(0.8, 0.2, wh + 10), iso(0.8, 0.12, wh + 12)], 200, 50, 50);
+
+	drawFlatBoxOutlines(c, iso, x0, y0, x1, y1, wh, OL);
+}
+
+/** College: purple-accented, taller academic building with columns. */
+function drawCivicCollege(c, iso) {
+	const OL = [50, 30, 65];
+	const x0 = 0.06, x1 = 0.94, y0 = 0.06, y1 = 0.94;
+	const wh = 24;
+
+	const pal = {
+		wallLight: [210, 195, 225],
+		wallDark: [185, 170, 200],
+		roofDark: [160, 145, 175],
+	};
+	drawFlatBox(c, iso, x0, y0, x1, y1, wh, pal);
+
+	// Entrance with columns (right wall)
+	fillPoly(c, quad(iso, [0.3, y0, 0], [0.7, y0, 0], [0.7, y0, 14], [0.3, y0, 14]), 170, 155, 190);
+	// Two columns
+	for (const cx of [0.35, 0.62]) {
+		fillPoly(c, quad(iso, [cx, y0, 0], [cx + 0.05, y0, 0], [cx + 0.05, y0, 14], [cx, y0, 14]), 230, 225, 220);
+		drawLine(c, ...iso(cx, y0, 0), ...iso(cx, y0, 14), ...OL);
+		drawLine(c, ...iso(cx + 0.05, y0, 0), ...iso(cx + 0.05, y0, 14), ...OL);
+	}
+	// Pediment (triangular top)
+	fillPoly(c, [iso(0.25, y0, 14), iso(0.75, y0, 14), iso(0.5, y0, 19)], 195, 180, 215);
+	drawLine(c, ...iso(0.25, y0, 14), ...iso(0.5, y0, 19), ...OL);
+	drawLine(c, ...iso(0.75, y0, 14), ...iso(0.5, y0, 19), ...OL);
+	drawLine(c, ...iso(0.25, y0, 14), ...iso(0.75, y0, 14), ...OL);
+
+	// Window rows (2 floors)
+	for (let floor = 0; floor < 2; floor++) {
+		const fBase = 4 + floor * 9;
+		const fTop = fBase + 5;
+		for (const wy of [0.18, 0.42, 0.68]) {
+			fillPoly(c, quad(iso, [x0, wy, fBase], [x0, wy + 0.14, fBase], [x0, wy + 0.14, fTop], [x0, wy, fTop]), 160, 200, 235);
+		}
+	}
+
+	// Purple accent
+	fillPoly(c, quad(iso, [x0, y0, wh - 2], [x1, y0, wh - 2], [x1, y0, wh], [x0, y0, wh]), 124, 58, 237);
+	fillPoly(c, quad(iso, [x0, y0, wh - 2], [x0, y1, wh - 2], [x0, y1, wh], [x0, y0, wh]), 100, 45, 200);
+
+	drawFlatBoxOutlines(c, iso, x0, y0, x1, y1, wh, OL);
+}
+
+/** Library: orange-accented warm building with book-like window pattern. */
+function drawCivicLibrary(c, iso) {
+	const OL = [65, 40, 20];
+	const x0 = 0.08, x1 = 0.92, y0 = 0.08, y1 = 0.92;
+	const wh = 18;
+
+	const pal = {
+		wallLight: [225, 200, 170],
+		wallDark: [200, 175, 145],
+		roofDark: [175, 150, 120],
+	};
+	drawFlatBox(c, iso, x0, y0, x1, y1, wh, pal);
+
+	// Large arched entrance
+	fillPoly(c, quad(iso, [0.35, y0, 0], [0.65, y0, 0], [0.65, y0, 13], [0.35, y0, 13]), 120, 85, 55);
+	drawLine(c, ...iso(0.35, y0, 0), ...iso(0.35, y0, 13), ...OL);
+	drawLine(c, ...iso(0.35, y0, 13), ...iso(0.65, y0, 13), ...OL);
+	drawLine(c, ...iso(0.65, y0, 13), ...iso(0.65, y0, 0), ...OL);
+
+	// Tall narrow windows (book-spines motif)
+	for (const wx of [0.14, 0.22, 0.74, 0.82]) {
+		fillPoly(c, quad(iso, [wx, y0, 4], [wx + 0.06, y0, 4], [wx + 0.06, y0, 14], [wx, y0, 14]), 160, 200, 230);
+		drawLine(c, ...iso(wx, y0, 4), ...iso(wx + 0.06, y0, 4), ...OL);
+		drawLine(c, ...iso(wx + 0.06, y0, 4), ...iso(wx + 0.06, y0, 14), ...OL);
+		drawLine(c, ...iso(wx + 0.06, y0, 14), ...iso(wx, y0, 14), ...OL);
+		drawLine(c, ...iso(wx, y0, 14), ...iso(wx, y0, 4), ...OL);
+	}
+
+	// Left wall windows
+	for (const wy of [0.2, 0.42, 0.64]) {
+		fillPoly(c, quad(iso, [x0, wy, 4], [x0, wy + 0.14, 4], [x0, wy + 0.14, 14], [x0, wy, 14]), 160, 200, 230);
+		drawLine(c, ...iso(x0, wy, 4), ...iso(x0, wy + 0.14, 4), ...OL);
+		drawLine(c, ...iso(x0, wy + 0.14, 4), ...iso(x0, wy + 0.14, 14), ...OL);
+		drawLine(c, ...iso(x0, wy + 0.14, 14), ...iso(x0, wy, 14), ...OL);
+		drawLine(c, ...iso(x0, wy, 14), ...iso(x0, wy, 4), ...OL);
+	}
+
+	// Orange accent
+	fillPoly(c, quad(iso, [x0, y0, wh - 2], [x1, y0, wh - 2], [x1, y0, wh], [x0, y0, wh]), 234, 88, 12);
+	fillPoly(c, quad(iso, [x0, y0, wh - 2], [x0, y1, wh - 2], [x0, y1, wh], [x0, y0, wh]), 200, 72, 8);
+
+	drawFlatBoxOutlines(c, iso, x0, y0, x1, y1, wh, OL);
+}
+
+/** Park: green open space with trees and paths. */
+function drawCivicPark(c, iso) {
+	const OL = [40, 70, 35];
+
+	// Grass ground (full tile)
+	fillPoly(c, [iso(0, 0), iso(1, 0), iso(1, 1), iso(0, 1)], 90, 190, 95);
+	drawLine(c, ...iso(0, 0), ...iso(1, 0), 65, 150, 68);
+	drawLine(c, ...iso(1, 0), ...iso(1, 1), 65, 150, 68);
+	drawLine(c, ...iso(1, 1), ...iso(0, 1), 65, 150, 68);
+	drawLine(c, ...iso(0, 1), ...iso(0, 0), 65, 150, 68);
+
+	// Path (diagonal through park)
+	fillPoly(c, quad(iso, [0.42, 0, 0], [0.58, 0, 0], [0.58, 1, 0], [0.42, 1, 0]), 195, 185, 160);
+	fillPoly(c, quad(iso, [0, 0.42, 0], [0, 0.58, 0], [1, 0.58, 0], [1, 0.42, 0]), 195, 185, 160);
+
+	// Trees (simple triangular conifers + trunk)
+	function drawTree(tx, ty, th) {
+		// Trunk
+		fillPoly(c, quad(iso, [tx - 0.02, ty, 0], [tx + 0.02, ty, 0], [tx + 0.02, ty, th * 0.3], [tx - 0.02, ty, th * 0.3]), 120, 80, 40);
+		// Canopy layers (bottom up, largest first)
+		for (let layer = 0; layer < 3; layer++) {
+			const lBase = th * 0.2 + layer * th * 0.25;
+			const lTop = lBase + th * 0.35;
+			const spread = 0.1 - layer * 0.02;
+			const green = 60 + layer * 25;
+			fillPoly(c, [
+				iso(tx - spread, ty, lBase),
+				iso(tx + spread, ty, lBase),
+				iso(tx, ty, lTop),
+			], green, 140 + layer * 15, green);
+		}
+	}
+
+	drawTree(0.2, 0.2, 18);
+	drawTree(0.75, 0.25, 15);
+	drawTree(0.22, 0.75, 16);
+	drawTree(0.78, 0.78, 14);
+
+	// Bench (small detail on path edge)
+	fillPoly(c, quad(iso, [0.6, 0.45, 0], [0.68, 0.45, 0], [0.68, 0.45, 3], [0.6, 0.45, 3]), 140, 100, 55);
+	drawLine(c, ...iso(0.6, 0.45, 3), ...iso(0.68, 0.45, 3), 100, 70, 35);
+}
+
+/** Stadium: large gray building with tiered seating profile. */
+function drawCivicStadium(c, iso) {
+	const OL = [55, 58, 62];
+	const x0 = 0.05, x1 = 0.95, y0 = 0.05, y1 = 0.95;
+	const wh = 22;
+
+	const pal = {
+		wallLight: [185, 190, 195],
+		wallDark: [155, 160, 168],
+		roofDark: [140, 145, 152],
+	};
+	drawFlatBox(c, iso, x0, y0, x1, y1, wh, pal);
+
+	// Tiered seating lines on walls (horizontal bands)
+	for (let tier = 0; tier < 4; tier++) {
+		const h = 4 + tier * 5;
+		drawLine(c, ...iso(x0, y0, h), ...iso(x1, y0, h), ...OL);
+		drawLine(c, ...iso(x0, y0, h), ...iso(x0, y1, h), ...OL);
+	}
+
+	// Entrance gates
+	for (const wx of [0.15, 0.5]) {
+		fillPoly(c, quad(iso, [wx, y0, 0], [wx + 0.18, y0, 0], [wx + 0.18, y0, 10], [wx, y0, 10]), 120, 125, 130);
+		drawLine(c, ...iso(wx, y0, 0), ...iso(wx, y0, 10), ...OL);
+		drawLine(c, ...iso(wx, y0, 10), ...iso(wx + 0.18, y0, 10), ...OL);
+		drawLine(c, ...iso(wx + 0.18, y0, 10), ...iso(wx + 0.18, y0, 0), ...OL);
+	}
+
+	// "Field" green on roof (open-top stadium feel)
+	fillPoly(c, quad(iso, [x0 + 0.15, y0 + 0.15, wh], [x1 - 0.15, y0 + 0.15, wh], [x1 - 0.15, y1 - 0.15, wh], [x0 + 0.15, y1 - 0.15, wh]), 80, 170, 85);
+	// Field outline
+	drawLine(c, ...iso(x0 + 0.15, y0 + 0.15, wh), ...iso(x1 - 0.15, y0 + 0.15, wh), 60, 140, 65);
+	drawLine(c, ...iso(x1 - 0.15, y0 + 0.15, wh), ...iso(x1 - 0.15, y1 - 0.15, wh), 60, 140, 65);
+	drawLine(c, ...iso(x1 - 0.15, y1 - 0.15, wh), ...iso(x0 + 0.15, y1 - 0.15, wh), 60, 140, 65);
+	drawLine(c, ...iso(x0 + 0.15, y1 - 0.15, wh), ...iso(x0 + 0.15, y0 + 0.15, wh), 60, 140, 65);
+
+	// Light tower (front-right corner)
+	const lx = 0.82, ly = 0.15;
+	drawLine(c, ...iso(lx, ly, wh), ...iso(lx, ly, wh + 12), 100, 105, 110);
+	// Light fixture
+	set(c, ...iso(lx - 0.02, ly, wh + 12), 255, 245, 200);
+	set(c, ...iso(lx + 0.02, ly, wh + 12), 255, 245, 200);
+	set(c, ...iso(lx, ly, wh + 13), 255, 245, 200);
+
+	drawFlatBoxOutlines(c, iso, x0, y0, x1, y1, wh, OL);
+}
+
 // ---- Generate all sprites ---------------------------------------------------
 
 const OUTDIR = path.join(__dirname, "..", "public", "sprites");
@@ -720,4 +1200,27 @@ for (const spec of CLUSTER_SPECS) {
 	writePng(c, path.join(OUTDIR, spec.file + ".png"));
 }
 
-console.log("\nDone! Generated all 15 building sprites.");
+const CIVIC_SPECS = [
+	{ file: "civic_coal_plant", draw: drawCivicCoalPlant, wh: 38 },
+	{ file: "civic_solar_plant", draw: drawCivicSolarPlant, wh: 12 },
+	{ file: "civic_water_pump", draw: drawCivicWaterPump, wh: 30 },
+	{ file: "civic_police", draw: drawCivicPolice, wh: 18 },
+	{ file: "civic_fire_station", draw: drawCivicFireStation, wh: 28 },
+	{ file: "civic_hospital", draw: drawCivicHospital, wh: 26 },
+	{ file: "civic_school", draw: drawCivicSchool, wh: 30 },
+	{ file: "civic_college", draw: drawCivicCollege, wh: 24 },
+	{ file: "civic_library", draw: drawCivicLibrary, wh: 18 },
+	{ file: "civic_park", draw: drawCivicPark, wh: 18 },
+	{ file: "civic_stadium", draw: drawCivicStadium, wh: 34 },
+];
+
+console.log("");
+for (const spec of CIVIC_SPECS) {
+	const { w, h } = canvasSize(1, 1, spec.wh);
+	const c = createCanvas(w, h);
+	const iso = makeIso(w, h, 1, 1);
+	spec.draw(c, iso);
+	writePng(c, path.join(OUTDIR, spec.file + ".png"));
+}
+
+console.log("\nDone! Generated all building + civic sprites.");

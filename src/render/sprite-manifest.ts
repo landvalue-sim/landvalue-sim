@@ -1,15 +1,28 @@
+import {
+	CIVIC_COAL_PLANT,
+	CIVIC_COLLEGE,
+	CIVIC_FIRE_STATION,
+	CIVIC_HOSPITAL,
+	CIVIC_LIBRARY,
+	CIVIC_PARK,
+	CIVIC_POLICE,
+	CIVIC_SCHOOL,
+	CIVIC_SOLAR_PLANT,
+	CIVIC_STADIUM,
+	CIVIC_WATER_PUMP,
+} from "../sim/constants.ts";
+
 /**
  * Sprite asset manifest — defines every building sprite the renderer can load.
  *
- * Each entry maps a file in `public/sprites/` to a zone + density + footprint.
+ * Each entry maps a file in `public/sprites/` to a zone + density + footprint
+ * (for zoned buildings) or a civic type constant (for civic buildings).
  * The renderer loads these in `preload()` and registers them at `create()`,
  * overriding procedural placeholders for any sprite whose file exists.
  *
  * Images can be any resolution — the renderer auto-scales them to fit the
  * tile footprint width. Generate with Nano Banana 2 (or any tool), drop the
  * PNG in `public/sprites/`, and it just works.
- *
- * See `design_docs/SPRITE-GUIDE.md` for full artist/AI-generation specs.
  */
 
 // ---- Types ------------------------------------------------------------------
@@ -35,7 +48,28 @@ export interface SpriteManifestEntry {
 	readonly originY: number;
 }
 
+export interface CivicManifestEntry {
+	/** Phaser texture key (must be unique). */
+	readonly key: string;
+	/** Path relative to the public root (served by Vite). */
+	readonly path: string;
+	/** Civic type constant (CIVIC_COAL_PLANT, etc.). */
+	readonly civicType: number;
+	readonly originX: number;
+	readonly originY: number;
+}
+
 // ---- Helpers ----------------------------------------------------------------
+
+function civic(civicType: number, name: string): CivicManifestEntry {
+	return {
+		key: `asset_civic_${name}`,
+		path: `sprites/civic_${name}.png`,
+		civicType,
+		originX: 0.5,
+		originY: 1.0,
+	};
+}
 
 function solo(zone: "r" | "c" | "i", density: 1 | 2 | 3): SpriteManifestEntry {
 	return {
@@ -121,4 +155,19 @@ export const SPRITE_MANIFEST: readonly SpriteManifestEntry[] = [
 	// Industrial — cluster
 	cluster("i", 2, 2),
 	cluster("i", 3, 3),
+];
+
+/** Civic building sprites (1x1 each, indexed by CIVIC_* constant). */
+export const CIVIC_MANIFEST: readonly CivicManifestEntry[] = [
+	civic(CIVIC_COAL_PLANT, "coal_plant"),
+	civic(CIVIC_SOLAR_PLANT, "solar_plant"),
+	civic(CIVIC_WATER_PUMP, "water_pump"),
+	civic(CIVIC_POLICE, "police"),
+	civic(CIVIC_FIRE_STATION, "fire_station"),
+	civic(CIVIC_HOSPITAL, "hospital"),
+	civic(CIVIC_SCHOOL, "school"),
+	civic(CIVIC_COLLEGE, "college"),
+	civic(CIVIC_LIBRARY, "library"),
+	civic(CIVIC_PARK, "park"),
+	civic(CIVIC_STADIUM, "stadium"),
 ];

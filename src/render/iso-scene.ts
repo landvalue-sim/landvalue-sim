@@ -43,7 +43,7 @@ import {
 import { type Point, rectTiles, roadLineTiles } from "./drag.ts";
 import { ELEV_HEIGHT, HALF_H, HALF_W, TIER_HEIGHT } from "./iso.ts";
 import { pickTile, tileSurfaceHeight } from "./picking.ts";
-import { SPRITE_MANIFEST } from "./sprite-manifest.ts";
+import { CIVIC_MANIFEST, SPRITE_MANIFEST } from "./sprite-manifest.ts";
 import { SpritePool } from "./sprite-pool.ts";
 import {
 	generatePlaceholders,
@@ -51,6 +51,7 @@ import {
 	getCivicSprite,
 	getClusterSprite,
 	registerBuildingSprite,
+	registerCivicSprite,
 	registerClusterSprite,
 	type TileSpriteEntry,
 	tileSpriteEntry,
@@ -169,6 +170,9 @@ export class IsoScene extends Phaser.Scene {
 		for (const entry of SPRITE_MANIFEST) {
 			this.load.image(entry.key, entry.path);
 		}
+		for (const entry of CIVIC_MANIFEST) {
+			this.load.image(entry.key, entry.path);
+		}
 		this.load.on("loaderror", (file: Phaser.Loader.File) => {
 			// Expected when an artist hasn't produced the asset yet.
 			this.textures.remove(file.key);
@@ -208,6 +212,23 @@ export class IsoScene extends Phaser.Scene {
 			} else {
 				registerBuildingSprite(m.zone, m.density, entry);
 			}
+		}
+
+		// Register loaded civic sprites.
+		for (const cm of CIVIC_MANIFEST) {
+			if (!this.textures.exists(cm.key)) continue;
+			const tex = this.textures.get(cm.key);
+			const src = tex.getSourceImage();
+			const footprintPx = 2 * HALF_W; // civic buildings are always 1x1
+			const autoScale = footprintPx / src.width;
+			registerCivicSprite(
+				cm.civicType,
+				tileSpriteEntry(cm.key, {
+					originX: cm.originX,
+					originY: cm.originY,
+					scale: autoScale,
+				}),
+			);
 		}
 
 		this.sprites = new SpritePool(this, "_blank");
