@@ -498,29 +498,21 @@ export class IsoScene extends Phaser.Scene {
 		}
 	}
 
-	/** Path the visible top face of a tile: sloped ground, or the flat top of whatever sits on it. */
+	/** Path the terrain surface under the cursor for selection highlighting. */
 	private pathHoverFace(
 		g: Phaser.GameObjects.Graphics,
 		x: number,
 		y: number,
 		overlay: string,
 	): void {
-		const city = this.city;
-		const idx = y * city.width + x;
-		const flat =
-			overlay === "land-value" ||
-			city.terrain[idx] === TERRAIN_WATER ||
-			city.roads[idx] === 1 ||
-			city.rail[idx] === 1 ||
-			city.powerLines[idx] === 1 ||
-			(city.civic[idx] ?? 0) !== 0 ||
-			(city.building[idx] ?? 0) > 0;
-		if (flat) {
+		// Land-value overlay lifts tiles by value — use flat diamond at that height.
+		if (overlay === "land-value") {
 			const cx = (x - y) * HALF_W;
 			const cy = (x + y) * HALF_H;
 			diamondPath(g, cx, cy, this.tileTopLift(x, y, overlay));
 			return;
 		}
+		// Everything else highlights at ground level.
 		this.pathGroundFace(g, x, y);
 	}
 
