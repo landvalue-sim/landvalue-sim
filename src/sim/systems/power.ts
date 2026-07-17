@@ -5,8 +5,8 @@
  * and zoned tiles. Unconnected tiles are unpowered. If total capacity < total
  * demand, all tiles lose power (brownout).
  *
- * Progressive disclosure: if no power plants exist yet, all tiles are
- * considered powered so the early game works without infrastructure.
+ * Power is required from the start: with no power plants placed, no tile is
+ * powered and nothing will grow or upgrade until a plant and grid exist.
  */
 
 import type { CityState } from "../city-state.ts";
@@ -68,21 +68,13 @@ export function updatePower(state: CityState): void {
 	aggregates[AGG.POWER_CAPACITY] = totalCapacity;
 	aggregates[AGG.POWER_DEMAND] = totalDemand;
 
-	// No plants placed yet: everything is powered (pre-industrial era)
-	if (!hasPlants) {
-		for (let i = 0; i < size; i++) {
-			power[i] = 1;
-		}
-		return;
-	}
-
 	// Reset power coverage
 	for (let i = 0; i < size; i++) {
 		power[i] = 0;
 	}
 
-	// Brownout: demand exceeds capacity, nothing is powered
-	if (totalDemand > totalCapacity) return;
+	// No plants, or demand exceeds capacity (brownout): nothing is powered
+	if (!hasPlants || totalDemand > totalCapacity) return;
 
 	// BFS flood fill through conducting tiles
 	let steps = 0;

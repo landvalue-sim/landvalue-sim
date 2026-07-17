@@ -4,6 +4,7 @@ import type { Command } from "./commands.ts";
 import {
 	AGG,
 	BUILDING_EMPTY,
+	CIVIC_COAL_PLANT,
 	ZONE_COMMERCIAL,
 	ZONE_INDUSTRIAL,
 	ZONE_RESIDENTIAL,
@@ -51,6 +52,8 @@ describe("tick", () => {
 
 	it("full growth cycle: I→R→C feedback loop", () => {
 		const city = smallCity();
+		// Development requires power; grant funds and place a plant on the grid.
+		city.aggregates[AGG.DEBUG_INFINITE_MONEY] = 1;
 
 		// Lay out roads in a cross pattern through the middle
 		const roadCmds: Command[] = [];
@@ -58,6 +61,13 @@ describe("tick", () => {
 			roadCmds.push({ kind: "build-road", x: i, y: 8 });
 			roadCmds.push({ kind: "build-road", x: 8, y: i });
 		}
+		// Coal plant wired to the road spine at (8,13) powers the whole grid.
+		roadCmds.push({
+			kind: "place-civic",
+			x: 8,
+			y: 14,
+			civicType: CIVIC_COAL_PLANT,
+		});
 		tick(city, roadCmds);
 
 		// Zone industrial near roads
