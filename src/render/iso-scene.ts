@@ -43,6 +43,19 @@ import {
 import { type Point, rectTiles, roadLineTiles } from "./drag.ts";
 import { ELEV_HEIGHT, HALF_H, HALF_W, TIER_HEIGHT } from "./iso.ts";
 import { pickTile, tileSurfaceHeight } from "./picking.ts";
+import { CIVIC_MANIFEST, SPRITE_MANIFEST } from "./sprite-manifest.ts";
+import { SpritePool } from "./sprite-pool.ts";
+import {
+	generatePlaceholders,
+	getBuildingSprite,
+	getCivicSprite,
+	getClusterSprite,
+	registerBuildingSprite,
+	registerCivicSprite,
+	registerClusterSprite,
+	type TileSpriteEntry,
+	tileSpriteEntry,
+} from "./tile-sprites.ts";
 
 // ---- Palette (0xRRGGBB) ----------------------------------------------------
 
@@ -115,6 +128,10 @@ export class IsoScene extends Phaser.Scene {
 	private readonly sendCommands: (cmds: ReadonlyArray<Command>) => void;
 
 	private g!: Phaser.GameObjects.Graphics;
+	private gOverlay!: Phaser.GameObjects.Graphics;
+	private sprites!: SpritePool;
+	/** Per-frame scratch: tiles covered by a multi-tile cluster sprite. */
+	private covered!: Uint8Array;
 	private keys!: {
 		up: Phaser.Input.Keyboard.Key;
 		down: Phaser.Input.Keyboard.Key;
@@ -147,8 +164,84 @@ export class IsoScene extends Phaser.Scene {
 		this.sendCommands = deps.sendCommands;
 	}
 
+	preload(): void {
+		// Attempt to load every sprite in the manifest. Missing files are
+		// silently ignored — the procedural placeholder remains in use.
+		for (const entry of SPRITE_MANIFEST) {
+			this.load.image(entry.key, entry.path);
+		}
+		for (const entry of CIVIC_MANIFEST) {
+			this.load.image(entry.key, entry.path);
+		}
+		this.load.on("loaderror", (file: Phaser.Loader.File) => {
+			// Expected when an artist hasn't produced the asset yet. Warn in dev
+			// so missing assets are visible; the procedural placeholder stays in
+			// use. Vite strips this branch from production builds.
+			if (import.meta.env.DEV) {
+				console.warn(`sprite asset missing: ${file.key} (${file.src})`);
+			}
+			this.textures.remove(file.key);
+		});
+	}
+
 	create(): void {
 		this.g = this.add.graphics();
+		this.g.setDepth(-1);
+		this.gOverlay = this.add.graphics();
+		this.gOverlay.setDepth(10000);
+
+		// Sprite system: blank texture for pool, placeholder buildings.
+		const blankG = this.add.graphics();
+		blankG.generateTexture("_blank", 1, 1);
+		blankG.destroy();
+		generatePlaceholders(this);
+
+		// Override placeholders with any real assets that loaded successfully.
+		// Scale is computed from the texture's actual width so any resolution
+		// image (e.g. Nano Banana 2 output) fits the tile footprint.
+		for (const m of SPRITE_MANIFEST) {
+			if (!this.textures.exists(m.key)) continue;
+			const tex = this.textures.get(m.key);
+			const src = tex.getSourceImage();
+			const footprintPx = (m.tileW + m.tileH) * HALF_W;
+			const autoScale = footprintPx / src.width;
+			const entry = tileSpriteEntry(m.key, {
+				tileW: m.tileW,
+				tileH: m.tileH,
+				originX: m.originX,
+				originY: m.originY,
+				scale: autoScale,
+			});
+			if (m.cluster) {
+				registerClusterSprite(m.zone, m.density, entry);
+			} else {
+				registerBuildingSprite(m.zone, m.density, entry);
+			}
+		}
+
+		// Register loaded civic sprites.
+		for (const cm of CIVIC_MANIFEST) {
+			if (!this.textures.exists(cm.key)) continue;
+			const tex = this.textures.get(cm.key);
+			const src = tex.getSourceImage();
+			// TODO: variable-size civic buildings. This assumes a 1x1 footprint.
+			// When civic types span multiple tiles (stadium, coal plant, etc.),
+			// give CivicManifestEntry tileW/tileH like SpriteManifestEntry and
+			// route civic placement through tryCluster instead of this constant.
+			const footprintPx = 2 * HALF_W; // civic buildings are always 1x1
+			const autoScale = footprintPx / src.width;
+			registerCivicSprite(
+				cm.civicType,
+				tileSpriteEntry(cm.key, {
+					originX: cm.originX,
+					originY: cm.originY,
+					scale: autoScale,
+				}),
+			);
+		}
+
+		this.sprites = new SpritePool(this, "_blank");
+		this.covered = new Uint8Array(this.city.width * this.city.height);
 
 		const cam = this.cameras.main;
 		cam.setBackgroundColor(0x0f172a);
@@ -379,6 +472,9 @@ export class IsoScene extends Phaser.Scene {
 		const overlay = snap.overlay;
 
 		g.clear();
+		this.gOverlay.clear();
+		this.sprites.begin();
+		this.covered.fill(0);
 
 		// Back-to-front diagonal sweep so extruded buildings occlude correctly.
 		const maxD = w - 1 + (h - 1);
@@ -391,6 +487,8 @@ export class IsoScene extends Phaser.Scene {
 			}
 		}
 
+		this.sprites.end();
+
 		// While dragging, preview the affected footprint; otherwise highlight the
 		// single hovered tile.
 		if (this.dragging) {
@@ -401,48 +499,50 @@ export class IsoScene extends Phaser.Scene {
 			this.hoverY >= 0 &&
 			this.hoverY < h
 		) {
-			g.lineStyle(2, COL_CURSOR, 0.9);
-			this.pathHoverFace(this.hoverX, this.hoverY, overlay);
-			g.strokePath();
+			const go = this.gOverlay;
+			go.lineStyle(2, COL_CURSOR, 0.9);
+			this.pathHoverFace(go, this.hoverX, this.hoverY, overlay);
+			go.strokePath();
 			if (isTerraformTool(snap.tool)) this.drawCornerMarker();
 		}
 	}
 
-	/** Path the visible top face of a tile: sloped ground, or the flat top of whatever sits on it. */
-	private pathHoverFace(x: number, y: number, overlay: string): void {
-		const city = this.city;
-		const idx = y * city.width + x;
-		const flat =
-			overlay === "land-value" ||
-			city.terrain[idx] === TERRAIN_WATER ||
-			city.roads[idx] === 1 ||
-			city.rail[idx] === 1 ||
-			city.powerLines[idx] === 1 ||
-			(city.civic[idx] ?? 0) !== 0 ||
-			(city.building[idx] ?? 0) > 0;
-		if (flat) {
+	/** Path the terrain surface under the cursor for selection highlighting. */
+	private pathHoverFace(
+		g: Phaser.GameObjects.Graphics,
+		x: number,
+		y: number,
+		overlay: string,
+	): void {
+		// Land-value overlay lifts tiles by value — use flat diamond at that height.
+		if (overlay === "land-value") {
 			const cx = (x - y) * HALF_W;
 			const cy = (x + y) * HALF_H;
-			diamondPath(this.g, cx, cy, this.tileTopLift(x, y, overlay));
+			diamondPath(g, cx, cy, this.tileTopLift(x, y, overlay));
 			return;
 		}
-		this.pathGroundFace(x, y);
+		// Everything else highlights at ground level.
+		this.pathGroundFace(g, x, y);
 	}
 
 	/** Path the terrain surface of a tile: flat water plane or sloped land face. */
-	private pathGroundFace(x: number, y: number): void {
+	private pathGroundFace(
+		g: Phaser.GameObjects.Graphics,
+		x: number,
+		y: number,
+	): void {
 		const city = this.city;
 		const idx = y * city.width + x;
 		const cx = (x - y) * HALF_W;
 		const cy = (x + y) * HALF_H;
 		if (city.terrain[idx] === TERRAIN_WATER) {
-			diamondPath(this.g, cx, cy, (city.waterLevel[idx] ?? 0) * ELEV_HEIGHT);
+			diamondPath(g, cx, cy, (city.waterLevel[idx] ?? 0) * ELEV_HEIGHT);
 			return;
 		}
 		const vw = city.width + 1;
 		const heights = city.vertexHeights;
 		surfacePath(
-			this.g,
+			g,
 			cx,
 			cy,
 			(heights[y * vw + x] ?? 0) * ELEV_HEIGHT,
@@ -469,7 +569,7 @@ export class IsoScene extends Phaser.Scene {
 		const lift = this.vertexHeight(vx, vy) * ELEV_HEIGHT;
 		const px = (vx - vy) * HALF_W;
 		const py = (vx + vy) * HALF_H - lift;
-		const g = this.g;
+		const g = this.gOverlay;
 		g.fillStyle(COL_CURSOR, 0.9);
 		g.beginPath();
 		g.moveTo(px, py - 3);
@@ -485,15 +585,15 @@ export class IsoScene extends Phaser.Scene {
 		const tool = this.store.getSnapshot().tool;
 		if (tool === "none") return;
 
-		const g = this.g;
+		const g = this.gOverlay;
 		const color = previewColor(tool);
 		for (const t of this.dragTiles(tool)) {
 			if (!this.inBounds(t.x, t.y)) continue;
 			g.fillStyle(color, 0.45);
-			this.pathGroundFace(t.x, t.y);
+			this.pathGroundFace(g, t.x, t.y);
 			g.fillPath();
 			g.lineStyle(1, color, 0.9);
-			this.pathGroundFace(t.x, t.y);
+			this.pathGroundFace(g, t.x, t.y);
 			g.strokePath();
 		}
 	}
@@ -530,6 +630,71 @@ export class IsoScene extends Phaser.Scene {
 
 		const tier = city.building[idx] ?? 0;
 		return ground + tier * TIER_HEIGHT;
+	}
+
+	/** Place a sprite from the pool at the given tile's screen position. */
+	private placeTileSprite(
+		entry: TileSpriteEntry,
+		cx: number,
+		cy: number,
+		baseLift: number,
+		depth: number,
+	): void {
+		const screenX = cx + (entry.tileW - entry.tileH) * HALF_W + entry.offsetX;
+		const screenY =
+			cy + (entry.tileW + entry.tileH) * HALF_H - baseLift + entry.offsetY;
+		const img = this.sprites.place(
+			entry.textureKey,
+			entry.frame,
+			screenX,
+			screenY,
+			depth,
+			entry.originX,
+			entry.originY,
+		);
+		img.setScale(entry.scale);
+	}
+
+	/**
+	 * Try to place a multi-tile cluster sprite anchored at (x, y).
+	 * Returns true if the cluster was placed, false otherwise.
+	 */
+	private tryCluster(
+		x: number,
+		y: number,
+		zone: number,
+		density: number,
+		cluster: TileSpriteEntry,
+	): boolean {
+		const city = this.city;
+		const tw = cluster.tileW;
+		const th = cluster.tileH;
+		if (x + tw > city.width || y + th > city.height) return false;
+		for (let dy = 0; dy < th; dy++) {
+			for (let dx = 0; dx < tw; dx++) {
+				const idx = (y + dy) * city.width + (x + dx);
+				if (this.covered[idx] === 1) return false;
+				if ((city.zoning[idx] ?? 0) !== zone) return false;
+				if ((city.building[idx] ?? 0) !== density) return false;
+			}
+		}
+		let clusterBaseLift = 0;
+		for (let dy = 0; dy < th; dy++) {
+			for (let dx = 0; dx < tw; dx++) {
+				const lift = tileSurfaceHeight(city, x + dx, y + dy) * ELEV_HEIGHT;
+				if (lift > clusterBaseLift) clusterBaseLift = lift;
+			}
+		}
+		const cx = (x - y) * HALF_W;
+		const cy = (x + y) * HALF_H;
+		const depth = x + y + tw + th - 2;
+		this.placeTileSprite(cluster, cx, cy, clusterBaseLift, depth);
+		for (let dy = 0; dy < th; dy++) {
+			for (let dx = 0; dx < tw; dx++) {
+				this.covered[(y + dy) * city.width + (x + dx)] = 1;
+			}
+		}
+		return true;
 	}
 
 	private drawTile(x: number, y: number, overlay: string): void {
@@ -626,13 +791,49 @@ export class IsoScene extends Phaser.Scene {
 			if (minLift < baseLift) {
 				extrudeColumn(g, cx, cy, minLift, baseLift, COL_EARTH);
 			}
-			if (buildHeight > 0) {
-				extrudeColumn(g, cx, cy, baseLift, topLift, top);
+
+			const isCovered = this.covered[idx] === 1;
+			let usedSprite = isCovered;
+			if (buildHeight > 0 && !isCovered) {
+				// Try cluster sprite for zoned buildings
+				if (civicType === 0) {
+					const bZone = city.zoning[idx] ?? 0;
+					const bDensity = city.building[idx] ?? 0;
+					const cluster = getClusterSprite(bZone, bDensity);
+					if (
+						cluster !== undefined &&
+						this.tryCluster(x, y, bZone, bDensity, cluster)
+					) {
+						usedSprite = true;
+					}
+				}
+				// Fall back to solo sprite
+				if (!usedSprite) {
+					const spriteEntry =
+						civicType !== 0
+							? getCivicSprite(civicType)
+							: getBuildingSprite(
+									city.zoning[idx] ?? 0,
+									city.building[idx] ?? 0,
+								);
+					if (spriteEntry !== undefined) {
+						this.placeTileSprite(spriteEntry, cx, cy, baseLift, x + y);
+						usedSprite = true;
+					} else {
+						extrudeColumn(g, cx, cy, baseLift, topLift, top);
+					}
+				}
 			}
-			g.fillStyle(top, 1);
-			diamondPath(g, cx, cy, topLift);
-			g.fillPath();
+
+			if (!usedSprite) {
+				g.fillStyle(top, 1);
+				diamondPath(g, cx, cy, topLift);
+				g.fillPath();
+			}
 		}
+
+		// ---- Overlays (drawn above building sprites) ---
+		const go = this.gOverlay;
 
 		// The visible top face, for zone outlines and overlay tints.
 		const tn = flatTop ? topLift : ln;
@@ -644,82 +845,82 @@ export class IsoScene extends Phaser.Scene {
 		if (!flatTop && !isWater) {
 			const zoneOutline = zoneOutlineColor(city.zoning[idx] ?? 0);
 			if (zoneOutline >= 0) {
-				g.lineStyle(1.5, zoneOutline, 0.9);
-				surfacePath(g, cx, cy, tn, te, ts, tw);
-				g.strokePath();
+				go.lineStyle(1.5, zoneOutline, 0.9);
+				surfacePath(go, cx, cy, tn, te, ts, tw);
+				go.strokePath();
 			}
 		}
 
 		// Fire indicator (always visible regardless of overlay)
 		if (city.fire[idx] === 1) {
-			g.fillStyle(COL_FIRE_OV, 0.7);
-			surfacePath(g, cx, cy, tn, te, ts, tw);
-			g.fillPath();
+			go.fillStyle(COL_FIRE_OV, 0.7);
+			surfacePath(go, cx, cy, tn, te, ts, tw);
+			go.fillPath();
 		}
 
 		// Overlay tints
 		if (overlay === "pollution") {
 			const pol = city.pollution[idx] ?? 0;
 			if (pol > 0) {
-				g.fillStyle(COL_POLLUTION, Math.min(0.6, (pol / 255) * 0.7));
-				surfacePath(g, cx, cy, tn, te, ts, tw);
-				g.fillPath();
+				go.fillStyle(COL_POLLUTION, Math.min(0.6, (pol / 255) * 0.7));
+				surfacePath(go, cx, cy, tn, te, ts, tw);
+				go.fillPath();
 			}
 		} else if (overlay === "power") {
 			if (!isWater) {
 				const powered = city.power[idx] === 1;
-				g.fillStyle(powered ? COL_POWERED : COL_UNPOWERED, 0.45);
-				surfacePath(g, cx, cy, tn, te, ts, tw);
-				g.fillPath();
+				go.fillStyle(powered ? COL_POWERED : COL_UNPOWERED, 0.45);
+				surfacePath(go, cx, cy, tn, te, ts, tw);
+				go.fillPath();
 			}
 		} else if (overlay === "water") {
 			if (!isWater) {
 				const watered = city.waterCoverage[idx] === 1;
-				g.fillStyle(watered ? COL_WATERED : COL_UNWATERED, 0.45);
-				surfacePath(g, cx, cy, tn, te, ts, tw);
-				g.fillPath();
+				go.fillStyle(watered ? COL_WATERED : COL_UNWATERED, 0.45);
+				surfacePath(go, cx, cy, tn, te, ts, tw);
+				go.fillPath();
 			}
 		} else if (overlay === "crime") {
 			const cr = city.crime[idx] ?? 0;
 			if (cr > 0) {
-				g.fillStyle(COL_CRIME, Math.min(0.7, (cr / 255) * 0.8));
-				surfacePath(g, cx, cy, tn, te, ts, tw);
-				g.fillPath();
+				go.fillStyle(COL_CRIME, Math.min(0.7, (cr / 255) * 0.8));
+				surfacePath(go, cx, cy, tn, te, ts, tw);
+				go.fillPath();
 			}
 		} else if (overlay === "traffic") {
 			const tr = city.traffic[idx] ?? 0;
 			if (tr > 0) {
-				g.fillStyle(COL_TRAFFIC_OV, Math.min(0.7, (tr / 255) * 0.8));
-				surfacePath(g, cx, cy, tn, te, ts, tw);
-				g.fillPath();
+				go.fillStyle(COL_TRAFFIC_OV, Math.min(0.7, (tr / 255) * 0.8));
+				surfacePath(go, cx, cy, tn, te, ts, tw);
+				go.fillPath();
 			}
 		} else if (overlay === "police") {
 			if (!isWater) {
 				const covered = city.policeCoverage[idx] === 1;
-				g.fillStyle(covered ? COL_POWERED : COL_UNPOWERED, 0.45);
-				surfacePath(g, cx, cy, tn, te, ts, tw);
-				g.fillPath();
+				go.fillStyle(covered ? COL_POWERED : COL_UNPOWERED, 0.45);
+				surfacePath(go, cx, cy, tn, te, ts, tw);
+				go.fillPath();
 			}
 		} else if (overlay === "fire") {
 			if (!isWater) {
 				const covered = city.fireCoverage[idx] === 1;
-				g.fillStyle(covered ? COL_POWERED : COL_UNPOWERED, 0.45);
-				surfacePath(g, cx, cy, tn, te, ts, tw);
-				g.fillPath();
+				go.fillStyle(covered ? COL_POWERED : COL_UNPOWERED, 0.45);
+				surfacePath(go, cx, cy, tn, te, ts, tw);
+				go.fillPath();
 			}
 		} else if (overlay === "education") {
 			if (!isWater) {
 				const covered = city.educationCoverage[idx] === 1;
-				g.fillStyle(covered ? COL_POWERED : COL_UNPOWERED, 0.45);
-				surfacePath(g, cx, cy, tn, te, ts, tw);
-				g.fillPath();
+				go.fillStyle(covered ? COL_POWERED : COL_UNPOWERED, 0.45);
+				surfacePath(go, cx, cy, tn, te, ts, tw);
+				go.fillPath();
 			}
 		} else if (overlay === "health") {
 			if (!isWater) {
 				const covered = city.healthCoverage[idx] === 1;
-				g.fillStyle(covered ? COL_POWERED : COL_UNPOWERED, 0.45);
-				surfacePath(g, cx, cy, tn, te, ts, tw);
-				g.fillPath();
+				go.fillStyle(covered ? COL_POWERED : COL_UNPOWERED, 0.45);
+				surfacePath(go, cx, cy, tn, te, ts, tw);
+				go.fillPath();
 			}
 		}
 	}
@@ -901,12 +1102,7 @@ function extrudeColumn(
  * Brightness multiplier for a sloped grass face — corners tilting toward the
  * upper-left light source brighten, away darken. Flat tiles return 1.
  */
-function slopeShade(
-	hn: number,
-	he: number,
-	hs: number,
-	hw: number,
-): number {
+function slopeShade(hn: number, he: number, hs: number, hw: number): number {
 	const f = 1 + (hn + hw - he - hs) * SLOPE_SHADE;
 	return Math.max(0.7, Math.min(1.3, f));
 }
