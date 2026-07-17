@@ -174,7 +174,12 @@ export class IsoScene extends Phaser.Scene {
 			this.load.image(entry.key, entry.path);
 		}
 		this.load.on("loaderror", (file: Phaser.Loader.File) => {
-			// Expected when an artist hasn't produced the asset yet.
+			// Expected when an artist hasn't produced the asset yet. Warn in dev
+			// so missing assets are visible; the procedural placeholder stays in
+			// use. Vite strips this branch from production builds.
+			if (import.meta.env.DEV) {
+				console.warn(`sprite asset missing: ${file.key} (${file.src})`);
+			}
 			this.textures.remove(file.key);
 		});
 	}
@@ -219,6 +224,10 @@ export class IsoScene extends Phaser.Scene {
 			if (!this.textures.exists(cm.key)) continue;
 			const tex = this.textures.get(cm.key);
 			const src = tex.getSourceImage();
+			// TODO: variable-size civic buildings. This assumes a 1x1 footprint.
+			// When civic types span multiple tiles (stadium, coal plant, etc.),
+			// give CivicManifestEntry tileW/tileH like SpriteManifestEntry and
+			// route civic placement through tryCluster instead of this constant.
 			const footprintPx = 2 * HALF_W; // civic buildings are always 1x1
 			const autoScale = footprintPx / src.width;
 			registerCivicSprite(

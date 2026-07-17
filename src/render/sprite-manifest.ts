@@ -71,6 +71,11 @@ function civic(civicType: number, name: string): CivicManifestEntry {
 	};
 }
 
+// TODO: building variety. Each zone+density currently maps to a single sprite,
+// so every building of a kind looks identical. Later, give each zone+density a
+// list of variant sprites and pick one per tile. The pick MUST be deterministic
+// (no Math.random) — derive the index from the tile via the seeded PRNG keyed by
+// tile index, so a tile renders the same building across frames and reloads.
 function solo(zone: "r" | "c" | "i", density: 1 | 2 | 3): SpriteManifestEntry {
 	return {
 		key: `asset_${zone}${density}`,
@@ -113,23 +118,8 @@ function cluster(
  *   scale = footprintWidthPx / textureWidth
  * where footprintWidthPx = (tileW + tileH) * HALF_W.
  *
- * | Key               | File                          | Footprint |
- * |-------------------|-------------------------------|-----------|
- * | asset_r1          | sprites/bldg_r1.png           | 1x1       |
- * | asset_r2          | sprites/bldg_r2.png           | 1x1       |
- * | asset_r3          | sprites/bldg_r3.png           | 1x1       |
- * | asset_r2_2x2      | sprites/bldg_r2_2x2.png      | 2x2       |
- * | asset_r3_3x3      | sprites/bldg_r3_3x3.png      | 3x3       |
- * | asset_c1          | sprites/bldg_c1.png           | 1x1       |
- * | asset_c2          | sprites/bldg_c2.png           | 1x1       |
- * | asset_c3          | sprites/bldg_c3.png           | 1x1       |
- * | asset_c2_2x2      | sprites/bldg_c2_2x2.png      | 2x2       |
- * | asset_c3_3x3      | sprites/bldg_c3_3x3.png      | 3x3       |
- * | asset_i1          | sprites/bldg_i1.png           | 1x1       |
- * | asset_i2          | sprites/bldg_i2.png           | 1x1       |
- * | asset_i3          | sprites/bldg_i3.png           | 1x1       |
- * | asset_i2_2x2      | sprites/bldg_i2_2x2.png      | 2x2       |
- * | asset_i3_3x3      | sprites/bldg_i3_3x3.png      | 3x3       |
+ * Entries are constructed below via the solo()/cluster() helpers, which derive
+ * each key, path, and footprint from the zone + density.
  */
 export const SPRITE_MANIFEST: readonly SpriteManifestEntry[] = [
 	// Residential — solo
