@@ -212,7 +212,7 @@ export const COST_DRAIN_WATER = 25;
 // Indices: 0=none, 1=coal, 2=solar, 3=pump, 4=police, 5=fire, 6=hospital,
 //          7=school, 8=college, 9=library, 10=park, 11=stadium
 export const CIVIC_MAINTENANCE = [
-	0, 50, 20, 10, 40, 40, 60, 25, 50, 20, 5, 100,
+	0, 5, 2, 1, 4, 4, 6, 2.5, 5, 2, 0.5, 10,
 ] as const;
 export const RAIL_MAINTENANCE_COST = 0.15;
 
@@ -249,11 +249,7 @@ export const STARTING_TREASURY = 10000;
 // Treasury value pinned each tick while the infinite-money debug cheat is on.
 // Large enough that no single tick of construction can exhaust it.
 export const INFINITE_TREASURY = 1_000_000_000;
-// Per-resident upkeep. Tuned so a basic road-served city with some commercial
-// breaks even: break-even residential land value ≈ pop(10) * cost / taxRate
-// ≈ 10 * 0.15 / 0.07 ≈ 21, which road-adjacent tiles reach. Higher values make
-// population an unaffordable liability (see DESIGN.md land-value economics).
-export const SERVICE_COST_PER_POP = 0.15;
+export const SERVICE_COST_PER_POP = 0.01;
 export const ROAD_MAINTENANCE_COST = 0.08;
 export const MIN_TAX_RATE = 0;
 export const MAX_TAX_RATE = 0.2;
