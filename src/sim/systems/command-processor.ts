@@ -24,9 +24,6 @@ import {
 	COST_RAIL,
 	COST_ROAD,
 	COST_TERRAFORM,
-	COST_ZONE_HIGH,
-	COST_ZONE_LOW,
-	COST_ZONE_MED,
 	DENSITY_HIGH,
 	DENSITY_LOW,
 	DENSITY_MED,
@@ -69,12 +66,6 @@ function canAfford(state: CityState, cost: number): boolean {
 function charge(state: CityState, cost: number): void {
 	if (infiniteMoney(state)) return;
 	state.aggregates[AGG.TREASURY] = (state.aggregates[AGG.TREASURY] ?? 0) - cost;
-}
-
-function zoneCost(density: number): number {
-	if (density === DENSITY_HIGH) return COST_ZONE_HIGH;
-	if (density === DENSITY_MED) return COST_ZONE_MED;
-	return COST_ZONE_LOW;
 }
 
 function civicCost(civicType: number): number {
@@ -142,10 +133,6 @@ function applyZone(
 		state.jobs[idx] = 0;
 		return;
 	}
-
-	const cost = zoneCost(dens);
-	if (!canAfford(state, cost)) return;
-	charge(state, cost);
 
 	state.zoning[idx] = zoneType;
 	state.densityCap[idx] = dens;
