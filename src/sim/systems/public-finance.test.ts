@@ -5,7 +5,6 @@ import {
 	BUILDING_LOW,
 	DAYS_PER_WEEK,
 	ROAD_MAINTENANCE_COST,
-	SERVICE_COST_PER_POP,
 	ZONE_RESIDENTIAL,
 } from "../constants.ts";
 import { updatePublicFinance } from "./public-finance.ts";
@@ -81,10 +80,8 @@ describe("updatePublicFinance", () => {
 		// Breakdown is recorded per weekly settlement = per-day rate * DAYS_PER_WEEK.
 		// Revenue = landValue(100) * taxR(0.07) = 7/day
 		expect(city.aggregates[AGG.REVENUE]).toBeCloseTo(7 * DAYS_PER_WEEK);
-		// Service cost = pop(10) * SERVICE_COST_PER_POP/day
-		expect(city.aggregates[AGG.SERVICE_COST]).toBeCloseTo(
-			10 * SERVICE_COST_PER_POP * DAYS_PER_WEEK,
-		);
+		// Service cost slot is zeroed (no base per-pop cost)
+		expect(city.aggregates[AGG.SERVICE_COST]).toBe(0);
 		// Road cost = 5 roads * ROAD_MAINTENANCE_COST/day
 		expect(city.aggregates[AGG.ROAD_COST]).toBeCloseTo(
 			5 * ROAD_MAINTENANCE_COST * DAYS_PER_WEEK,

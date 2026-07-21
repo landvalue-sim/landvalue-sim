@@ -86,7 +86,7 @@ flowchart TB
   LV["Land value field<br/>amenity capitalization"] --> M
   M["Migration + growth<br/>wealth-tiered demand"] --> E
   E["Externalities<br/>pollution, crime, traffic"] --> PF
-  PF["Public finance<br/>tax, bonds, services"] --> W[["Write to city state"]]
+  PF["Public finance<br/>tax, bonds, maintenance"] --> W[["Write to city state"]]
 ```
 
 The land-value field is the most expensive system (it diffuses amenity and disamenity

@@ -2,8 +2,7 @@
  * Public finance — tax collection and service costs.
  *
  * Revenue: property tax = sum(landValue * taxRate) for occupied tiles.
- * Expenses: per-capita service cost + road maintenance + rail maintenance
- *           + civic building maintenance.
+ * Expenses: road maintenance + rail maintenance + civic building maintenance.
  *
  * Settles once per in-game week (every DAYS_PER_WEEK ticks). A settlement
  * applies a full week's worth — the per-tick (per-day) rates scaled up by
@@ -26,7 +25,6 @@ import {
 	MAX_BONDS,
 	RAIL_MAINTENANCE_COST,
 	ROAD_MAINTENANCE_COST,
-	SERVICE_COST_PER_POP,
 	ZONE_COMMERCIAL,
 	ZONE_INDUSTRIAL,
 	ZONE_RESIDENTIAL,
@@ -43,7 +41,6 @@ export function updatePublicFinance(state: CityState): void {
 	const taxR = aggregates[AGG.TAX_RATE_R] ?? 0;
 	const taxC = aggregates[AGG.TAX_RATE_C] ?? 0;
 	const taxI = aggregates[AGG.TAX_RATE_I] ?? 0;
-	const totalPop = aggregates[AGG.TOTAL_POP] ?? 0;
 
 	// --- Revenue: property tax on occupied tiles (per-day rate) ---
 	let revenue = 0;
@@ -76,7 +73,6 @@ export function updatePublicFinance(state: CityState): void {
 
 	// --- Scale the per-day rates up to a full week's settlement ---
 	const revenueWk = revenue * DAYS_PER_WEEK;
-	const serviceCostWk = totalPop * SERVICE_COST_PER_POP * DAYS_PER_WEEK;
 	const roadCostWk = roadCount * ROAD_MAINTENANCE_COST * DAYS_PER_WEEK;
 	const railCostWk = railCount * RAIL_MAINTENANCE_COST * DAYS_PER_WEEK;
 	const civicCostWk = civicCost * DAYS_PER_WEEK;
@@ -93,8 +89,7 @@ export function updatePublicFinance(state: CityState): void {
 		}
 	}
 
-	const expensesWk =
-		serviceCostWk + roadCostWk + railCostWk + civicCostWk + bondPaymentWk;
+	const expensesWk = roadCostWk + railCostWk + civicCostWk + bondPaymentWk;
 
 	// --- Update treasury ---
 	// Infinite-money debug cheat pins the treasury so it never depletes.
@@ -107,7 +102,7 @@ export function updatePublicFinance(state: CityState): void {
 
 	// --- Record this week's breakdown for the finances UI ---
 	aggregates[AGG.REVENUE] = revenueWk;
-	aggregates[AGG.SERVICE_COST] = serviceCostWk;
+	aggregates[AGG.SERVICE_COST] = 0;
 	aggregates[AGG.ROAD_COST] = roadCostWk;
 	aggregates[AGG.CIVIC_COST] = civicCostWk;
 	aggregates[AGG.RAIL_COST] = railCostWk;

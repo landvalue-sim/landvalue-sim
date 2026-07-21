@@ -61,7 +61,6 @@ function FinancesPanel({
 	const stats = useLiveStats(sim.city);
 	const net =
 		stats.revenue -
-		stats.serviceCost -
 		stats.roadCost -
 		stats.civicCost -
 		stats.railCost -
@@ -83,11 +82,6 @@ function FinancesPanel({
 			<div className="fin-section-title">Budget (per week)</div>
 			<div className="fin-table">
 				<FinRow label="Property tax" value={stats.revenue} sign="+" />
-				<FinRow
-					label="Service cost"
-					value={-stats.serviceCost}
-					sign={"\u2212"}
-				/>
 				<FinRow label="Road upkeep" value={-stats.roadCost} sign={"\u2212"} />
 				<FinRow label="Rail upkeep" value={-stats.railCost} sign={"\u2212"} />
 				<FinRow label="Civic upkeep" value={-stats.civicCost} sign={"\u2212"} />

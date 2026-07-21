@@ -218,9 +218,18 @@ export const RAIL_MAINTENANCE_COST = 0.15;
 
 // Civic placement costs (indexed by CIVIC_* constant).
 export const CIVIC_COST_TABLE = [
-	0, COST_COAL_PLANT, COST_SOLAR_PLANT, COST_WATER_PUMP, COST_POLICE,
-	COST_FIRE_STATION, COST_HOSPITAL, COST_SCHOOL, COST_COLLEGE, COST_LIBRARY,
-	COST_PARK, COST_STADIUM,
+	0,
+	COST_COAL_PLANT,
+	COST_SOLAR_PLANT,
+	COST_WATER_PUMP,
+	COST_POLICE,
+	COST_FIRE_STATION,
+	COST_HOSPITAL,
+	COST_SCHOOL,
+	COST_COLLEGE,
+	COST_LIBRARY,
+	COST_PARK,
+	COST_STADIUM,
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -249,7 +258,6 @@ export const STARTING_TREASURY = 10000;
 // Treasury value pinned each tick while the infinite-money debug cheat is on.
 // Large enough that no single tick of construction can exhaust it.
 export const INFINITE_TREASURY = 1_000_000_000;
-export const SERVICE_COST_PER_POP = 0.01;
 export const ROAD_MAINTENANCE_COST = 0.08;
 export const MIN_TAX_RATE = 0;
 export const MAX_TAX_RATE = 0.2;

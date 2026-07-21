@@ -28,7 +28,6 @@ export interface LiveStats {
 	readonly cDemand: number;
 	readonly iDemand: number;
 	readonly revenue: number;
-	readonly serviceCost: number;
 	readonly roadCost: number;
 	readonly civicCost: number;
 	readonly railCost: number;
@@ -64,7 +63,6 @@ function readStats(city: CityState): LiveStats {
 		cDemand: a[AGG.C_DEMAND] ?? 0,
 		iDemand: a[AGG.I_DEMAND] ?? 0,
 		revenue: a[AGG.REVENUE] ?? 0,
-		serviceCost: a[AGG.SERVICE_COST] ?? 0,
 		roadCost: a[AGG.ROAD_COST] ?? 0,
 		civicCost: a[AGG.CIVIC_COST] ?? 0,
 		railCost: a[AGG.RAIL_COST] ?? 0,
