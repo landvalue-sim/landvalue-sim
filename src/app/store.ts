@@ -38,7 +38,7 @@ export function createStore(sim: SimClient): InteractionStore {
 	let snapshot: InteractionSnapshot = {
 		tool: "none",
 		overlay: "none",
-		speed: 4, // Normal
+		speed: 0, // Start paused
 		dragEnabled: true,
 	};
 	// Speed to restore when unpausing (the last non-paused tier the player chose).
