@@ -107,7 +107,8 @@ export function checkGridIntegrity(state: CityState): void {
 		const zone = zoning[i] ?? 0;
 		const bld = building[i] ?? 0;
 
-		// Building on unzoned land (roads/rail/powerlines/civic are fine)
+		// Building on unzoned land (roads/rail/powerlines/civic are fine;
+		// water pipes are underground and don't count as surface infrastructure)
 		if (
 			zone === ZONE_NONE &&
 			bld !== BUILDING_EMPTY &&

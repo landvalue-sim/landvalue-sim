@@ -123,6 +123,7 @@ function resetCity(state: CityState): void {
 	state.roads.fill(0);
 	state.rail.fill(0);
 	state.powerLines.fill(0);
+	state.waterPipes.fill(0);
 	state.civic.fill(0);
 	state.zoning.fill(0);
 	state.densityCap.fill(0);

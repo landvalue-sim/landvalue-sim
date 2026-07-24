@@ -62,8 +62,9 @@ function FinancesPanel({
 	const net =
 		stats.revenue -
 		stats.roadCost -
-		stats.civicCost -
 		stats.railCost -
+		stats.pipeCost -
+		stats.civicCost -
 		stats.bondPayment;
 
 	return (
@@ -84,6 +85,7 @@ function FinancesPanel({
 				<FinRow label="Property tax" value={stats.revenue} sign="+" />
 				<FinRow label="Road upkeep" value={-stats.roadCost} sign={"\u2212"} />
 				<FinRow label="Rail upkeep" value={-stats.railCost} sign={"\u2212"} />
+				<FinRow label="Pipe upkeep" value={-stats.pipeCost} sign={"\u2212"} />
 				<FinRow label="Civic upkeep" value={-stats.civicCost} sign={"\u2212"} />
 				<FinRow
 					label="Bond payments"

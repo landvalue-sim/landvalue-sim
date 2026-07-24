@@ -64,6 +64,8 @@ const COL_WATER = 0x2563eb;
 const COL_ROAD = 0x52525b;
 const COL_RAIL = 0x71717a;
 const COL_POWER_LINE = 0xfbbf24;
+const COL_WATER_PIPE = 0x06b6d4;
+const COL_PIPE_DISCONNECTED = 0xf97316; // orange — pipe not reached by water network
 const COL_R_BUILT = 0x16a34a;
 const COL_C_BUILT = 0x2563eb;
 const COL_I_BUILT = 0xca8a04;
@@ -405,7 +407,8 @@ export class IsoScene extends Phaser.Scene {
 
 	private placeSingle(x: number, y: number): void {
 		if (!this.inBounds(x, y)) return;
-		const cmd = toolToCommand(this.store.getSnapshot().tool, x, y);
+		const snap = this.store.getSnapshot();
+		const cmd = toolToCommand(snap.tool, x, y, snap.overlay);
 		if (cmd !== null) this.sendCommands([cmd]);
 	}
 
@@ -424,13 +427,14 @@ export class IsoScene extends Phaser.Scene {
 
 	/** Commit the current drag as one batch of commands (line or rectangle). */
 	private commitDrag(): void {
-		const tool = this.store.getSnapshot().tool;
+		const snap = this.store.getSnapshot();
+		const tool = snap.tool;
 		if (tool === "none") return;
 
 		const cmds: Command[] = [];
 		for (const t of this.dragTiles(tool)) {
 			if (!this.inBounds(t.x, t.y)) continue;
-			const cmd = toolToCommand(tool, t.x, t.y);
+			const cmd = toolToCommand(tool, t.x, t.y, snap.overlay);
 			if (cmd !== null) cmds.push(cmd);
 		}
 		if (cmds.length > 0) this.sendCommands(cmds);
@@ -716,6 +720,7 @@ export class IsoScene extends Phaser.Scene {
 		const isRail = !isRoad && !isWater && city.rail[idx] === 1;
 		const isPowerLine =
 			!isRoad && !isWater && !isRail && city.powerLines[idx] === 1;
+		// Water pipes are underground — they don't affect surface rendering.
 		const civicType =
 			!isRoad && !isWater && !isRail && !isPowerLine
 				? (city.civic[idx] ?? 0)
@@ -876,7 +881,33 @@ export class IsoScene extends Phaser.Scene {
 		} else if (overlay === "water") {
 			if (!isWater) {
 				const watered = city.waterCoverage[idx] === 1;
-				go.fillStyle(watered ? COL_WATERED : COL_UNWATERED, 0.45);
+				const hasPipe = city.waterPipes[idx] === 1;
+				const isConduit = hasPipe || isRoad;
+				if (isConduit) {
+					const col = watered ? COL_WATER_PIPE : COL_PIPE_DISCONNECTED;
+					go.fillStyle(col, 0.7);
+				} else {
+					go.fillStyle(watered ? COL_WATERED : COL_UNWATERED, 0.45);
+				}
+				surfacePath(go, cx, cy, tn, te, ts, tw);
+				go.fillPath();
+			}
+		} else if (overlay === "underground") {
+			if (!isWater) {
+				const watered = city.waterCoverage[idx] === 1;
+				const hasPipe = city.waterPipes[idx] === 1;
+				const isPump = (city.civic[idx] ?? 0) === CIVIC_WATER_PUMP;
+				if (hasPipe) {
+					const col = watered ? COL_WATER_PIPE : COL_PIPE_DISCONNECTED;
+					go.fillStyle(col, 0.8);
+				} else if (isRoad) {
+					const col = watered ? COL_WATER_PIPE : COL_PIPE_DISCONNECTED;
+					go.fillStyle(col, 0.4);
+				} else if (isPump) {
+					go.fillStyle(COL_WATER_PIPE, 0.8);
+				} else {
+					go.fillStyle(0x000000, 0.5);
+				}
 				surfacePath(go, cx, cy, tn, te, ts, tw);
 				go.fillPath();
 			}
@@ -1169,7 +1200,12 @@ function shade(color: number, f: number): number {
 
 /** Whether a tool drags as an L-line (like roads) rather than a rectangle. */
 function isLineTool(tool: string): boolean {
-	return tool === "road" || tool === "rail" || tool === "power-line";
+	return (
+		tool === "road" ||
+		tool === "rail" ||
+		tool === "power-line" ||
+		tool === "water-pipe"
+	);
 }
 
 /** Whether a tool raises/lowers terrain (single-click, corner-aware). */
@@ -1214,6 +1250,8 @@ function previewColor(tool: string): number {
 			return COL_RAIL;
 		case "power-line":
 			return COL_POWER_LINE;
+		case "water-pipe":
+			return COL_WATER_PIPE;
 		case "coal-plant":
 			return COL_CIVIC;
 		case "solar-plant":
@@ -1249,7 +1287,12 @@ function previewColor(tool: string): number {
 
 // ---- Command mapping -------------------------------------------------------
 
-function toolToCommand(tool: string, x: number, y: number): Command | null {
+function toolToCommand(
+	tool: string,
+	x: number,
+	y: number,
+	overlay: string,
+): Command | null {
 	switch (tool) {
 		case "zone-r-low":
 			return {
@@ -1329,6 +1372,8 @@ function toolToCommand(tool: string, x: number, y: number): Command | null {
 			return { kind: "build-rail", x, y };
 		case "power-line":
 			return { kind: "build-power-line", x, y };
+		case "water-pipe":
+			return { kind: "build-water-pipe", x, y };
 		case "coal-plant":
 			return { kind: "place-civic", x, y, civicType: CIVIC_COAL_PLANT };
 		case "solar-plant":
@@ -1352,6 +1397,7 @@ function toolToCommand(tool: string, x: number, y: number): Command | null {
 		case "stadium":
 			return { kind: "place-civic", x, y, civicType: CIVIC_STADIUM };
 		case "demolish":
+			if (overlay === "underground") return { kind: "demolish-pipe", x, y };
 			return { kind: "demolish", x, y };
 		case "water":
 			return { kind: "set-water", x, y, place: true };

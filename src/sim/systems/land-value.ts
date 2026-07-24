@@ -91,6 +91,7 @@ export function updateLandValue(state: CityState): void {
 		}
 
 		// Rail and power lines are also infrastructure
+		// (Water pipes are underground and don't affect surface land value.)
 		if (rail[i] === 1 || state.powerLines[i] === 1) {
 			landValue[i] = 0;
 			continue;

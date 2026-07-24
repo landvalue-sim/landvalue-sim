@@ -81,6 +81,7 @@ const TOOL_CATEGORIES: ReadonlyArray<ToolCategory> = [
 			{ id: "road", label: "Road (R)", accent: "#6b7280" },
 			{ id: "rail", label: "Rail (T)", accent: "#71717a" },
 			{ id: "power-line", label: "Power Line (P)", accent: "#fbbf24" },
+			{ id: "water-pipe", label: "Water Pipe (W)", accent: "#06b6d4" },
 		],
 	},
 	{
@@ -116,6 +117,7 @@ const OVERLAYS: ReadonlyArray<{ id: OverlayMode; label: string }> = [
 	{ id: "pollution", label: "Pollution" },
 	{ id: "power", label: "Power" },
 	{ id: "water", label: "Water" },
+	{ id: "underground", label: "Underground" },
 	{ id: "crime", label: "Crime" },
 	{ id: "traffic", label: "Traffic" },
 	{ id: "police", label: "Police" },

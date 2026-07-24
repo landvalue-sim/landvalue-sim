@@ -33,6 +33,12 @@ export interface BuildPowerLineCommand {
 	readonly y: number;
 }
 
+export interface BuildWaterPipeCommand {
+	readonly kind: "build-water-pipe";
+	readonly x: number;
+	readonly y: number;
+}
+
 export interface PlaceCivicCommand {
 	readonly kind: "place-civic";
 	readonly x: number;
@@ -43,6 +49,12 @@ export interface PlaceCivicCommand {
 
 export interface DemolishCommand {
 	readonly kind: "demolish";
+	readonly x: number;
+	readonly y: number;
+}
+
+export interface DemolishPipeCommand {
+	readonly kind: "demolish-pipe";
 	readonly x: number;
 	readonly y: number;
 }
@@ -82,8 +94,10 @@ export type Command =
 	| BuildRoadCommand
 	| BuildRailCommand
 	| BuildPowerLineCommand
+	| BuildWaterPipeCommand
 	| PlaceCivicCommand
 	| DemolishCommand
+	| DemolishPipeCommand
 	| TerraformCommand
 	| SetWaterCommand
 	| SetTaxRateCommand

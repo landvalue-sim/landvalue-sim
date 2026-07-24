@@ -177,6 +177,8 @@ export const POWER_DEMAND_PER_BUILDING = 1;
 // Water
 // ---------------------------------------------------------------------------
 export const WATER_COVERAGE_RADIUS = 12;
+export const COST_WATER_PIPE = 5;
+export const PIPE_MAINTENANCE_COST = 0.05;
 
 // ---------------------------------------------------------------------------
 // Civic building coverage radii (indexed by CIVIC_* constant)
@@ -330,8 +332,9 @@ export const AGG = {
 	BOND_SLOT_7: 34,
 	BOND_SLOT_8: 35,
 	BOND_SLOT_9: 36,
+	PIPE_COST: 37,
 	// Debug cheats (0 = off, 1 = on). Stored in shared state so the sim systems
 	// running in the worker can read them deterministically.
-	DEBUG_INFINITE_MONEY: 37,
-	COUNT: 38,
+	DEBUG_INFINITE_MONEY: 38,
+	COUNT: 39,
 } as const;

@@ -31,6 +31,7 @@ export interface LiveStats {
 	readonly roadCost: number;
 	readonly civicCost: number;
 	readonly railCost: number;
+	readonly pipeCost: number;
 	readonly taxR: number;
 	readonly taxC: number;
 	readonly taxI: number;
@@ -66,6 +67,7 @@ function readStats(city: CityState): LiveStats {
 		roadCost: a[AGG.ROAD_COST] ?? 0,
 		civicCost: a[AGG.CIVIC_COST] ?? 0,
 		railCost: a[AGG.RAIL_COST] ?? 0,
+		pipeCost: a[AGG.PIPE_COST] ?? 0,
 		taxR: a[AGG.TAX_RATE_R] ?? 0,
 		taxC: a[AGG.TAX_RATE_C] ?? 0,
 		taxI: a[AGG.TAX_RATE_I] ?? 0,
