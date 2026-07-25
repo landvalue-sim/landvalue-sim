@@ -113,6 +113,18 @@ function FinancesPanel({
 				/>
 			</div>
 
+			<div className="fin-section-title">Water</div>
+			<div className="fin-table">
+				<FinSimpleRow
+					label="Capacity"
+					value={`${Math.floor(stats.waterCapacity)}`}
+				/>
+				<FinSimpleRow
+					label="Demand"
+					value={`${Math.floor(stats.waterDemand)}`}
+				/>
+			</div>
+
 			<div className="fin-section-title">Tax Rates</div>
 			<p className="fin-hint">
 				Above {NEUTRAL_PCT}% (neutral), higher rates raise revenue but soften

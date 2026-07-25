@@ -15,7 +15,7 @@ import {
 	BUILDING_EMPTY,
 	CIVIC_NONE,
 	MAX_GRID_SIZE,
-	POWER_DEMAND_PER_BUILDING,
+	POWER_DEMAND_PER_DENSITY,
 	POWER_OUTPUT,
 	TERRAIN_WATER,
 } from "../constants.ts";
@@ -60,8 +60,9 @@ export function updatePower(state: CityState): void {
 			bfsQueue[tail] = i;
 			tail++;
 		}
-		if (building[i] !== BUILDING_EMPTY) {
-			totalDemand += POWER_DEMAND_PER_BUILDING;
+		const tier = building[i] ?? 0;
+		if (tier !== BUILDING_EMPTY) {
+			totalDemand += POWER_DEMAND_PER_DENSITY[tier] ?? 0;
 		}
 	}
 

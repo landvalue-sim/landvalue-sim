@@ -9,8 +9,9 @@
  * connected to an active pump provides water coverage for free. Dedicated
  * water pipes extend the network to areas roads don't reach.
  *
- * Progressive disclosure: if no water pumps exist yet, all tiles are
- * considered covered so the early game works without infrastructure.
+ * Capacity: each active pump supplies WATER_OUTPUT_PER_PUMP units. If total
+ * demand (density-weighted building count) exceeds capacity, coverage drops
+ * to zero — the same brownout model as the power system.
  */
 
 import type { CityState } from "../city-state.ts";
@@ -21,6 +22,8 @@ import {
 	CIVIC_WATER_PUMP,
 	MAX_GRID_SIZE,
 	TERRAIN_WATER,
+	WATER_DEMAND_PER_DENSITY,
+	WATER_OUTPUT_PER_PUMP,
 } from "../constants.ts";
 
 const MAX_TILES = MAX_GRID_SIZE * MAX_GRID_SIZE;
@@ -85,23 +88,24 @@ export function updateWater(state: CityState): void {
 				tail++;
 			}
 		}
-		if (building[i] !== BUILDING_EMPTY) totalDemand++;
+		const tier = building[i] ?? 0;
+		if (tier !== BUILDING_EMPTY) {
+			totalDemand += WATER_DEMAND_PER_DENSITY[tier] ?? 0;
+		}
 	}
 
+	const totalCapacity = activePumps * WATER_OUTPUT_PER_PUMP;
+
 	aggregates[AGG.WATER_DEMAND] = totalDemand;
+	aggregates[AGG.WATER_CAPACITY] = totalCapacity;
 
 	// Reset coverage
 	for (let i = 0; i < size; i++) {
 		waterCoverage[i] = 0;
 	}
 
-	aggregates[AGG.WATER_CAPACITY] = activePumps;
-
-	// No pumps or no active pumps: nothing is covered
-	if (!hasPumps) return;
-
-	// No active pumps (all placed pumps are away from water): nothing covered
-	if (activePumps === 0) return;
+	// No pumps or demand exceeds capacity: nothing is covered
+	if (!hasPumps || totalDemand > totalCapacity) return;
 
 	// BFS flood fill through conducting tiles
 	let steps = 0;

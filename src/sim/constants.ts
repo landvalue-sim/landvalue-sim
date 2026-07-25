@@ -171,12 +171,21 @@ export const POWER_OUTPUT = [0, 200, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0] as const;
 export const POWER_PLANT_POLLUTION = [
 	0, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 ] as const;
-export const POWER_DEMAND_PER_BUILDING = 1;
+// Power demand per building tier (indexed by density: 0=empty, 1=low, 2=med, 3=high).
+// TODO: scale demand by the population living/working on the tile rather than
+// by density tier alone, with a per-zone scalar (R/C/I draw differently per
+// head — industry heaviest, residential lightest). See WATER_DEMAND_PER_DENSITY.
+export const POWER_DEMAND_PER_DENSITY = [0, 1, 3, 8] as const;
 
 // ---------------------------------------------------------------------------
 // Water
 // ---------------------------------------------------------------------------
-export const WATER_COVERAGE_RADIUS = 12;
+// Each active pump (adjacent to water terrain) supplies this many units.
+export const WATER_OUTPUT_PER_PUMP = 50;
+// Water demand per building tier (indexed by density: 0=empty, 1=low, 2=med, 3=high).
+// TODO: same rework as POWER_DEMAND_PER_DENSITY — drive off population/jobs on
+// the tile with per-zone scalars instead of a flat per-tier lookup.
+export const WATER_DEMAND_PER_DENSITY = [0, 1, 2, 5] as const;
 export const COST_WATER_PIPE = 5;
 export const PIPE_MAINTENANCE_COST = 0.05;
 
