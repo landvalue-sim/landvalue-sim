@@ -5,8 +5,8 @@
  * and zoned tiles. Unconnected tiles are unpowered. If total capacity < total
  * demand, all tiles lose power (brownout).
  *
- * Power is required from the start: with no power plants placed, no tile is
- * powered and nothing will grow or upgrade until a plant and grid exist.
+ * Buildings grow without power but suffer land-value penalties. With no
+ * power plants placed, no tile is powered.
  */
 
 import type { CityState } from "../city-state.ts";

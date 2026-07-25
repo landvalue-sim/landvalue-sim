@@ -98,6 +98,11 @@ const COL_UNWATERED = 0xf97316;
 const COL_CRIME = 0xef4444;
 const COL_TRAFFIC_OV = 0xf97316;
 const COL_FIRE_OV = 0xff4500;
+const COL_NO_POWER = 0xfbbf24; // amber lightning bolt
+const COL_NO_WATER = 0x38bdf8; // blue water drop
+
+// Utility popup offset above building top (world-px)
+const POPUP_OFFSET = 10;
 
 // Civic building extrusion heights (tiles tall)
 const CIVIC_HEIGHT = 3;
@@ -988,6 +993,24 @@ export class IsoScene extends Phaser.Scene {
 				go.fillPath();
 			}
 		}
+
+		// Utility popups: small icons above buildings missing power/water.
+		if (buildHeight > 0 && civicType === 0) {
+			const needsPower = city.power[idx] !== 1;
+			const needsWater = city.waterCoverage[idx] !== 1;
+
+			if (needsPower || needsWater) {
+				const iconY = cy - topLift - POPUP_OFFSET;
+				if (needsPower && needsWater) {
+					drawPopupPip(go, cx - 7, iconY, COL_NO_POWER, powerBoltPath);
+					drawPopupPip(go, cx + 7, iconY, COL_NO_WATER, waterDropPath);
+				} else if (needsPower) {
+					drawPopupPip(go, cx, iconY, COL_NO_POWER, powerBoltPath);
+				} else {
+					drawPopupPip(go, cx, iconY, COL_NO_WATER, waterDropPath);
+				}
+			}
+		}
 	}
 
 	/**
@@ -1239,6 +1262,67 @@ function quad(
 	g.lineTo(x2, y2);
 	g.lineTo(x3, y3);
 	g.lineTo(x4, y4);
+	g.closePath();
+	g.fillPath();
+}
+
+// ---- Utility popup icons ---------------------------------------------------
+
+/** Popup pip: dark rounded-rect background + colored icon. */
+function drawPopupPip(
+	g: Phaser.GameObjects.Graphics,
+	cx: number,
+	cy: number,
+	iconColor: number,
+	drawIcon: (g: Phaser.GameObjects.Graphics, cx: number, cy: number) => void,
+): void {
+	// Background pill
+	g.fillStyle(0x1e1e1e, 0.85);
+	g.beginPath();
+	g.moveTo(cx - 5, cy - 6);
+	g.lineTo(cx + 5, cy - 6);
+	g.lineTo(cx + 6, cy - 5);
+	g.lineTo(cx + 6, cy + 5);
+	g.lineTo(cx + 5, cy + 6);
+	g.lineTo(cx - 5, cy + 6);
+	g.lineTo(cx - 6, cy + 5);
+	g.lineTo(cx - 6, cy - 5);
+	g.closePath();
+	g.fillPath();
+	// Stem pointing down
+	g.beginPath();
+	g.moveTo(cx - 2, cy + 6);
+	g.lineTo(cx, cy + 9);
+	g.lineTo(cx + 2, cy + 6);
+	g.closePath();
+	g.fillPath();
+	// Icon
+	g.fillStyle(iconColor, 1);
+	drawIcon(g, cx, cy);
+}
+
+/** Lightning-bolt shape (drawn at cx, cy center). */
+function powerBoltPath(g: Phaser.GameObjects.Graphics, cx: number, cy: number): void {
+	g.beginPath();
+	g.moveTo(cx + 1, cy - 5);
+	g.lineTo(cx - 2, cy - 1);
+	g.lineTo(cx, cy - 1);
+	g.lineTo(cx - 1, cy + 5);
+	g.lineTo(cx + 2, cy + 1);
+	g.lineTo(cx, cy + 1);
+	g.closePath();
+	g.fillPath();
+}
+
+/** Water-drop shape (drawn at cx, cy center). */
+function waterDropPath(g: Phaser.GameObjects.Graphics, cx: number, cy: number): void {
+	g.beginPath();
+	g.moveTo(cx, cy - 4);
+	g.lineTo(cx - 3, cy + 1);
+	g.lineTo(cx - 2, cy + 3);
+	g.lineTo(cx, cy + 4);
+	g.lineTo(cx + 2, cy + 3);
+	g.lineTo(cx + 3, cy + 1);
 	g.closePath();
 	g.fillPath();
 }

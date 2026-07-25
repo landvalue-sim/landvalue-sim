@@ -90,21 +90,15 @@ export function updateWater(state: CityState): void {
 
 	aggregates[AGG.WATER_DEMAND] = totalDemand;
 
-	// No pumps: everything has water (pre-plumbing era)
-	if (!hasPumps) {
-		for (let i = 0; i < size; i++) {
-			waterCoverage[i] = 1;
-		}
-		aggregates[AGG.WATER_CAPACITY] = 0;
-		return;
-	}
-
 	// Reset coverage
 	for (let i = 0; i < size; i++) {
 		waterCoverage[i] = 0;
 	}
 
 	aggregates[AGG.WATER_CAPACITY] = activePumps;
+
+	// No pumps or no active pumps: nothing is covered
+	if (!hasPumps) return;
 
 	// No active pumps (all placed pumps are away from water): nothing covered
 	if (activePumps === 0) return;

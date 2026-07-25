@@ -8,8 +8,8 @@
  * Buildings start at density tier 1 (low) and upgrade toward the player's
  * density cap when demand stays high.
  *
- * Development requires power coverage. Without power a tile will not grow
- * or upgrade.
+ * Buildings grow even without power or water — those utilities boost land
+ * value instead of gating growth outright.
  */
 
 import type { CityState } from "../city-state.ts";
@@ -60,16 +60,15 @@ export function processMigration(state: CityState): void {
 function growZone(state: CityState, zoneType: number, demand: number): void {
 	if (demand < GROWTH_DEMAND_THRESHOLD) return;
 
-	const { size, terrain, zoning, building, landValue, power } = state;
+	const { size, terrain, zoning, building, landValue } = state;
 
-	// Collect empty zoned tiles that have road access and power
+	// Collect empty zoned tiles that have road access
 	let count = 0;
 	for (let i = 0; i < size; i++) {
 		if (
 			zoning[i] === zoneType &&
 			building[i] === BUILDING_EMPTY &&
 			terrain[i] !== TERRAIN_WATER &&
-			power[i] === 1 &&
 			hasRoadAccess(state, i)
 		) {
 			candIdx[count] = i;
@@ -109,17 +108,16 @@ function growZone(state: CityState, zoneType: number, demand: number): void {
 function upgradeZone(state: CityState, zoneType: number, demand: number): void {
 	if (demand < UPGRADE_DEMAND_THRESHOLD) return;
 
-	const { size, zoning, building, densityCap, landValue, power } = state;
+	const { size, zoning, building, densityCap, landValue } = state;
 
-	// Collect occupied tiles below their density cap with power
+	// Collect occupied tiles below their density cap
 	let count = 0;
 	for (let i = 0; i < size; i++) {
 		const cap = densityCap[i] ?? DENSITY_LOW;
 		if (
 			zoning[i] === zoneType &&
 			building[i] !== BUILDING_EMPTY &&
-			(building[i] ?? 0) < cap &&
-			power[i] === 1
+			(building[i] ?? 0) < cap
 		) {
 			candIdx[count] = i;
 			candVal[count] = landValue[i] ?? 0;
