@@ -1302,7 +1302,11 @@ function drawPopupPip(
 }
 
 /** Lightning-bolt shape (drawn at cx, cy center). */
-function powerBoltPath(g: Phaser.GameObjects.Graphics, cx: number, cy: number): void {
+function powerBoltPath(
+	g: Phaser.GameObjects.Graphics,
+	cx: number,
+	cy: number,
+): void {
 	g.beginPath();
 	g.moveTo(cx + 1, cy - 5);
 	g.lineTo(cx - 2, cy - 1);
@@ -1315,7 +1319,11 @@ function powerBoltPath(g: Phaser.GameObjects.Graphics, cx: number, cy: number): 
 }
 
 /** Water-drop shape (drawn at cx, cy center). */
-function waterDropPath(g: Phaser.GameObjects.Graphics, cx: number, cy: number): void {
+function waterDropPath(
+	g: Phaser.GameObjects.Graphics,
+	cx: number,
+	cy: number,
+): void {
 	g.beginPath();
 	g.moveTo(cx, cy - 4);
 	g.lineTo(cx - 3, cy + 1);

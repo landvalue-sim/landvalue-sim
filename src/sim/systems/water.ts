@@ -74,10 +74,8 @@ export function updateWater(state: CityState): void {
 			// Pump is active only if adjacent to water (orthogonal)
 			let nearWater = false;
 			if (px > 0 && terrain[i - 1] === TERRAIN_WATER) nearWater = true;
-			if (px < width - 1 && terrain[i + 1] === TERRAIN_WATER)
-				nearWater = true;
-			if (py > 0 && terrain[i - width] === TERRAIN_WATER)
-				nearWater = true;
+			if (px < width - 1 && terrain[i + 1] === TERRAIN_WATER) nearWater = true;
+			if (py > 0 && terrain[i - width] === TERRAIN_WATER) nearWater = true;
 			if (py < height - 1 && terrain[i + width] === TERRAIN_WATER)
 				nearWater = true;
 

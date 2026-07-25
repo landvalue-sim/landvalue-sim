@@ -93,6 +93,6 @@ export { getProfileSnapshot, SYSTEM_NAMES } from "./profiler.ts";
 export { buildTestCity } from "./scenarios.ts";
 export type { Violation } from "./sim-invariants.ts";
 export { clearViolations, getViolations } from "./sim-invariants.ts";
-export { generateTerrain } from "./terrain-gen.ts";
 export { setWaterTile, terraformTile } from "./terraform.ts";
+export { generateTerrain } from "./terrain-gen.ts";
 export { tick } from "./tick.ts";

@@ -8,7 +8,6 @@
  */
 
 import { type CityState, inBounds, tileIndex } from "./city-state.ts";
-import { generateTerrain } from "./terrain-gen.ts";
 import {
 	AGG,
 	BUILDING_HIGH,
@@ -28,6 +27,7 @@ import {
 	ZONE_NONE,
 	ZONE_RESIDENTIAL,
 } from "./constants.ts";
+import { generateTerrain } from "./terrain-gen.ts";
 
 // Fixed seed for the demo's terrain so the test city is fully deterministic.
 const TEST_CITY_TERRAIN_SEED = 20240;

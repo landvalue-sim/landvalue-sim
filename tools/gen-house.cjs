@@ -173,7 +173,12 @@ fillPoly([iso(x0, y0, wh), iso(x1, y0, wh), iso(0.5, y0, rh)], 228, 208, 172);
 // ---- Details ----------------------------------------------------------------
 
 // Door on right wall (y=y0 face)
-fillPoly(quad([0.28, y0, 0], [0.42, y0, 0], [0.42, y0, 10], [0.28, y0, 10]), 115, 75, 45);
+fillPoly(
+	quad([0.28, y0, 0], [0.42, y0, 0], [0.42, y0, 10], [0.28, y0, 10]),
+	115,
+	75,
+	45,
+);
 drawLine(...iso(0.28, y0, 0), ...iso(0.28, y0, 10), 55, 40, 30);
 drawLine(...iso(0.28, y0, 10), ...iso(0.42, y0, 10), 55, 40, 30);
 drawLine(...iso(0.42, y0, 10), ...iso(0.42, y0, 0), 55, 40, 30);
@@ -280,7 +285,6 @@ const out = Buffer.concat([
 	pngChunk("IEND", Buffer.alloc(0)),
 ]);
 
-const outPath =
-	process.argv[2] || "public/sprites/bldg_r1.png";
+const outPath = process.argv[2] || "public/sprites/bldg_r1.png";
 fs.writeFileSync(outPath, out);
 console.log(`Written ${outPath} (${out.length} bytes, ${W}x${H})`);
