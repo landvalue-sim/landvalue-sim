@@ -529,7 +529,9 @@ export class IsoScene extends Phaser.Scene {
 		this.pathGroundFace(g, x, y);
 	}
 
-	/** Path the terrain surface of a tile: flat water plane or sloped land face. */
+	/** Path the terrain surface of a tile: flat water plane or sloped land face.
+	 *  For road tiles, uses SC3K-style graded heights so the highlight matches
+	 *  the rendered road surface rather than the raw terrain. */
 	private pathGroundFace(
 		g: Phaser.GameObjects.Graphics,
 		x: number,
@@ -545,15 +547,20 @@ export class IsoScene extends Phaser.Scene {
 		}
 		const vw = city.width + 1;
 		const heights = city.vertexHeights;
-		surfacePath(
-			g,
-			cx,
-			cy,
-			(heights[y * vw + x] ?? 0) * ELEV_HEIGHT,
-			(heights[y * vw + x + 1] ?? 0) * ELEV_HEIGHT,
-			(heights[(y + 1) * vw + x + 1] ?? 0) * ELEV_HEIGHT,
-			(heights[(y + 1) * vw + x] ?? 0) * ELEV_HEIGHT,
-		);
+		let sn = (heights[y * vw + x] ?? 0) * ELEV_HEIGHT;
+		let se = (heights[y * vw + x + 1] ?? 0) * ELEV_HEIGHT;
+		let ss = (heights[(y + 1) * vw + x + 1] ?? 0) * ELEV_HEIGHT;
+		let sw = (heights[(y + 1) * vw + x] ?? 0) * ELEV_HEIGHT;
+
+		if (city.roads[idx] === 1) {
+			roadGrade(city, x, y, idx, sn, se, ss, sw, _roadOut);
+			sn = _roadOut[0] ?? 0;
+			se = _roadOut[1] ?? 0;
+			ss = _roadOut[2] ?? 0;
+			sw = _roadOut[3] ?? 0;
+		}
+
+		surfacePath(g, cx, cy, sn, se, ss, sw);
 	}
 
 	/** Small marker on the corner a terraform click would edit. */
@@ -784,40 +791,11 @@ export class IsoScene extends Phaser.Scene {
 		let rs = ls;
 		let rw = lw;
 		if (isRoad) {
-			const w = city.width;
-			const h = city.height;
-			const roadN = y > 0 && city.roads[idx - w] === 1;
-			const roadS = y < h - 1 && city.roads[idx + w] === 1;
-			const roadW = x > 0 && city.roads[idx - 1] === 1;
-			const roadE = x < w - 1 && city.roads[idx + 1] === 1;
-
-			const xConn = roadW || roadE;
-			const yConn = roadN || roadS;
-
-			if (xConn && !yConn) {
-				// E-W road: slope left-right, flat top-bottom
-				const leftAvg = (ln + lw) / 2;
-				const rightAvg = (le + ls) / 2;
-				rn = leftAvg;
-				rw = leftAvg;
-				re = rightAvg;
-				rs = rightAvg;
-			} else if (yConn && !xConn) {
-				// N-S road: slope top-bottom, flat left-right
-				const topAvg = (ln + le) / 2;
-				const botAvg = (lw + ls) / 2;
-				rn = topAvg;
-				re = topAvg;
-				rw = botAvg;
-				rs = botAvg;
-			} else {
-				// Intersection, bend, or dead end: flat at average
-				const avg = (ln + le + ls + lw) / 4;
-				rn = avg;
-				re = avg;
-				rs = avg;
-				rw = avg;
-			}
+			roadGrade(city, x, y, idx, ln, le, ls, lw, _roadOut);
+			rn = _roadOut[0] ?? 0;
+			re = _roadOut[1] ?? 0;
+			rs = _roadOut[2] ?? 0;
+			rw = _roadOut[3] ?? 0;
 		}
 
 		// Terrain block: for roads, the ground is graded to match the road
@@ -1183,6 +1161,57 @@ function extrudeColumn(
 		cx,
 		cy + 2 * HALF_H - topLift,
 	);
+}
+
+// Pre-allocated output buffer for roadGrade (avoids allocation in hot path).
+const _roadOut = new Float64Array(4);
+
+/**
+ * SC3K-style road grading: slopes along travel direction, flat perpendicular.
+ * Writes graded corner heights (N, E, S, W) into `out[0..3]`.
+ */
+function roadGrade(
+	city: CityState,
+	x: number,
+	y: number,
+	idx: number,
+	ln: number,
+	le: number,
+	ls: number,
+	lw: number,
+	out: Float64Array,
+): void {
+	const w = city.width;
+	const h = city.height;
+	const roadN = y > 0 && city.roads[idx - w] === 1;
+	const roadS = y < h - 1 && city.roads[idx + w] === 1;
+	const roadW = x > 0 && city.roads[idx - 1] === 1;
+	const roadE = x < w - 1 && city.roads[idx + 1] === 1;
+
+	const xConn = roadW || roadE;
+	const yConn = roadN || roadS;
+
+	if (xConn && !yConn) {
+		const leftAvg = (ln + lw) / 2;
+		const rightAvg = (le + ls) / 2;
+		out[0] = leftAvg;
+		out[1] = rightAvg;
+		out[2] = rightAvg;
+		out[3] = leftAvg;
+	} else if (yConn && !xConn) {
+		const topAvg = (ln + le) / 2;
+		const botAvg = (lw + ls) / 2;
+		out[0] = topAvg;
+		out[1] = topAvg;
+		out[2] = botAvg;
+		out[3] = botAvg;
+	} else {
+		const avg = (ln + le + ls + lw) / 4;
+		out[0] = avg;
+		out[1] = avg;
+		out[2] = avg;
+		out[3] = avg;
+	}
 }
 
 /**
