@@ -777,20 +777,76 @@ export class IsoScene extends Phaser.Scene {
 		const baseLift = Math.max(ln, le, ls, lw);
 		const minLift = Math.min(ln, le, ls, lw);
 
-		// Terrain block: side skirts plus the (sloped) surface.
-		skirts(g, cx, cy, le, ls, lw, isWater ? COL_WATER : COL_EARTH);
+		// SC3K-style roads: compute graded surface heights before terrain
+		// rendering so the ground is shaped to match the road — no floating.
+		let rn = ln;
+		let re = le;
+		let rs = ls;
+		let rw = lw;
+		if (isRoad) {
+			const w = city.width;
+			const h = city.height;
+			const roadN = y > 0 && city.roads[idx - w] === 1;
+			const roadS = y < h - 1 && city.roads[idx + w] === 1;
+			const roadW = x > 0 && city.roads[idx - 1] === 1;
+			const roadE = x < w - 1 && city.roads[idx + 1] === 1;
+
+			const xConn = roadW || roadE;
+			const yConn = roadN || roadS;
+
+			if (xConn && !yConn) {
+				// E-W road: slope left-right, flat top-bottom
+				const leftAvg = (ln + lw) / 2;
+				const rightAvg = (le + ls) / 2;
+				rn = leftAvg;
+				rw = leftAvg;
+				re = rightAvg;
+				rs = rightAvg;
+			} else if (yConn && !xConn) {
+				// N-S road: slope top-bottom, flat left-right
+				const topAvg = (ln + le) / 2;
+				const botAvg = (lw + ls) / 2;
+				rn = topAvg;
+				re = topAvg;
+				rw = botAvg;
+				rs = botAvg;
+			} else {
+				// Intersection, bend, or dead end: flat at average
+				const avg = (ln + le + ls + lw) / 4;
+				rn = avg;
+				re = avg;
+				rs = avg;
+				rw = avg;
+			}
+		}
+
+		// Terrain block: for roads, the ground is graded to match the road
+		// surface so skirts and earth connect flush with no gap.
+		const gn = isRoad ? rn : ln;
+		const ge = isRoad ? re : le;
+		const gs = isRoad ? rs : ls;
+		const gw = isRoad ? rw : lw;
+
+		skirts(g, cx, cy, ge, gs, gw, isWater ? COL_WATER : COL_EARTH);
 		if (isWater) {
 			g.fillStyle(COL_WATER, 1);
 		} else {
 			g.fillStyle(shade(COL_GRASS, slopeShade(hn, he, hs, hw)), 1);
 		}
-		surfacePath(g, cx, cy, ln, le, ls, lw);
+		surfacePath(g, cx, cy, gn, ge, gs, gw);
 		g.fillPath();
 
-		// Anything built sits on a flat pad at the tile's highest corner; on a
-		// sloped tile the pad gets an earth foundation, RCT-style.
+		// Road surface painted on the graded terrain.
+		if (isRoad) {
+			g.fillStyle(top, 1);
+			surfacePath(g, cx, cy, rn, re, rs, rw);
+			g.fillPath();
+		}
+
+		// Everything else built sits on a flat pad at the tile's highest
+		// corner; on a sloped tile the pad gets an earth foundation, RCT-style.
 		const flatTop =
-			isRoad || isRail || isPowerLine || civicType !== 0 || buildHeight > 0;
+			!isRoad && (isRail || isPowerLine || civicType !== 0 || buildHeight > 0);
 		const topLift = baseLift + buildHeight;
 		if (flatTop) {
 			if (minLift < baseLift) {
@@ -841,10 +897,10 @@ export class IsoScene extends Phaser.Scene {
 		const go = this.gOverlay;
 
 		// The visible top face, for zone outlines and overlay tints.
-		const tn = flatTop ? topLift : ln;
-		const te = flatTop ? topLift : le;
-		const ts = flatTop ? topLift : ls;
-		const tw = flatTop ? topLift : lw;
+		const tn = flatTop ? topLift : isRoad ? rn : ln;
+		const te = flatTop ? topLift : isRoad ? re : le;
+		const ts = flatTop ? topLift : isRoad ? rs : ls;
+		const tw = flatTop ? topLift : isRoad ? rw : lw;
 
 		// Empty zoned land: colored outline so zoning reads before it builds.
 		if (!flatTop && !isWater) {
