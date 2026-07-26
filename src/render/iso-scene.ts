@@ -144,10 +144,11 @@ const CULL_TILE_MARGIN = 4;
 const BAKE_PAD_PX = 256;
 // Minimum ms between rebakes whose only cause is a zoom change. A wheel
 // gesture fires a notch every few frames; rebaking each one hitches at low
-// zoom. Between bakes the world-pinned cache scales correctly (just soft),
-// and the pad keeps ~2 notches of zoom-out covered, so spacing the bakes
-// keeps the gesture smooth. The final notch still bakes once the window
-// elapses because the zoom stays dirty.
+// zoom. A zoom rebake is deferred only while the previous bake still covers
+// the whole view (the world-pinned cache scales correctly, just soft) — the
+// moment zooming out reveals ground beyond the baked region, it bakes
+// immediately so uncovered tiles never show. The final notch still bakes
+// once the window elapses because the zoom stays dirty.
 const ZOOM_REBAKE_MS = 150;
 
 // ---- Camera tuning ---------------------------------------------------------
@@ -557,21 +558,30 @@ export class IsoScene extends Phaser.Scene {
 		) {
 			return true;
 		}
+		return !this.viewCovered();
+	}
+
+	/** Whether the current camera view lies entirely inside the baked region —
+	 *  i.e. the cache texture covers every visible pixel. */
+	private viewCovered(): boolean {
+		const cam = this.cameras.main;
 		const viewW = this.scale.width / cam.zoom;
 		const viewH = this.scale.height / cam.zoom;
 		const vx0 = cam.scrollX + this.scale.width / 2 - viewW / 2;
 		const vy0 = cam.scrollY + this.scale.height / 2 - viewH / 2;
 		return (
-			vx0 < this.bakedX0 ||
-			vy0 < this.bakedY0 ||
-			vx0 + viewW > this.bakedX1 ||
-			vy0 + viewH > this.bakedY1
+			vx0 >= this.bakedX0 &&
+			vy0 >= this.bakedY0 &&
+			vx0 + viewW <= this.bakedX1 &&
+			vy0 + viewH <= this.bakedY1
 		);
 	}
 
 	/** Whether a pending rebake should wait because its only cause is a zoom
-	 *  change inside the ZOOM_REBAKE_MS window. Any other dirty input (tick,
-	 *  overlay, canvas) bakes immediately. */
+	 *  change inside the ZOOM_REBAKE_MS window. Deferring is allowed only
+	 *  while the previous bake still covers the whole view — a bake that
+	 *  would fill newly revealed ground, or any other dirty input (tick,
+	 *  overlay, canvas), runs immediately. */
 	private zoomThrottled(time: number): boolean {
 		const cam = this.cameras.main;
 		if (cam.zoom === this.bakedZoom) return false;
@@ -580,7 +590,8 @@ export class IsoScene extends Phaser.Scene {
 			tick !== this.bakedTick ||
 			this.store.getSnapshot().overlay !== this.bakedOverlay ||
 			this.scale.width !== this.bakedCanvasW ||
-			this.scale.height !== this.bakedCanvasH
+			this.scale.height !== this.bakedCanvasH ||
+			!this.viewCovered()
 		) {
 			return false;
 		}

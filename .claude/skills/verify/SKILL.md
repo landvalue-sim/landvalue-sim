@@ -30,6 +30,12 @@ Open the printed URL in a claude-in-chrome tab.
   `(await import(url)).default`. E.g. wrap
   `Phaser.Textures.DynamicTexture.prototype.render` to count/time world bakes
   (the iso-scene calls it once per bake).
+- For **realistic frame cadence** (testing time-based logic like bake
+  throttling), grab the game instance inside a patched render call
+  (`this.manager.game`), then drive the loop manually:
+  `game.loop.step(t += 16)` with controlled timestamps. The scene is
+  reachable via `game.scene.getScene('iso')` — private TS fields (rt,
+  cameras) are readable at runtime for invariant checks.
 
 ## Useful flows
 
