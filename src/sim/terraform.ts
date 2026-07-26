@@ -108,8 +108,12 @@ export function setWaterTile(
 
 	state.terrain[idx] = TERRAIN_WATER;
 	state.waterLevel[idx] = level;
-	// Flooded land loses its zoning.
+	// Flooded land loses its zoning and any underground infrastructure. Pipes
+	// are the one case where an underground layer is destroyed without an
+	// explicit demolish: `applyBuildWaterPipe` refuses water tiles, so leaving
+	// one behind would strand an inert pipe that still bills maintenance.
 	state.zoning[idx] = 0;
+	state.waterPipes[idx] = 0;
 	state.densityCap[idx] = 0;
 	state.building[idx] = BUILDING_EMPTY;
 	state.population[idx] = 0;

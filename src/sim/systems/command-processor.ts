@@ -259,12 +259,19 @@ function applySetWater(
 	}
 }
 
-/** Reset all layers on a single tile to empty land. */
+/**
+ * Reset the *surface* layers on a single tile to empty land.
+ *
+ * Underground layers (currently `waterPipes`; metros and tunnels will join
+ * them) are deliberately untouched — they occupy a separate vertical space and
+ * survive anything built above. Each underground layer owns a dedicated
+ * demolish command; see `applyDemolishPipe`. Adding a new underground layer
+ * means adding it to that list, never to this function.
+ */
 function clearTile(state: CityState, idx: number): void {
 	state.roads[idx] = 0;
 	state.rail[idx] = 0;
 	state.powerLines[idx] = 0;
-	state.waterPipes[idx] = 0;
 	state.civic[idx] = CIVIC_NONE;
 	state.zoning[idx] = ZONE_NONE;
 	state.densityCap[idx] = 0;
