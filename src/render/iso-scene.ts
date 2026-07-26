@@ -1,19 +1,26 @@
 /**
  * IsoScene — the Phaser render shell.
  *
- * Reads the city `SharedArrayBuffer` view each frame (zero-copy) and paints it
- * as isometric tiles with a back-to-front diagonal sweep: RCT-style sloped
+ * Reads the city `SharedArrayBuffer` view (zero-copy) and paints it as
+ * isometric tiles with a back-to-front diagonal sweep: RCT-style sloped
  * terrain from per-corner heights, flat water planes, extruded buildings, and
  * a translucent overlay (land value / pollution / power / water) on top. It
  * also owns the camera and pointer input, translating clicks into sim
  * commands (including corner-precision terraforming). It writes nothing to
  * the city state — the worker is the only writer.
+ *
+ * Redraw policy: the world (terrain, buildings, overlays) is baked into a
+ * screen-sized RenderTexture only when one of its inputs changes — sim tick,
+ * overlay mode, camera, or canvas size (see `bakeDirty`). Unchanged frames
+ * render just that cached texture plus a small per-frame layer for the hover
+ * cursor and drag preview, instead of re-tessellating every tile polygon.
  */
 
 import Phaser from "phaser";
 import type { InteractionStore } from "../app/store.ts";
 import type { Command } from "../sim/commands.ts";
 import {
+	AGG,
 	CIVIC_COAL_PLANT,
 	CIVIC_COLLEGE,
 	CIVIC_FIRE_STATION,
@@ -121,6 +128,14 @@ const COL_EARTH = 0x6b4f2a; // dirt sides exposed under raised terrain
 // Directional shading strength for sloped grass (per unit of corner tilt).
 const SLOPE_SHADE = 0.07;
 
+// ---- Bake culling ----------------------------------------------------------
+// World-px above the view a tile's content may reach while its anchor row is
+// off-screen: max terrain lift + tallest building/cluster sprite + popup pip.
+const CULL_UP_PX = 200;
+// Extra tiles kept on every side so multi-tile cluster anchors just outside
+// the view still bake (a culled anchor would degrade its cluster to solos).
+const CULL_TILE_MARGIN = 4;
+
 // ---- Camera tuning ---------------------------------------------------------
 
 const MIN_ZOOM = 0.4;
@@ -139,9 +154,24 @@ export class IsoScene extends Phaser.Scene {
 	private readonly store: InteractionStore;
 	private readonly sendCommands: (cmds: ReadonlyArray<Command>) => void;
 
+	// Scratch layers for the world bake — off the display list; they render
+	// only into `rt`, never directly to the screen.
 	private g!: Phaser.GameObjects.Graphics;
 	private gOverlay!: Phaser.GameObjects.Graphics;
+	/** Live per-frame layer: hover cursor, corner marker, drag preview. */
+	private gDynamic!: Phaser.GameObjects.Graphics;
+	/** Screen-sized cache holding the baked world view. */
+	private rt!: Phaser.GameObjects.RenderTexture;
 	private sprites!: SpritePool;
+	// Inputs of the last world bake (see bakeDirty). Initialized so that the
+	// very first update() always bakes.
+	private bakedTick = -1;
+	private bakedOverlay = "";
+	private bakedScrollX = Number.NaN;
+	private bakedScrollY = Number.NaN;
+	private bakedZoom = Number.NaN;
+	private bakedCanvasW = 0;
+	private bakedCanvasH = 0;
 	/** Per-frame scratch: tiles covered by a multi-tile cluster sprite. */
 	private covered!: Uint8Array;
 	private keys!: {
@@ -197,10 +227,24 @@ export class IsoScene extends Phaser.Scene {
 	}
 
 	create(): void {
-		this.g = this.add.graphics();
-		this.g.setDepth(-1);
-		this.gOverlay = this.add.graphics();
-		this.gOverlay.setDepth(10000);
+		// Bake scratch layers stay off the display list (`make`, not `add`);
+		// only the cache texture and the dynamic layer are scene children.
+		this.g = this.make.graphics({}, false);
+		this.gOverlay = this.make.graphics({}, false);
+		this.rt = this.add.existing(
+			new Phaser.GameObjects.RenderTexture(
+				this,
+				0,
+				0,
+				this.scale.width,
+				this.scale.height,
+				false,
+			),
+		);
+		this.rt.setOrigin(0, 0);
+		this.rt.setDepth(-1);
+		this.gDynamic = this.add.graphics();
+		this.gDynamic.setDepth(10000);
 
 		// Sprite system: blank texture for pool, placeholder buildings.
 		const blankG = this.add.graphics();
@@ -291,7 +335,8 @@ export class IsoScene extends Phaser.Scene {
 
 	update(_time: number, delta: number): void {
 		this.panKeys(delta);
-		this.draw();
+		if (this.bakeDirty()) this.bakeWorld();
+		this.drawDynamic();
 	}
 
 	// ---- Input ---------------------------------------------------------------
@@ -477,24 +522,105 @@ export class IsoScene extends Phaser.Scene {
 
 	// ---- Drawing -------------------------------------------------------------
 
-	private draw(): void {
-		const g = this.g;
-		const city = this.city;
-		const w = city.width;
-		const h = city.height;
-		const snap = this.store.getSnapshot();
-		const overlay = snap.overlay;
+	/** Whether any input of the baked world view changed since the last bake. */
+	private bakeDirty(): boolean {
+		const cam = this.cameras.main;
+		const tick = this.city.aggregates[AGG.TICK] ?? 0;
+		const overlay = this.store.getSnapshot().overlay;
+		return (
+			tick !== this.bakedTick ||
+			overlay !== this.bakedOverlay ||
+			cam.scrollX !== this.bakedScrollX ||
+			cam.scrollY !== this.bakedScrollY ||
+			cam.zoom !== this.bakedZoom ||
+			this.scale.width !== this.bakedCanvasW ||
+			this.scale.height !== this.bakedCanvasH
+		);
+	}
 
-		g.clear();
+	/** Rebuild the world layers and bake them into the cache texture. */
+	private bakeWorld(): void {
+		const cam = this.cameras.main;
+		const canvasW = this.scale.width;
+		const canvasH = this.scale.height;
+		const overlay = this.store.getSnapshot().overlay;
+
+		if (canvasW !== this.bakedCanvasW || canvasH !== this.bakedCanvasH) {
+			this.rt.resize(canvasW, canvasH, false);
+		}
+
+		// Mirror the main camera into the texture's internal camera so the bake
+		// holds exactly the visible view, one texel per screen pixel.
+		this.rt.camera.scrollX = cam.scrollX;
+		this.rt.camera.scrollY = cam.scrollY;
+		this.rt.camera.zoom = cam.zoom;
+
+		this.buildLayers(overlay);
+
+		// Composite in display order: terrain below sprites, overlay above.
+		this.rt.clear();
+		this.rt.draw(this.g);
+		this.sprites.drawInto(this.rt);
+		this.rt.draw(this.gOverlay);
+		// Phaser 4 queues texture draws in a command buffer; nothing reaches
+		// the texture until render() executes them.
+		this.rt.render();
+
+		// Pin the texture over the camera's world view so the scene camera maps
+		// it back to the screen 1:1. The view is centered on
+		// scroll + canvas/2 and spans canvas/zoom world units (zoom is
+		// anchored at the viewport center).
+		const viewW = this.rt.width / cam.zoom;
+		const viewH = this.rt.height / cam.zoom;
+		this.rt.setPosition(
+			cam.scrollX + canvasW / 2 - viewW / 2,
+			cam.scrollY + canvasH / 2 - viewH / 2,
+		);
+		this.rt.setDisplaySize(viewW, viewH);
+
+		this.bakedTick = this.city.aggregates[AGG.TICK] ?? 0;
+		this.bakedOverlay = overlay;
+		this.bakedScrollX = cam.scrollX;
+		this.bakedScrollY = cam.scrollY;
+		this.bakedZoom = cam.zoom;
+		this.bakedCanvasW = canvasW;
+		this.bakedCanvasH = canvasH;
+	}
+
+	/** Rebuild the bake scratch layers: terrain graphics, sprites, overlays. */
+	private buildLayers(overlay: string): void {
+		const w = this.city.width;
+		const h = this.city.height;
+
+		this.g.clear();
 		this.gOverlay.clear();
 		this.sprites.begin();
 		this.covered.fill(0);
 
-		// Back-to-front diagonal sweep so extruded buildings occlude correctly.
+		// Cull the sweep to the camera's world view. A tile (x, y) occupies
+		// column a = x - y (spanning (a±1)*HALF_W horizontally) and diagonal
+		// d = x + y (top at d*HALF_H, bottom 2*HALF_H below). CULL_UP_PX
+		// keeps tiles whose tall content (terrain lift, buildings, popups)
+		// reaches down into the view; CULL_TILE_MARGIN keeps cluster-sprite
+		// anchor tiles that sit just outside it.
+		const cam = this.cameras.main;
+		const viewW = this.scale.width / cam.zoom;
+		const viewH = this.scale.height / cam.zoom;
+		const vx0 = cam.scrollX + this.scale.width / 2 - viewW / 2;
+		const vy0 = cam.scrollY + this.scale.height / 2 - viewH / 2;
+		const aMin = Math.floor(vx0 / HALF_W) - 1 - CULL_TILE_MARGIN;
+		const aMax = Math.ceil((vx0 + viewW) / HALF_W) + 1 + CULL_TILE_MARGIN;
+		const dMin = Math.max(0, Math.floor(vy0 / HALF_H) - 2 - CULL_TILE_MARGIN);
 		const maxD = w - 1 + (h - 1);
-		for (let d = 0; d <= maxD; d++) {
-			const xStart = Math.max(0, d - (h - 1));
-			const xEnd = Math.min(w - 1, d);
+		const dMax = Math.min(
+			maxD,
+			Math.ceil((vy0 + viewH + CULL_UP_PX) / HALF_H) + CULL_TILE_MARGIN,
+		);
+
+		// Back-to-front diagonal sweep so extruded buildings occlude correctly.
+		for (let d = dMin; d <= dMax; d++) {
+			const xStart = Math.max(0, d - (h - 1), Math.ceil((d + aMin) / 2));
+			const xEnd = Math.min(w - 1, d, Math.floor((d + aMax) / 2));
 			for (let x = xStart; x <= xEnd; x++) {
 				const y = d - x;
 				this.drawTile(x, y, overlay);
@@ -502,28 +628,36 @@ export class IsoScene extends Phaser.Scene {
 		}
 
 		this.sprites.end();
+	}
 
-		// While dragging, preview the affected footprint; otherwise highlight the
-		// single hovered tile.
+	/** Per-frame layer: drag preview while dragging, else the hover cursor. */
+	private drawDynamic(): void {
+		const g = this.gDynamic;
+		g.clear();
+
 		if (this.dragging) {
 			this.drawDragPreview();
-		} else if (
-			this.hoverX >= 0 &&
-			this.hoverX < w &&
-			this.hoverY >= 0 &&
-			this.hoverY < h
-		) {
-			const go = this.gOverlay;
-			// The cursor takes the bulldozer's underground colour so the retargeted
-			// mode is visible on the grid, not just on the sidebar button.
-			const cursorCol = isUndergroundDemolish(snap.tool, overlay)
-				? COL_PIPE_DEMOLISH
-				: COL_CURSOR;
-			go.lineStyle(2, cursorCol, 0.9);
-			this.pathHoverFace(go, this.hoverX, this.hoverY, overlay);
-			go.strokePath();
-			if (isTerraformTool(snap.tool)) this.drawCornerMarker();
+			return;
 		}
+
+		const snap = this.store.getSnapshot();
+		if (
+			this.hoverX < 0 ||
+			this.hoverX >= this.city.width ||
+			this.hoverY < 0 ||
+			this.hoverY >= this.city.height
+		) {
+			return;
+		}
+		// The cursor takes the bulldozer's underground colour so the retargeted
+		// mode is visible on the grid, not just on the sidebar button.
+		const cursorCol = isUndergroundDemolish(snap.tool, snap.overlay)
+			? COL_PIPE_DEMOLISH
+			: COL_CURSOR;
+		g.lineStyle(2, cursorCol, 0.9);
+		this.pathHoverFace(g, this.hoverX, this.hoverY, snap.overlay);
+		g.strokePath();
+		if (isTerraformTool(snap.tool)) this.drawCornerMarker();
 	}
 
 	/** Path the terrain surface under the cursor for selection highlighting. */
@@ -595,7 +729,7 @@ export class IsoScene extends Phaser.Scene {
 		const lift = this.vertexHeight(vx, vy) * ELEV_HEIGHT;
 		const px = (vx - vy) * HALF_W;
 		const py = (vx + vy) * HALF_H - lift;
-		const g = this.gOverlay;
+		const g = this.gDynamic;
 		g.fillStyle(COL_CURSOR, 0.9);
 		g.beginPath();
 		g.moveTo(px, py - 3);
@@ -612,7 +746,7 @@ export class IsoScene extends Phaser.Scene {
 		const tool = snap.tool;
 		if (tool === "none") return;
 
-		const g = this.gOverlay;
+		const g = this.gDynamic;
 		const color = previewColor(tool, snap.overlay);
 		const undergroundDemolish = isUndergroundDemolish(tool, snap.overlay);
 		for (const t of this.dragTiles(tool)) {
