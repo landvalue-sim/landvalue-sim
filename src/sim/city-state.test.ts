@@ -4,6 +4,8 @@ import {
 	createCity,
 	inBounds,
 	tileIndex,
+	U8_LAYER_COUNT,
+	U16_LAYER_COUNT,
 	viewCity,
 } from "./city-state.ts";
 import {
@@ -78,8 +80,15 @@ describe("CityState shared buffer backing", () => {
 		const h = 48;
 		const size = w * h;
 		const bytes = cityByteLength(w, h);
-		// f64 aggregates + u32 rng + 3 u16 layers + 20 u8 layers, plus alignment.
-		const minimum = AGG.COUNT * 8 + 4 * 4 + 3 * size * 2 + 20 * size * 1;
+		const vertexCount = (w + 1) * (h + 1);
+		// f64 aggregates + u32 rng + u16 layers + u8 layers + the vertex-height
+		// grid, plus whatever alignment padding the layout inserts.
+		const minimum =
+			AGG.COUNT * 8 +
+			4 * 4 +
+			U16_LAYER_COUNT * size * 2 +
+			U8_LAYER_COUNT * size * 1 +
+			vertexCount;
 		expect(bytes).toBeGreaterThanOrEqual(minimum);
 	});
 

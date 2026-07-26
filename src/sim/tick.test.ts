@@ -52,7 +52,8 @@ describe("tick", () => {
 
 	it("full growth cycle: I→R→C feedback loop", () => {
 		const city = smallCity();
-		// Development requires power; grant funds and place a plant on the grid.
+		// Growth no longer needs power, but unpowered tiles take a land-value
+		// penalty that stalls the feedback loop. Fund the city and power it.
 		city.aggregates[AGG.DEBUG_INFINITE_MONEY] = 1;
 
 		// Lay out roads in a cross pattern through the middle

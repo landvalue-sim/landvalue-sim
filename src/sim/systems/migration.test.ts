@@ -13,11 +13,9 @@ import {
 import { processMigration } from "./migration.ts";
 
 function smallCity() {
-	const city = createCity({ width: 8, height: 8, seed: 1 });
-	// Progressive disclosure: power system fills(1) when no plants exist, but
-	// direct processMigration calls bypass the tick pipeline, so set it here.
-	city.power.fill(1);
-	return city;
+	// Migration no longer reads power or water coverage — utilities are priced
+	// into land value instead of gating growth — so no coverage setup is needed.
+	return createCity({ width: 8, height: 8, seed: 1 });
 }
 
 describe("processMigration", () => {
