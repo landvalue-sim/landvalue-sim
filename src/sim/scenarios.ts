@@ -8,7 +8,6 @@
  */
 
 import { type CityState, inBounds, tileIndex } from "./city-state.ts";
-import { generateTerrain } from "./terrain-gen.ts";
 import {
 	AGG,
 	BUILDING_HIGH,
@@ -28,6 +27,7 @@ import {
 	ZONE_NONE,
 	ZONE_RESIDENTIAL,
 } from "./constants.ts";
+import { generateTerrain } from "./terrain-gen.ts";
 
 // Fixed seed for the demo's terrain so the test city is fully deterministic.
 const TEST_CITY_TERRAIN_SEED = 20240;
@@ -123,6 +123,7 @@ function resetCity(state: CityState): void {
 	state.roads.fill(0);
 	state.rail.fill(0);
 	state.powerLines.fill(0);
+	state.waterPipes.fill(0);
 	state.civic.fill(0);
 	state.zoning.fill(0);
 	state.densityCap.fill(0);

@@ -171,12 +171,23 @@ export const POWER_OUTPUT = [0, 200, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0] as const;
 export const POWER_PLANT_POLLUTION = [
 	0, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 ] as const;
-export const POWER_DEMAND_PER_BUILDING = 1;
+// Power demand per building tier (indexed by density: 0=empty, 1=low, 2=med, 3=high).
+// TODO: scale demand by the population living/working on the tile rather than
+// by density tier alone, with a per-zone scalar (R/C/I draw differently per
+// head — industry heaviest, residential lightest). See WATER_DEMAND_PER_DENSITY.
+export const POWER_DEMAND_PER_DENSITY = [0, 1, 3, 8] as const;
 
 // ---------------------------------------------------------------------------
 // Water
 // ---------------------------------------------------------------------------
-export const WATER_COVERAGE_RADIUS = 12;
+// Each active pump (adjacent to water terrain) supplies this many units.
+export const WATER_OUTPUT_PER_PUMP = 50;
+// Water demand per building tier (indexed by density: 0=empty, 1=low, 2=med, 3=high).
+// TODO: same rework as POWER_DEMAND_PER_DENSITY — drive off population/jobs on
+// the tile with per-zone scalars instead of a flat per-tier lookup.
+export const WATER_DEMAND_PER_DENSITY = [0, 1, 2, 5] as const;
+export const COST_WATER_PIPE = 5;
+export const PIPE_MAINTENANCE_COST = 0.05;
 
 // ---------------------------------------------------------------------------
 // Civic building coverage radii (indexed by CIVIC_* constant)
@@ -192,9 +203,6 @@ export const CIVIC_COVERAGE_RADIUS = [
 export const COST_ROAD = 10;
 export const COST_RAIL = 20;
 export const COST_POWER_LINE = 5;
-export const COST_ZONE_LOW = 5;
-export const COST_ZONE_MED = 10;
-export const COST_ZONE_HIGH = 20;
 export const COST_DEMOLISH = 1;
 export const COST_COAL_PLANT = 5000;
 export const COST_SOLAR_PLANT = 3000;
@@ -215,15 +223,24 @@ export const COST_DRAIN_WATER = 25;
 // Indices: 0=none, 1=coal, 2=solar, 3=pump, 4=police, 5=fire, 6=hospital,
 //          7=school, 8=college, 9=library, 10=park, 11=stadium
 export const CIVIC_MAINTENANCE = [
-	0, 50, 20, 10, 40, 40, 60, 25, 50, 20, 5, 100,
+	0, 5, 2, 1, 4, 4, 6, 2.5, 5, 2, 0.5, 10,
 ] as const;
 export const RAIL_MAINTENANCE_COST = 0.15;
 
 // Civic placement costs (indexed by CIVIC_* constant).
 export const CIVIC_COST_TABLE = [
-	0, COST_COAL_PLANT, COST_SOLAR_PLANT, COST_WATER_PUMP, COST_POLICE,
-	COST_FIRE_STATION, COST_HOSPITAL, COST_SCHOOL, COST_COLLEGE, COST_LIBRARY,
-	COST_PARK, COST_STADIUM,
+	0,
+	COST_COAL_PLANT,
+	COST_SOLAR_PLANT,
+	COST_WATER_PUMP,
+	COST_POLICE,
+	COST_FIRE_STATION,
+	COST_HOSPITAL,
+	COST_SCHOOL,
+	COST_COLLEGE,
+	COST_LIBRARY,
+	COST_PARK,
+	COST_STADIUM,
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -252,11 +269,6 @@ export const STARTING_TREASURY = 10000;
 // Treasury value pinned each tick while the infinite-money debug cheat is on.
 // Large enough that no single tick of construction can exhaust it.
 export const INFINITE_TREASURY = 1_000_000_000;
-// Per-resident upkeep. Tuned so a basic road-served city with some commercial
-// breaks even: break-even residential land value ≈ pop(10) * cost / taxRate
-// ≈ 10 * 0.15 / 0.07 ≈ 21, which road-adjacent tiles reach. Higher values make
-// population an unaffordable liability (see DESIGN.md land-value economics).
-export const SERVICE_COST_PER_POP = 0.15;
 export const ROAD_MAINTENANCE_COST = 0.08;
 export const MIN_TAX_RATE = 0;
 export const MAX_TAX_RATE = 0.2;
@@ -301,36 +313,40 @@ export const AGG = {
 	TOTAL_I_JOBS: 10,
 	// Last weekly settlement's public-finance breakdown, for the finances UI.
 	REVENUE: 11,
-	SERVICE_COST: 12,
-	ROAD_COST: 13,
-	// Power / water / infrastructure
-	POWER_CAPACITY: 14,
-	POWER_DEMAND: 15,
+	ROAD_COST: 12,
+	// Power / water / infrastructure. *_SERVED is the demand the network
+	// actually reached before capacity ran out; the gap against *_DEMAND is the
+	// load stranded past the supply frontier (see systems/utility-network.ts).
+	POWER_CAPACITY: 13,
+	POWER_DEMAND: 14,
+	POWER_SERVED: 15,
 	WATER_CAPACITY: 16,
 	WATER_DEMAND: 17,
-	CIVIC_COST: 18,
-	RAIL_COST: 19,
+	WATER_SERVED: 18,
+	CIVIC_COST: 19,
+	RAIL_COST: 20,
+	PIPE_COST: 21,
 	// P2 systems
-	EDUCATION_LEVEL: 20,
-	HEALTH_LEVEL: 21,
-	TOTAL_CRIME: 22,
-	BOND_PAYMENT: 23,
-	FIRE_COUNT: 24,
-	CONNECTION_COUNT: 25,
-	TRAFFIC_CONGESTION: 26,
+	EDUCATION_LEVEL: 22,
+	HEALTH_LEVEL: 23,
+	TOTAL_CRIME: 24,
+	BOND_PAYMENT: 25,
+	FIRE_COUNT: 26,
+	CONNECTION_COUNT: 27,
+	TRAFFIC_CONGESTION: 28,
 	// Bond slots: remaining months for up to 10 bonds (0 = inactive)
-	BOND_SLOT_0: 27,
-	BOND_SLOT_1: 28,
-	BOND_SLOT_2: 29,
-	BOND_SLOT_3: 30,
-	BOND_SLOT_4: 31,
-	BOND_SLOT_5: 32,
-	BOND_SLOT_6: 33,
-	BOND_SLOT_7: 34,
-	BOND_SLOT_8: 35,
-	BOND_SLOT_9: 36,
+	BOND_SLOT_0: 29,
+	BOND_SLOT_1: 30,
+	BOND_SLOT_2: 31,
+	BOND_SLOT_3: 32,
+	BOND_SLOT_4: 33,
+	BOND_SLOT_5: 34,
+	BOND_SLOT_6: 35,
+	BOND_SLOT_7: 36,
+	BOND_SLOT_8: 37,
+	BOND_SLOT_9: 38,
 	// Debug cheats (0 = off, 1 = on). Stored in shared state so the sim systems
 	// running in the worker can read them deterministically.
-	DEBUG_INFINITE_MONEY: 37,
-	COUNT: 38,
+	DEBUG_INFINITE_MONEY: 39,
+	COUNT: 40,
 } as const;

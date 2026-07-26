@@ -2,8 +2,8 @@
  * Externalities — pollution spread from industrial zones and power plants.
  *
  * Industrial tiles emit pollution that decays with distance. Coal power
- * plants also emit pollution. Crime and traffic are left at zero for now
- * (stubs for future systems).
+ * plants also emit pollution. Traffic contributes additional pollution
+ * scaled by TRAFFIC_POLLUTION_FACTOR.
  */
 
 import { type CityState, inBounds } from "../city-state.ts";

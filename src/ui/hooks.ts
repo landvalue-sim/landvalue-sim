@@ -28,17 +28,19 @@ export interface LiveStats {
 	readonly cDemand: number;
 	readonly iDemand: number;
 	readonly revenue: number;
-	readonly serviceCost: number;
 	readonly roadCost: number;
 	readonly civicCost: number;
 	readonly railCost: number;
+	readonly pipeCost: number;
 	readonly taxR: number;
 	readonly taxC: number;
 	readonly taxI: number;
 	readonly powerCapacity: number;
 	readonly powerDemand: number;
+	readonly powerServed: number;
 	readonly waterCapacity: number;
 	readonly waterDemand: number;
+	readonly waterServed: number;
 	readonly bondPayment: number;
 	readonly totalCrime: number;
 	readonly fireCount: number;
@@ -64,17 +66,19 @@ function readStats(city: CityState): LiveStats {
 		cDemand: a[AGG.C_DEMAND] ?? 0,
 		iDemand: a[AGG.I_DEMAND] ?? 0,
 		revenue: a[AGG.REVENUE] ?? 0,
-		serviceCost: a[AGG.SERVICE_COST] ?? 0,
 		roadCost: a[AGG.ROAD_COST] ?? 0,
 		civicCost: a[AGG.CIVIC_COST] ?? 0,
 		railCost: a[AGG.RAIL_COST] ?? 0,
+		pipeCost: a[AGG.PIPE_COST] ?? 0,
 		taxR: a[AGG.TAX_RATE_R] ?? 0,
 		taxC: a[AGG.TAX_RATE_C] ?? 0,
 		taxI: a[AGG.TAX_RATE_I] ?? 0,
 		powerCapacity: a[AGG.POWER_CAPACITY] ?? 0,
 		powerDemand: a[AGG.POWER_DEMAND] ?? 0,
+		powerServed: a[AGG.POWER_SERVED] ?? 0,
 		waterCapacity: a[AGG.WATER_CAPACITY] ?? 0,
 		waterDemand: a[AGG.WATER_DEMAND] ?? 0,
+		waterServed: a[AGG.WATER_SERVED] ?? 0,
 		bondPayment: a[AGG.BOND_PAYMENT] ?? 0,
 		totalCrime: a[AGG.TOTAL_CRIME] ?? 0,
 		fireCount: a[AGG.FIRE_COUNT] ?? 0,

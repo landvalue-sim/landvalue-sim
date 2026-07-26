@@ -1,90 +1,113 @@
 /**
- * Water system — radius-based coverage from water pumps.
+ * Water system — BFS network-based coverage from water pumps.
  *
  * Water pumps must be adjacent to a water tile to function. Each active pump
- * covers all tiles within WATER_COVERAGE_RADIUS (Manhattan distance).
+ * seeds a BFS flood-fill that spreads through water pipes, roads, civic
+ * buildings, and zoned tiles — the same graph pattern as the power system.
  *
- * Progressive disclosure: if no water pumps exist yet, all tiles are
- * considered covered so the early game works without infrastructure.
+ * Roads carry water implicitly (underground utilities), so a road network
+ * connected to an active pump provides water coverage for free. Dedicated
+ * water pipes exist to link a pump that sits away from that network — a
+ * shoreline pump reaching back to the city — and to let the player route
+ * supply deliberately rather than by accident of where roads happen to run.
+ *
+ * Capacity: each active pump supplies WATER_OUTPUT_PER_PUMP units, and supply
+ * falls off with network distance exactly as power does — the fill serves the
+ * nearest tiles first and dries up at the frontier where capacity runs out.
  */
 
 import type { CityState } from "../city-state.ts";
 import {
 	AGG,
 	BUILDING_EMPTY,
+	CIVIC_NONE,
 	CIVIC_WATER_PUMP,
+	MAX_GRID_SIZE,
 	TERRAIN_WATER,
-	WATER_COVERAGE_RADIUS,
+	WATER_DEMAND_PER_DENSITY,
+	WATER_OUTPUT_PER_PUMP,
 } from "../constants.ts";
+import {
+	clearCoverage,
+	floodCoverage,
+	type NetworkSpec,
+} from "./utility-network.ts";
+
+// Seed buffer for the flood fill: every pump on the grid, worst case.
+const pumpSeeds = new Uint32Array(MAX_GRID_SIZE * MAX_GRID_SIZE);
+
+/** A tile conducts water if it has a pipe, road, civic building, or zoning. */
+function conductsWater(state: CityState, idx: number): boolean {
+	if (state.terrain[idx] === TERRAIN_WATER) return false;
+	if (state.waterPipes[idx] === 1) return true;
+	if (state.roads[idx] === 1) return true;
+	if ((state.civic[idx] ?? 0) !== CIVIC_NONE) return true;
+	if ((state.zoning[idx] ?? 0) !== 0) return true;
+	return false;
+}
+
+/** Only occupied buildings draw water; conduits and empty land draw nothing. */
+function waterDemandAt(state: CityState, idx: number): number {
+	const tier = state.building[idx] ?? 0;
+	if (tier === BUILDING_EMPTY) return 0;
+	return WATER_DEMAND_PER_DENSITY[tier] ?? 0;
+}
+
+const WATER_NETWORK: NetworkSpec = {
+	conducts: conductsWater,
+	demandAt: waterDemandAt,
+};
+
+/** A pump only draws if it sits orthogonally adjacent to water terrain. */
+function pumpIsActive(state: CityState, idx: number): boolean {
+	const { width, height, terrain } = state;
+	const x = idx % width;
+	const y = (idx - x) / width;
+	if (x > 0 && terrain[idx - 1] === TERRAIN_WATER) return true;
+	if (x < width - 1 && terrain[idx + 1] === TERRAIN_WATER) return true;
+	if (y > 0 && terrain[idx - width] === TERRAIN_WATER) return true;
+	if (y < height - 1 && terrain[idx + width] === TERRAIN_WATER) return true;
+	return false;
+}
 
 export function updateWater(state: CityState): void {
-	const {
-		width,
-		height,
-		size,
-		civic,
-		terrain,
-		building,
-		waterCoverage,
-		aggregates,
-	} = state;
+	const { size, civic, building, waterCoverage, aggregates } = state;
 
-	let hasPumps = false;
 	let activePumps = 0;
 	let totalDemand = 0;
+	let seedCount = 0;
 
-	// Check for any water pumps
+	// Tally demand and collect active pumps as flood-fill seeds.
 	for (let i = 0; i < size; i++) {
-		if (civic[i] === CIVIC_WATER_PUMP) hasPumps = true;
-		if (building[i] !== BUILDING_EMPTY) totalDemand++;
+		if (civic[i] === CIVIC_WATER_PUMP && pumpIsActive(state, i)) {
+			activePumps++;
+			pumpSeeds[seedCount] = i;
+			seedCount++;
+		}
+		const tier = building[i] ?? 0;
+		if (tier !== BUILDING_EMPTY) {
+			totalDemand += WATER_DEMAND_PER_DENSITY[tier] ?? 0;
+		}
 	}
 
-	aggregates[AGG.WATER_DEMAND] = totalDemand;
+	const totalCapacity = activePumps * WATER_OUTPUT_PER_PUMP;
 
-	// No pumps: everything has water (pre-plumbing era)
-	if (!hasPumps) {
-		for (let i = 0; i < size; i++) {
-			waterCoverage[i] = 1;
-		}
-		aggregates[AGG.WATER_CAPACITY] = 0;
+	aggregates[AGG.WATER_DEMAND] = totalDemand;
+	aggregates[AGG.WATER_CAPACITY] = totalCapacity;
+
+	// No active pumps: nothing is covered.
+	if (seedCount === 0) {
+		clearCoverage(waterCoverage, size);
+		aggregates[AGG.WATER_SERVED] = 0;
 		return;
 	}
 
-	// Reset coverage
-	for (let i = 0; i < size; i++) {
-		waterCoverage[i] = 0;
-	}
-
-	// For each active pump, spread coverage
-	for (let i = 0; i < size; i++) {
-		if (civic[i] !== CIVIC_WATER_PUMP) continue;
-
-		const px = i % width;
-		const py = (i - px) / width;
-
-		// Check adjacency to water (orthogonal)
-		let nearWater = false;
-		if (px > 0 && terrain[i - 1] === TERRAIN_WATER) nearWater = true;
-		if (px < width - 1 && terrain[i + 1] === TERRAIN_WATER) nearWater = true;
-		if (py > 0 && terrain[i - width] === TERRAIN_WATER) nearWater = true;
-		if (py < height - 1 && terrain[i + width] === TERRAIN_WATER)
-			nearWater = true;
-
-		if (!nearWater) continue;
-		activePumps++;
-
-		// Cover tiles within Manhattan distance
-		for (let dy = -WATER_COVERAGE_RADIUS; dy <= WATER_COVERAGE_RADIUS; dy++) {
-			const ny = py + dy;
-			if (ny < 0 || ny >= height) continue;
-			const adx = WATER_COVERAGE_RADIUS - Math.abs(dy);
-			for (let dx = -adx; dx <= adx; dx++) {
-				const nx = px + dx;
-				if (nx < 0 || nx >= width) continue;
-				waterCoverage[ny * width + nx] = 1;
-			}
-		}
-	}
-
-	aggregates[AGG.WATER_CAPACITY] = activePumps;
+	aggregates[AGG.WATER_SERVED] = floodCoverage(
+		state,
+		pumpSeeds,
+		seedCount,
+		WATER_NETWORK,
+		totalCapacity,
+		waterCoverage,
+	);
 }

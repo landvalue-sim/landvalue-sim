@@ -2,8 +2,7 @@
  * Public finance — tax collection and service costs.
  *
  * Revenue: property tax = sum(landValue * taxRate) for occupied tiles.
- * Expenses: per-capita service cost + road maintenance + rail maintenance
- *           + civic building maintenance.
+ * Expenses: road maintenance + rail maintenance + civic building maintenance.
  *
  * Settles once per in-game week (every DAYS_PER_WEEK ticks). A settlement
  * applies a full week's worth — the per-tick (per-day) rates scaled up by
@@ -24,17 +23,26 @@ import {
 	DAYS_PER_WEEK,
 	INFINITE_TREASURY,
 	MAX_BONDS,
+	PIPE_MAINTENANCE_COST,
 	RAIL_MAINTENANCE_COST,
 	ROAD_MAINTENANCE_COST,
-	SERVICE_COST_PER_POP,
 	ZONE_COMMERCIAL,
 	ZONE_INDUSTRIAL,
 	ZONE_RESIDENTIAL,
 } from "../constants.ts";
 
 export function updatePublicFinance(state: CityState): void {
-	const { size, zoning, building, roads, rail, civic, landValue, aggregates } =
-		state;
+	const {
+		size,
+		zoning,
+		building,
+		roads,
+		rail,
+		waterPipes,
+		civic,
+		landValue,
+		aggregates,
+	} = state;
 
 	// Finances settle weekly. AGG.TICK is the count of completed ticks, so it is
 	// 0 on the very first tick — which settles, populating the breakdown at once.
@@ -43,12 +51,12 @@ export function updatePublicFinance(state: CityState): void {
 	const taxR = aggregates[AGG.TAX_RATE_R] ?? 0;
 	const taxC = aggregates[AGG.TAX_RATE_C] ?? 0;
 	const taxI = aggregates[AGG.TAX_RATE_I] ?? 0;
-	const totalPop = aggregates[AGG.TOTAL_POP] ?? 0;
 
 	// --- Revenue: property tax on occupied tiles (per-day rate) ---
 	let revenue = 0;
 	let roadCount = 0;
 	let railCount = 0;
+	let pipeCount = 0;
 	let civicCost = 0;
 
 	for (let i = 0; i < size; i++) {
@@ -67,6 +75,7 @@ export function updatePublicFinance(state: CityState): void {
 
 		if (roads[i] === 1) roadCount++;
 		if (rail[i] === 1) railCount++;
+		if (waterPipes[i] === 1) pipeCount++;
 
 		const c = civic[i] ?? 0;
 		if (c !== CIVIC_NONE) {
@@ -76,9 +85,9 @@ export function updatePublicFinance(state: CityState): void {
 
 	// --- Scale the per-day rates up to a full week's settlement ---
 	const revenueWk = revenue * DAYS_PER_WEEK;
-	const serviceCostWk = totalPop * SERVICE_COST_PER_POP * DAYS_PER_WEEK;
 	const roadCostWk = roadCount * ROAD_MAINTENANCE_COST * DAYS_PER_WEEK;
 	const railCostWk = railCount * RAIL_MAINTENANCE_COST * DAYS_PER_WEEK;
+	const pipeCostWk = pipeCount * PIPE_MAINTENANCE_COST * DAYS_PER_WEEK;
 	const civicCostWk = civicCost * DAYS_PER_WEEK;
 
 	// --- Bond repayments: each active bond owes up to a week of payments ---
@@ -94,7 +103,7 @@ export function updatePublicFinance(state: CityState): void {
 	}
 
 	const expensesWk =
-		serviceCostWk + roadCostWk + railCostWk + civicCostWk + bondPaymentWk;
+		roadCostWk + railCostWk + pipeCostWk + civicCostWk + bondPaymentWk;
 
 	// --- Update treasury ---
 	// Infinite-money debug cheat pins the treasury so it never depletes.
@@ -107,9 +116,9 @@ export function updatePublicFinance(state: CityState): void {
 
 	// --- Record this week's breakdown for the finances UI ---
 	aggregates[AGG.REVENUE] = revenueWk;
-	aggregates[AGG.SERVICE_COST] = serviceCostWk;
 	aggregates[AGG.ROAD_COST] = roadCostWk;
 	aggregates[AGG.CIVIC_COST] = civicCostWk;
 	aggregates[AGG.RAIL_COST] = railCostWk;
+	aggregates[AGG.PIPE_COST] = pipeCostWk;
 	aggregates[AGG.BOND_PAYMENT] = bondPaymentWk;
 }

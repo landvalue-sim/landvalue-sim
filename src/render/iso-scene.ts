@@ -64,6 +64,13 @@ const COL_WATER = 0x2563eb;
 const COL_ROAD = 0x52525b;
 const COL_RAIL = 0x71717a;
 const COL_POWER_LINE = 0xfbbf24;
+const COL_WATER_PIPE = 0x06b6d4;
+const COL_PIPE_DISCONNECTED = 0xf97316; // orange — pipe not reached by water network
+// Bulldozer aimed underground. Magenta rather than the surface bulldozer's red
+// so the two modes are never mistaken for one another at a glance.
+const COL_PIPE_DEMOLISH = 0xe11d8f;
+// Target under the underground bulldozer that holds no pipe: nothing to remove.
+const COL_NO_TARGET = 0x64748b;
 const COL_R_BUILT = 0x16a34a;
 const COL_C_BUILT = 0x2563eb;
 const COL_I_BUILT = 0xca8a04;
@@ -96,6 +103,11 @@ const COL_UNWATERED = 0xf97316;
 const COL_CRIME = 0xef4444;
 const COL_TRAFFIC_OV = 0xf97316;
 const COL_FIRE_OV = 0xff4500;
+const COL_NO_POWER = 0xfbbf24; // amber lightning bolt
+const COL_NO_WATER = 0x38bdf8; // blue water drop
+
+// Utility popup offset above building top (world-px)
+const POPUP_OFFSET = 10;
 
 // Civic building extrusion heights (tiles tall)
 const CIVIC_HEIGHT = 3;
@@ -405,7 +417,8 @@ export class IsoScene extends Phaser.Scene {
 
 	private placeSingle(x: number, y: number): void {
 		if (!this.inBounds(x, y)) return;
-		const cmd = toolToCommand(this.store.getSnapshot().tool, x, y);
+		const snap = this.store.getSnapshot();
+		const cmd = toolToCommand(snap.tool, x, y, snap.overlay);
 		if (cmd !== null) this.sendCommands([cmd]);
 	}
 
@@ -424,13 +437,14 @@ export class IsoScene extends Phaser.Scene {
 
 	/** Commit the current drag as one batch of commands (line or rectangle). */
 	private commitDrag(): void {
-		const tool = this.store.getSnapshot().tool;
+		const snap = this.store.getSnapshot();
+		const tool = snap.tool;
 		if (tool === "none") return;
 
 		const cmds: Command[] = [];
 		for (const t of this.dragTiles(tool)) {
 			if (!this.inBounds(t.x, t.y)) continue;
-			const cmd = toolToCommand(tool, t.x, t.y);
+			const cmd = toolToCommand(tool, t.x, t.y, snap.overlay);
 			if (cmd !== null) cmds.push(cmd);
 		}
 		if (cmds.length > 0) this.sendCommands(cmds);
@@ -500,7 +514,12 @@ export class IsoScene extends Phaser.Scene {
 			this.hoverY < h
 		) {
 			const go = this.gOverlay;
-			go.lineStyle(2, COL_CURSOR, 0.9);
+			// The cursor takes the bulldozer's underground colour so the retargeted
+			// mode is visible on the grid, not just on the sidebar button.
+			const cursorCol = isUndergroundDemolish(snap.tool, overlay)
+				? COL_PIPE_DEMOLISH
+				: COL_CURSOR;
+			go.lineStyle(2, cursorCol, 0.9);
 			this.pathHoverFace(go, this.hoverX, this.hoverY, overlay);
 			go.strokePath();
 			if (isTerraformTool(snap.tool)) this.drawCornerMarker();
@@ -525,7 +544,9 @@ export class IsoScene extends Phaser.Scene {
 		this.pathGroundFace(g, x, y);
 	}
 
-	/** Path the terrain surface of a tile: flat water plane or sloped land face. */
+	/** Path the terrain surface of a tile: flat water plane or sloped land face.
+	 *  For road tiles, uses SC3K-style graded heights so the highlight matches
+	 *  the rendered road surface rather than the raw terrain. */
 	private pathGroundFace(
 		g: Phaser.GameObjects.Graphics,
 		x: number,
@@ -541,15 +562,20 @@ export class IsoScene extends Phaser.Scene {
 		}
 		const vw = city.width + 1;
 		const heights = city.vertexHeights;
-		surfacePath(
-			g,
-			cx,
-			cy,
-			(heights[y * vw + x] ?? 0) * ELEV_HEIGHT,
-			(heights[y * vw + x + 1] ?? 0) * ELEV_HEIGHT,
-			(heights[(y + 1) * vw + x + 1] ?? 0) * ELEV_HEIGHT,
-			(heights[(y + 1) * vw + x] ?? 0) * ELEV_HEIGHT,
-		);
+		let sn = (heights[y * vw + x] ?? 0) * ELEV_HEIGHT;
+		let se = (heights[y * vw + x + 1] ?? 0) * ELEV_HEIGHT;
+		let ss = (heights[(y + 1) * vw + x + 1] ?? 0) * ELEV_HEIGHT;
+		let sw = (heights[(y + 1) * vw + x] ?? 0) * ELEV_HEIGHT;
+
+		if (city.roads[idx] === 1) {
+			roadGrade(city, x, y, idx, sn, se, ss, sw, _roadOut);
+			sn = _roadOut[0] ?? 0;
+			se = _roadOut[1] ?? 0;
+			ss = _roadOut[2] ?? 0;
+			sw = _roadOut[3] ?? 0;
+		}
+
+		surfacePath(g, cx, cy, sn, se, ss, sw);
 	}
 
 	/** Small marker on the corner a terraform click would edit. */
@@ -582,17 +608,27 @@ export class IsoScene extends Phaser.Scene {
 
 	/** Draw a translucent footprint of the tiles the current drag would place. */
 	private drawDragPreview(): void {
-		const tool = this.store.getSnapshot().tool;
+		const snap = this.store.getSnapshot();
+		const tool = snap.tool;
 		if (tool === "none") return;
 
 		const g = this.gOverlay;
-		const color = previewColor(tool);
+		const color = previewColor(tool, snap.overlay);
+		const undergroundDemolish = isUndergroundDemolish(tool, snap.overlay);
 		for (const t of this.dragTiles(tool)) {
 			if (!this.inBounds(t.x, t.y)) continue;
-			g.fillStyle(color, 0.45);
-			this.pathGroundFace(g, t.x, t.y);
-			g.fillPath();
-			g.lineStyle(1, color, 0.9);
+			// Bulldozing underground, a tile with no pipe is a no-op — outline it
+			// in grey rather than in the bulldozer colour so the player can see
+			// what the drag will actually remove.
+			const idx = t.y * this.city.width + t.x;
+			const inert = undergroundDemolish && this.city.waterPipes[idx] !== 1;
+			const c = inert ? COL_NO_TARGET : color;
+			if (!inert) {
+				g.fillStyle(c, 0.45);
+				this.pathGroundFace(g, t.x, t.y);
+				g.fillPath();
+			}
+			g.lineStyle(1, c, inert ? 0.5 : 0.9);
 			this.pathGroundFace(g, t.x, t.y);
 			g.strokePath();
 		}
@@ -716,6 +752,7 @@ export class IsoScene extends Phaser.Scene {
 		const isRail = !isRoad && !isWater && city.rail[idx] === 1;
 		const isPowerLine =
 			!isRoad && !isWater && !isRail && city.powerLines[idx] === 1;
+		// Water pipes are underground — they don't affect surface rendering.
 		const civicType =
 			!isRoad && !isWater && !isRail && !isPowerLine
 				? (city.civic[idx] ?? 0)
@@ -772,20 +809,47 @@ export class IsoScene extends Phaser.Scene {
 		const baseLift = Math.max(ln, le, ls, lw);
 		const minLift = Math.min(ln, le, ls, lw);
 
-		// Terrain block: side skirts plus the (sloped) surface.
-		skirts(g, cx, cy, le, ls, lw, isWater ? COL_WATER : COL_EARTH);
+		// SC3K-style roads: compute graded surface heights before terrain
+		// rendering so the ground is shaped to match the road — no floating.
+		let rn = ln;
+		let re = le;
+		let rs = ls;
+		let rw = lw;
+		if (isRoad) {
+			roadGrade(city, x, y, idx, ln, le, ls, lw, _roadOut);
+			rn = _roadOut[0] ?? 0;
+			re = _roadOut[1] ?? 0;
+			rs = _roadOut[2] ?? 0;
+			rw = _roadOut[3] ?? 0;
+		}
+
+		// Terrain block: for roads, the ground is graded to match the road
+		// surface so skirts and earth connect flush with no gap.
+		const gn = isRoad ? rn : ln;
+		const ge = isRoad ? re : le;
+		const gs = isRoad ? rs : ls;
+		const gw = isRoad ? rw : lw;
+
+		skirts(g, cx, cy, ge, gs, gw, isWater ? COL_WATER : COL_EARTH);
 		if (isWater) {
 			g.fillStyle(COL_WATER, 1);
 		} else {
 			g.fillStyle(shade(COL_GRASS, slopeShade(hn, he, hs, hw)), 1);
 		}
-		surfacePath(g, cx, cy, ln, le, ls, lw);
+		surfacePath(g, cx, cy, gn, ge, gs, gw);
 		g.fillPath();
 
-		// Anything built sits on a flat pad at the tile's highest corner; on a
-		// sloped tile the pad gets an earth foundation, RCT-style.
+		// Road surface painted on the graded terrain.
+		if (isRoad) {
+			g.fillStyle(top, 1);
+			surfacePath(g, cx, cy, rn, re, rs, rw);
+			g.fillPath();
+		}
+
+		// Everything else built sits on a flat pad at the tile's highest
+		// corner; on a sloped tile the pad gets an earth foundation, RCT-style.
 		const flatTop =
-			isRoad || isRail || isPowerLine || civicType !== 0 || buildHeight > 0;
+			!isRoad && (isRail || isPowerLine || civicType !== 0 || buildHeight > 0);
 		const topLift = baseLift + buildHeight;
 		if (flatTop) {
 			if (minLift < baseLift) {
@@ -836,10 +900,10 @@ export class IsoScene extends Phaser.Scene {
 		const go = this.gOverlay;
 
 		// The visible top face, for zone outlines and overlay tints.
-		const tn = flatTop ? topLift : ln;
-		const te = flatTop ? topLift : le;
-		const ts = flatTop ? topLift : ls;
-		const tw = flatTop ? topLift : lw;
+		const tn = flatTop ? topLift : isRoad ? rn : ln;
+		const te = flatTop ? topLift : isRoad ? re : le;
+		const ts = flatTop ? topLift : isRoad ? rs : ls;
+		const tw = flatTop ? topLift : isRoad ? rw : lw;
 
 		// Empty zoned land: colored outline so zoning reads before it builds.
 		if (!flatTop && !isWater) {
@@ -876,7 +940,33 @@ export class IsoScene extends Phaser.Scene {
 		} else if (overlay === "water") {
 			if (!isWater) {
 				const watered = city.waterCoverage[idx] === 1;
-				go.fillStyle(watered ? COL_WATERED : COL_UNWATERED, 0.45);
+				const hasPipe = city.waterPipes[idx] === 1;
+				const isConduit = hasPipe || isRoad;
+				if (isConduit) {
+					const col = watered ? COL_WATER_PIPE : COL_PIPE_DISCONNECTED;
+					go.fillStyle(col, 0.7);
+				} else {
+					go.fillStyle(watered ? COL_WATERED : COL_UNWATERED, 0.45);
+				}
+				surfacePath(go, cx, cy, tn, te, ts, tw);
+				go.fillPath();
+			}
+		} else if (overlay === "underground") {
+			if (!isWater) {
+				const watered = city.waterCoverage[idx] === 1;
+				const hasPipe = city.waterPipes[idx] === 1;
+				const isPump = (city.civic[idx] ?? 0) === CIVIC_WATER_PUMP;
+				if (hasPipe) {
+					const col = watered ? COL_WATER_PIPE : COL_PIPE_DISCONNECTED;
+					go.fillStyle(col, 0.8);
+				} else if (isRoad) {
+					const col = watered ? COL_WATER_PIPE : COL_PIPE_DISCONNECTED;
+					go.fillStyle(col, 0.4);
+				} else if (isPump) {
+					go.fillStyle(COL_WATER_PIPE, 0.8);
+				} else {
+					go.fillStyle(0x000000, 0.5);
+				}
 				surfacePath(go, cx, cy, tn, te, ts, tw);
 				go.fillPath();
 			}
@@ -921,6 +1011,24 @@ export class IsoScene extends Phaser.Scene {
 				go.fillStyle(covered ? COL_POWERED : COL_UNPOWERED, 0.45);
 				surfacePath(go, cx, cy, tn, te, ts, tw);
 				go.fillPath();
+			}
+		}
+
+		// Utility popups: small icons above buildings missing power/water.
+		if (buildHeight > 0 && civicType === 0) {
+			const needsPower = city.power[idx] !== 1;
+			const needsWater = city.waterCoverage[idx] !== 1;
+
+			if (needsPower || needsWater) {
+				const iconY = cy - topLift - POPUP_OFFSET;
+				if (needsPower && needsWater) {
+					drawPopupPip(go, cx - 7, iconY, COL_NO_POWER, powerBoltPath);
+					drawPopupPip(go, cx + 7, iconY, COL_NO_WATER, waterDropPath);
+				} else if (needsPower) {
+					drawPopupPip(go, cx, iconY, COL_NO_POWER, powerBoltPath);
+				} else {
+					drawPopupPip(go, cx, iconY, COL_NO_WATER, waterDropPath);
+				}
 			}
 		}
 	}
@@ -1098,6 +1206,57 @@ function extrudeColumn(
 	);
 }
 
+// Pre-allocated output buffer for roadGrade (avoids allocation in hot path).
+const _roadOut = new Float64Array(4);
+
+/**
+ * SC3K-style road grading: slopes along travel direction, flat perpendicular.
+ * Writes graded corner heights (N, E, S, W) into `out[0..3]`.
+ */
+function roadGrade(
+	city: CityState,
+	x: number,
+	y: number,
+	idx: number,
+	ln: number,
+	le: number,
+	ls: number,
+	lw: number,
+	out: Float64Array,
+): void {
+	const w = city.width;
+	const h = city.height;
+	const roadN = y > 0 && city.roads[idx - w] === 1;
+	const roadS = y < h - 1 && city.roads[idx + w] === 1;
+	const roadW = x > 0 && city.roads[idx - 1] === 1;
+	const roadE = x < w - 1 && city.roads[idx + 1] === 1;
+
+	const xConn = roadW || roadE;
+	const yConn = roadN || roadS;
+
+	if (xConn && !yConn) {
+		const leftAvg = (ln + lw) / 2;
+		const rightAvg = (le + ls) / 2;
+		out[0] = leftAvg;
+		out[1] = rightAvg;
+		out[2] = rightAvg;
+		out[3] = leftAvg;
+	} else if (yConn && !xConn) {
+		const topAvg = (ln + le) / 2;
+		const botAvg = (lw + ls) / 2;
+		out[0] = topAvg;
+		out[1] = topAvg;
+		out[2] = botAvg;
+		out[3] = botAvg;
+	} else {
+		const avg = (ln + le + ls + lw) / 4;
+		out[0] = avg;
+		out[1] = avg;
+		out[2] = avg;
+		out[3] = avg;
+	}
+}
+
 /**
  * Brightness multiplier for a sloped grass face — corners tilting toward the
  * upper-left light source brighten, away darken. Flat tiles return 1.
@@ -1123,6 +1282,75 @@ function quad(
 	g.lineTo(x2, y2);
 	g.lineTo(x3, y3);
 	g.lineTo(x4, y4);
+	g.closePath();
+	g.fillPath();
+}
+
+// ---- Utility popup icons ---------------------------------------------------
+
+/** Popup pip: dark rounded-rect background + colored icon. */
+function drawPopupPip(
+	g: Phaser.GameObjects.Graphics,
+	cx: number,
+	cy: number,
+	iconColor: number,
+	drawIcon: (g: Phaser.GameObjects.Graphics, cx: number, cy: number) => void,
+): void {
+	// Background pill
+	g.fillStyle(0x1e1e1e, 0.85);
+	g.beginPath();
+	g.moveTo(cx - 5, cy - 6);
+	g.lineTo(cx + 5, cy - 6);
+	g.lineTo(cx + 6, cy - 5);
+	g.lineTo(cx + 6, cy + 5);
+	g.lineTo(cx + 5, cy + 6);
+	g.lineTo(cx - 5, cy + 6);
+	g.lineTo(cx - 6, cy + 5);
+	g.lineTo(cx - 6, cy - 5);
+	g.closePath();
+	g.fillPath();
+	// Stem pointing down
+	g.beginPath();
+	g.moveTo(cx - 2, cy + 6);
+	g.lineTo(cx, cy + 9);
+	g.lineTo(cx + 2, cy + 6);
+	g.closePath();
+	g.fillPath();
+	// Icon
+	g.fillStyle(iconColor, 1);
+	drawIcon(g, cx, cy);
+}
+
+/** Lightning-bolt shape (drawn at cx, cy center). */
+function powerBoltPath(
+	g: Phaser.GameObjects.Graphics,
+	cx: number,
+	cy: number,
+): void {
+	g.beginPath();
+	g.moveTo(cx + 1, cy - 5);
+	g.lineTo(cx - 2, cy - 1);
+	g.lineTo(cx, cy - 1);
+	g.lineTo(cx - 1, cy + 5);
+	g.lineTo(cx + 2, cy + 1);
+	g.lineTo(cx, cy + 1);
+	g.closePath();
+	g.fillPath();
+}
+
+/** Water-drop shape (drawn at cx, cy center). */
+function waterDropPath(
+	g: Phaser.GameObjects.Graphics,
+	cx: number,
+	cy: number,
+): void {
+	g.beginPath();
+	g.moveTo(cx, cy - 4);
+	g.lineTo(cx - 3, cy + 1);
+	g.lineTo(cx - 2, cy + 3);
+	g.lineTo(cx, cy + 4);
+	g.lineTo(cx + 2, cy + 3);
+	g.lineTo(cx + 3, cy + 1);
 	g.closePath();
 	g.fillPath();
 }
@@ -1169,7 +1397,12 @@ function shade(color: number, f: number): number {
 
 /** Whether a tool drags as an L-line (like roads) rather than a rectangle. */
 function isLineTool(tool: string): boolean {
-	return tool === "road" || tool === "rail" || tool === "power-line";
+	return (
+		tool === "road" ||
+		tool === "rail" ||
+		tool === "power-line" ||
+		tool === "water-pipe"
+	);
 }
 
 /** Whether a tool raises/lowers terrain (single-click, corner-aware). */
@@ -1194,7 +1427,17 @@ function isCivicTool(tool: string): boolean {
 	);
 }
 
-function previewColor(tool: string): number {
+/**
+ * Whether the bulldozer is currently aimed at the underground layer. The
+ * demolish tool retargets with the active overlay, so every place that draws or
+ * dispatches a demolish has to agree on this one predicate.
+ */
+function isUndergroundDemolish(tool: string, overlay: string): boolean {
+	return tool === "demolish" && overlay === "underground";
+}
+
+function previewColor(tool: string, overlay: string): number {
+	if (isUndergroundDemolish(tool, overlay)) return COL_PIPE_DEMOLISH;
 	switch (tool) {
 		case "zone-r-low":
 		case "zone-r-med":
@@ -1214,6 +1457,8 @@ function previewColor(tool: string): number {
 			return COL_RAIL;
 		case "power-line":
 			return COL_POWER_LINE;
+		case "water-pipe":
+			return COL_WATER_PIPE;
 		case "coal-plant":
 			return COL_CIVIC;
 		case "solar-plant":
@@ -1249,7 +1494,12 @@ function previewColor(tool: string): number {
 
 // ---- Command mapping -------------------------------------------------------
 
-function toolToCommand(tool: string, x: number, y: number): Command | null {
+function toolToCommand(
+	tool: string,
+	x: number,
+	y: number,
+	overlay: string,
+): Command | null {
 	switch (tool) {
 		case "zone-r-low":
 			return {
@@ -1329,6 +1579,8 @@ function toolToCommand(tool: string, x: number, y: number): Command | null {
 			return { kind: "build-rail", x, y };
 		case "power-line":
 			return { kind: "build-power-line", x, y };
+		case "water-pipe":
+			return { kind: "build-water-pipe", x, y };
 		case "coal-plant":
 			return { kind: "place-civic", x, y, civicType: CIVIC_COAL_PLANT };
 		case "solar-plant":
@@ -1352,6 +1604,7 @@ function toolToCommand(tool: string, x: number, y: number): Command | null {
 		case "stadium":
 			return { kind: "place-civic", x, y, civicType: CIVIC_STADIUM };
 		case "demolish":
+			if (overlay === "underground") return { kind: "demolish-pipe", x, y };
 			return { kind: "demolish", x, y };
 		case "water":
 			return { kind: "set-water", x, y, place: true };

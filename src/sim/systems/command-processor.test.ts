@@ -4,6 +4,8 @@ import type { Command } from "../commands.ts";
 import {
 	AGG,
 	BUILDING_EMPTY,
+	CIVIC_COAL_PLANT,
+	COST_WATER_PIPE,
 	TERRAIN_WATER,
 	ZONE_COMMERCIAL,
 	ZONE_INDUSTRIAL,
@@ -101,5 +103,131 @@ describe("processCommands", () => {
 		]);
 
 		expect(city.zoning[idx]).toBe(ZONE_NONE);
+	});
+});
+
+describe("processCommands — water pipes", () => {
+	const idx = (x: number, y: number) => y * 8 + x;
+
+	it("lays a pipe and charges for it", () => {
+		const city = smallCity();
+		const before = city.aggregates[AGG.TREASURY] ?? 0;
+
+		processCommands(city, [{ kind: "build-water-pipe", x: 3, y: 3 }]);
+
+		expect(city.waterPipes[idx(3, 3)]).toBe(1);
+		expect(city.aggregates[AGG.TREASURY]).toBeCloseTo(before - COST_WATER_PIPE);
+	});
+
+	it("does not lay a pipe on water terrain", () => {
+		const city = smallCity();
+		city.terrain[idx(2, 2)] = TERRAIN_WATER;
+
+		processCommands(city, [{ kind: "build-water-pipe", x: 2, y: 2 }]);
+
+		expect(city.waterPipes[idx(2, 2)]).toBe(0);
+	});
+
+	it("does not charge twice for a pipe already there", () => {
+		const city = smallCity();
+		processCommands(city, [{ kind: "build-water-pipe", x: 3, y: 3 }]);
+		const after = city.aggregates[AGG.TREASURY] ?? 0;
+
+		processCommands(city, [{ kind: "build-water-pipe", x: 3, y: 3 }]);
+
+		expect(city.aggregates[AGG.TREASURY]).toBe(after);
+	});
+
+	it("does not lay a pipe the city cannot afford", () => {
+		const city = smallCity();
+		city.aggregates[AGG.TREASURY] = COST_WATER_PIPE - 1;
+
+		processCommands(city, [{ kind: "build-water-pipe", x: 3, y: 3 }]);
+
+		expect(city.waterPipes[idx(3, 3)]).toBe(0);
+	});
+
+	it("ignores out-of-bounds pipe commands", () => {
+		const city = smallCity();
+
+		processCommands(city, [
+			{ kind: "build-water-pipe", x: -1, y: 0 },
+			{ kind: "build-water-pipe", x: 100, y: 0 },
+		]);
+
+		expect(city.waterPipes.every((v) => v === 0)).toBe(true);
+	});
+
+	it("demolish-pipe removes the pipe and leaves the surface alone", () => {
+		const city = smallCity();
+		processCommands(city, [
+			{ kind: "build-water-pipe", x: 4, y: 4 },
+			{ kind: "build-road", x: 4, y: 4 },
+		]);
+
+		processCommands(city, [{ kind: "demolish-pipe", x: 4, y: 4 }]);
+
+		expect(city.waterPipes[idx(4, 4)]).toBe(0);
+		expect(city.roads[idx(4, 4)]).toBe(1);
+	});
+
+	it("demolish-pipe on a tile with no pipe costs nothing", () => {
+		const city = smallCity();
+		const before = city.aggregates[AGG.TREASURY] ?? 0;
+
+		processCommands(city, [{ kind: "demolish-pipe", x: 5, y: 5 }]);
+
+		expect(city.aggregates[AGG.TREASURY]).toBe(before);
+	});
+});
+
+describe("processCommands — underground layers survive surface work", () => {
+	const idx = (x: number, y: number) => y * 8 + x;
+
+	// Pipes sit below the surface, so building over them must not disturb them.
+	// Metros and tunnels will land on the same rule; clearTile must stay
+	// surface-only.
+	const surfaceBuilds: ReadonlyArray<{ label: string; cmd: Command }> = [
+		{ label: "a road", cmd: { kind: "build-road", x: 4, y: 4 } },
+		{ label: "rail", cmd: { kind: "build-rail", x: 4, y: 4 } },
+		{ label: "a power line", cmd: { kind: "build-power-line", x: 4, y: 4 } },
+		{
+			label: "a civic building",
+			cmd: { kind: "place-civic", x: 4, y: 4, civicType: CIVIC_COAL_PLANT },
+		},
+	];
+
+	for (const { label, cmd } of surfaceBuilds) {
+		it(`keeps the pipe when ${label} is built over it`, () => {
+			const city = smallCity();
+			processCommands(city, [{ kind: "build-water-pipe", x: 4, y: 4 }]);
+
+			processCommands(city, [cmd]);
+
+			expect(city.waterPipes[idx(4, 4)]).toBe(1);
+		});
+	}
+
+	it("keeps the pipe when the surface is demolished", () => {
+		const city = smallCity();
+		processCommands(city, [
+			{ kind: "build-water-pipe", x: 4, y: 4 },
+			{ kind: "build-road", x: 4, y: 4 },
+		]);
+
+		processCommands(city, [{ kind: "demolish", x: 4, y: 4 }]);
+
+		expect(city.roads[idx(4, 4)]).toBe(0);
+		expect(city.waterPipes[idx(4, 4)]).toBe(1);
+	});
+
+	it("destroys the pipe when the tile is flooded", () => {
+		const city = smallCity();
+		processCommands(city, [{ kind: "build-water-pipe", x: 4, y: 4 }]);
+
+		processCommands(city, [{ kind: "set-water", x: 4, y: 4, place: true }]);
+
+		expect(city.terrain[idx(4, 4)]).toBe(TERRAIN_WATER);
+		expect(city.waterPipes[idx(4, 4)]).toBe(0);
 	});
 });

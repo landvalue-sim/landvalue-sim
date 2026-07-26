@@ -4,7 +4,7 @@
  * Runs all systems in a deterministic order each tick:
  *   1. Command processor (apply player input)
  *   2. Power coverage (BFS from plants)
- *   3. Water coverage (radius from pumps)
+ *   3. Water coverage (BFS from pumps)
  *   4. Civic coverage (police, fire, education, health)
  *   5. Connections (edge detection)
  *   6. Traffic (commute congestion)
@@ -14,7 +14,7 @@
  *  10. Externalities (pollution + traffic emissions)
  *  11. Crime (density, police, unemployment)
  *  12. Fire (ignition, spread, containment)
- *  13. Public finance (taxes, services, bonds)
+ *  13. Public finance (taxes, maintenance, bonds)
  *  14. Postcondition invariants (dev only)
  *
  * The simulation is fully deterministic: same seed + same commands =

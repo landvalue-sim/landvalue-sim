@@ -61,10 +61,10 @@ function FinancesPanel({
 	const stats = useLiveStats(sim.city);
 	const net =
 		stats.revenue -
-		stats.serviceCost -
 		stats.roadCost -
-		stats.civicCost -
 		stats.railCost -
+		stats.pipeCost -
+		stats.civicCost -
 		stats.bondPayment;
 
 	return (
@@ -83,13 +83,9 @@ function FinancesPanel({
 			<div className="fin-section-title">Budget (per week)</div>
 			<div className="fin-table">
 				<FinRow label="Property tax" value={stats.revenue} sign="+" />
-				<FinRow
-					label="Service cost"
-					value={-stats.serviceCost}
-					sign={"\u2212"}
-				/>
 				<FinRow label="Road upkeep" value={-stats.roadCost} sign={"\u2212"} />
 				<FinRow label="Rail upkeep" value={-stats.railCost} sign={"\u2212"} />
+				<FinRow label="Pipe upkeep" value={-stats.pipeCost} sign={"\u2212"} />
 				<FinRow label="Civic upkeep" value={-stats.civicCost} sign={"\u2212"} />
 				<FinRow
 					label="Bond payments"
@@ -115,7 +111,31 @@ function FinancesPanel({
 					label="Demand"
 					value={`${Math.floor(stats.powerDemand)} MW`}
 				/>
+				<FinSimpleRow
+					label="Unserved"
+					value={`${Math.floor(stats.powerDemand - stats.powerServed)} MW`}
+				/>
 			</div>
+
+			<div className="fin-section-title">Water</div>
+			<div className="fin-table">
+				<FinSimpleRow
+					label="Capacity"
+					value={`${Math.floor(stats.waterCapacity)}`}
+				/>
+				<FinSimpleRow
+					label="Demand"
+					value={`${Math.floor(stats.waterDemand)}`}
+				/>
+				<FinSimpleRow
+					label="Unserved"
+					value={`${Math.floor(stats.waterDemand - stats.waterServed)}`}
+				/>
+			</div>
+			<p className="fin-hint">
+				Unserved load sits past the edge of the network — either beyond what
+				capacity can reach, or not connected to a plant or pump at all.
+			</p>
 
 			<div className="fin-section-title">Tax Rates</div>
 			<p className="fin-hint">

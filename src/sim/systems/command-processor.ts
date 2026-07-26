@@ -24,12 +24,8 @@ import {
 	COST_RAIL,
 	COST_ROAD,
 	COST_TERRAFORM,
-	COST_ZONE_HIGH,
-	COST_ZONE_LOW,
-	COST_ZONE_MED,
-	DENSITY_HIGH,
+	COST_WATER_PIPE,
 	DENSITY_LOW,
-	DENSITY_MED,
 	MAX_BONDS,
 	MAX_GRID_SIZE,
 	MAX_TAX_RATE,
@@ -71,12 +67,6 @@ function charge(state: CityState, cost: number): void {
 	state.aggregates[AGG.TREASURY] = (state.aggregates[AGG.TREASURY] ?? 0) - cost;
 }
 
-function zoneCost(density: number): number {
-	if (density === DENSITY_HIGH) return COST_ZONE_HIGH;
-	if (density === DENSITY_MED) return COST_ZONE_MED;
-	return COST_ZONE_LOW;
-}
-
 function civicCost(civicType: number): number {
 	return CIVIC_COST_TABLE[civicType] ?? 0;
 }
@@ -95,11 +85,17 @@ function applyCommand(state: CityState, cmd: Command): void {
 		case "build-power-line":
 			applyBuildPowerLine(state, cmd.x, cmd.y);
 			break;
+		case "build-water-pipe":
+			applyBuildWaterPipe(state, cmd.x, cmd.y);
+			break;
 		case "place-civic":
 			applyPlaceCivic(state, cmd.x, cmd.y, cmd.civicType);
 			break;
 		case "demolish":
 			applyDemolish(state, cmd.x, cmd.y);
+			break;
+		case "demolish-pipe":
+			applyDemolishPipe(state, cmd.x, cmd.y);
 			break;
 		case "terraform":
 			applyTerraform(state, cmd.x, cmd.y, cmd.corner, cmd.dir);
@@ -142,10 +138,6 @@ function applyZone(
 		state.jobs[idx] = 0;
 		return;
 	}
-
-	const cost = zoneCost(dens);
-	if (!canAfford(state, cost)) return;
-	charge(state, cost);
 
 	state.zoning[idx] = zoneType;
 	state.densityCap[idx] = dens;
@@ -194,6 +186,17 @@ function applyBuildPowerLine(state: CityState, x: number, y: number): void {
 	state.powerLines[idx] = 1;
 }
 
+/** Pipes are underground — they coexist with whatever is on the surface. */
+function applyBuildWaterPipe(state: CityState, x: number, y: number): void {
+	if (x < 0 || x >= state.width || y < 0 || y >= state.height) return;
+	const idx = y * state.width + x;
+	if (state.terrain[idx] === TERRAIN_WATER) return;
+	if (state.waterPipes[idx] === 1) return;
+	if (!canAfford(state, COST_WATER_PIPE)) return;
+	charge(state, COST_WATER_PIPE);
+	state.waterPipes[idx] = 1;
+}
+
 function applyPlaceCivic(
 	state: CityState,
 	x: number,
@@ -218,6 +221,16 @@ function applyDemolish(state: CityState, x: number, y: number): void {
 	charge(state, COST_DEMOLISH);
 
 	clearTile(state, idx);
+}
+
+/** Remove only the underground water pipe on a tile, leaving surface intact. */
+function applyDemolishPipe(state: CityState, x: number, y: number): void {
+	if (x < 0 || x >= state.width || y < 0 || y >= state.height) return;
+	const idx = y * state.width + x;
+	if (state.waterPipes[idx] !== 1) return;
+	if (!canAfford(state, COST_DEMOLISH)) return;
+	charge(state, COST_DEMOLISH);
+	state.waterPipes[idx] = 0;
 }
 
 function applyTerraform(
@@ -246,7 +259,15 @@ function applySetWater(
 	}
 }
 
-/** Reset all layers on a single tile to empty land. */
+/**
+ * Reset the *surface* layers on a single tile to empty land.
+ *
+ * Underground layers (currently `waterPipes`; metros and tunnels will join
+ * them) are deliberately untouched — they occupy a separate vertical space and
+ * survive anything built above. Each underground layer owns a dedicated
+ * demolish command; see `applyDemolishPipe`. Adding a new underground layer
+ * means adding it to that list, never to this function.
+ */
 function clearTile(state: CityState, idx: number): void {
 	state.roads[idx] = 0;
 	state.rail[idx] = 0;

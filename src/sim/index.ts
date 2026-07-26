@@ -14,8 +14,10 @@ export type {
 	BuildPowerLineCommand,
 	BuildRailCommand,
 	BuildRoadCommand,
+	BuildWaterPipeCommand,
 	Command,
 	DemolishCommand,
+	DemolishPipeCommand,
 	IssueBondCommand,
 	PlaceCivicCommand,
 	SetTaxRateCommand,
@@ -59,6 +61,7 @@ export {
 	COST_SCHOOL,
 	COST_SOLAR_PLANT,
 	COST_STADIUM,
+	COST_WATER_PIPE,
 	COST_WATER_PUMP,
 	DAYS_PER_MONTH,
 	DAYS_PER_WEEK,
@@ -90,6 +93,6 @@ export { getProfileSnapshot, SYSTEM_NAMES } from "./profiler.ts";
 export { buildTestCity } from "./scenarios.ts";
 export type { Violation } from "./sim-invariants.ts";
 export { clearViolations, getViolations } from "./sim-invariants.ts";
-export { generateTerrain } from "./terrain-gen.ts";
 export { setWaterTile, terraformTile } from "./terraform.ts";
+export { generateTerrain } from "./terrain-gen.ts";
 export { tick } from "./tick.ts";

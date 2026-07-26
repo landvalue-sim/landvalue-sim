@@ -58,6 +58,8 @@ export interface CityState {
 	readonly healthCoverage: Uint8Array;
 	/** Water surface height (0..ELEVATION_MAX); meaningful only on water tiles. */
 	readonly waterLevel: Uint8Array;
+	/** Underground water pipes (0 = none, 1 = pipe). */
+	readonly waterPipes: Uint8Array;
 
 	/**
 	 * Corner heights, RCT-style: one height per grid *vertex*, so this layer is
@@ -79,8 +81,13 @@ export interface CityState {
 // ---------------------------------------------------------------------------
 
 const PRNG_WORDS = 4;
-const U16_LAYER_COUNT = 3;
-const U8_LAYER_COUNT = 20;
+/**
+ * Layer counts drive the byte layout below. Exported so tests can assert the
+ * buffer is big enough without restating the numbers — a hand-copied count
+ * silently under-reserves the moment a layer is added.
+ */
+export const U16_LAYER_COUNT = 3;
+export const U8_LAYER_COUNT = 21;
 
 /** Round `offset` up to the next multiple of `align` (a power of two). */
 function alignUp(offset: number, align: number): number {
@@ -180,6 +187,7 @@ function viewLayout(
 		educationCoverage: new Uint8Array(buffer, u8 + 17 * u8Stride, size),
 		healthCoverage: new Uint8Array(buffer, u8 + 18 * u8Stride, size),
 		waterLevel: new Uint8Array(buffer, u8 + 19 * u8Stride, size),
+		waterPipes: new Uint8Array(buffer, u8 + 20 * u8Stride, size),
 		vertexHeights: new Uint8Array(
 			buffer,
 			layout.vertex,
@@ -248,6 +256,7 @@ export function createCity(opts?: CreateCityOptions): CityState {
 	state.educationCoverage.fill(0);
 	state.healthCoverage.fill(0);
 	state.waterLevel.fill(0);
+	state.waterPipes.fill(0);
 	state.vertexHeights.fill(0);
 	state.aggregates.fill(0);
 
