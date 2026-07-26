@@ -14,8 +14,10 @@
  * The texture is pinned in world space, so panning slides it under the camera
  * for free; a rebake happens only when the view leaves the padded region or a
  * non-camera input changes — sim tick, overlay mode, zoom, or canvas size
- * (see `bakeDirty`). Unchanged frames render just that cached texture plus a
- * small per-frame layer for the hover cursor and drag preview.
+ * (see `bakeDirty`). Zoom-only rebakes are additionally spaced at least
+ * ZOOM_REBAKE_MS apart (the cache scales correctly in between). Unchanged
+ * frames render just that cached texture plus a small per-frame layer for
+ * the hover cursor and drag preview.
  */
 
 import Phaser from "phaser";
@@ -140,6 +142,13 @@ const CULL_TILE_MARGIN = 4;
 // Screen-px margin baked around the view on every side. Panning inside this
 // margin needs no rebake — the cached texture just slides under the camera.
 const BAKE_PAD_PX = 256;
+// Minimum ms between rebakes whose only cause is a zoom change. A wheel
+// gesture fires a notch every few frames; rebaking each one hitches at low
+// zoom. Between bakes the world-pinned cache scales correctly (just soft),
+// and the pad keeps ~2 notches of zoom-out covered, so spacing the bakes
+// keeps the gesture smooth. The final notch still bakes once the window
+// elapses because the zoom stays dirty.
+const ZOOM_REBAKE_MS = 150;
 
 // ---- Camera tuning ---------------------------------------------------------
 
@@ -180,6 +189,8 @@ export class IsoScene extends Phaser.Scene {
 	private bakedY0 = 0;
 	private bakedX1 = 0;
 	private bakedY1 = 0;
+	/** Scene time of the last bake triggered by a zoom change (see ZOOM_REBAKE_MS). */
+	private lastZoomBakeTime = 0;
 	/** Per-frame scratch: tiles covered by a multi-tile cluster sprite. */
 	private covered!: Uint8Array;
 	private keys!: {
@@ -341,9 +352,9 @@ export class IsoScene extends Phaser.Scene {
 		this.input.on(Phaser.Input.Events.POINTER_WHEEL, this.onWheel, this);
 	}
 
-	update(_time: number, delta: number): void {
+	update(time: number, delta: number): void {
 		this.panKeys(delta);
-		if (this.bakeDirty()) this.bakeWorld();
+		if (this.bakeDirty() && !this.zoomThrottled(time)) this.bakeWorld(time);
 		this.drawDynamic();
 	}
 
@@ -558,9 +569,28 @@ export class IsoScene extends Phaser.Scene {
 		);
 	}
 
-	/** Rebuild the world layers and bake them into the cache texture. */
-	private bakeWorld(): void {
+	/** Whether a pending rebake should wait because its only cause is a zoom
+	 *  change inside the ZOOM_REBAKE_MS window. Any other dirty input (tick,
+	 *  overlay, canvas) bakes immediately. */
+	private zoomThrottled(time: number): boolean {
 		const cam = this.cameras.main;
+		if (cam.zoom === this.bakedZoom) return false;
+		const tick = this.city.aggregates[AGG.TICK] ?? 0;
+		if (
+			tick !== this.bakedTick ||
+			this.store.getSnapshot().overlay !== this.bakedOverlay ||
+			this.scale.width !== this.bakedCanvasW ||
+			this.scale.height !== this.bakedCanvasH
+		) {
+			return false;
+		}
+		return time - this.lastZoomBakeTime < ZOOM_REBAKE_MS;
+	}
+
+	/** Rebuild the world layers and bake them into the cache texture. */
+	private bakeWorld(time: number): void {
+		const cam = this.cameras.main;
+		if (cam.zoom !== this.bakedZoom) this.lastZoomBakeTime = time;
 		const canvasW = this.scale.width;
 		const canvasH = this.scale.height;
 		const rtW = canvasW + 2 * BAKE_PAD_PX;
@@ -795,6 +825,21 @@ export class IsoScene extends Phaser.Scene {
 		}
 	}
 
+	/** Whether a skirt face toward front neighbor (nx, ny) can ever be seen.
+	 *  A plain land tile in front draws its surface starting flush at the
+	 *  shared vertices, hiding the face completely (and the sheet below it is
+	 *  covered by induction — every column ends at a face-drawing tile). Only
+	 *  the map edge, water gaps (flat plane below the shared vertices), and
+	 *  road grading (surface may dip below the shared vertices) leave a skirt
+	 *  visible. */
+	private skirtFaceVisible(nx: number, ny: number): boolean {
+		if (nx >= this.city.width || ny >= this.city.height) return true;
+		const idx = ny * this.city.width + nx;
+		return (
+			this.city.terrain[idx] === TERRAIN_WATER || this.city.roads[idx] === 1
+		);
+	}
+
 	/** Corner height (0..ELEVATION_MAX) at vertex (vx, vy) of the corner grid. */
 	private vertexHeight(vx: number, vy: number): number {
 		return this.city.vertexHeights[vy * (this.city.width + 1) + vx] ?? 0;
@@ -991,7 +1036,21 @@ export class IsoScene extends Phaser.Scene {
 		const gs = isRoad ? rs : ls;
 		const gw = isRoad ? rw : lw;
 
-		skirts(g, cx, cy, ge, gs, gw, isWater ? COL_WATER : COL_EARTH);
+		// Water tiles always draw their skirts (shoreline walls); land skirts
+		// draw only where something in front can fail to cover them.
+		const swVis = isWater || this.skirtFaceVisible(x, y + 1);
+		const seVis = isWater || this.skirtFaceVisible(x + 1, y);
+		skirts(
+			g,
+			cx,
+			cy,
+			ge,
+			gs,
+			gw,
+			isWater ? COL_WATER : COL_EARTH,
+			swVis,
+			seVis,
+		);
 		if (isWater) {
 			g.fillStyle(COL_WATER, 1);
 		} else {
@@ -1196,7 +1255,7 @@ export class IsoScene extends Phaser.Scene {
 		const isWater = !isRoad && city.terrain[idx] === TERRAIN_WATER;
 		if (isWater) {
 			const wl = (city.waterLevel[idx] ?? 0) * ELEV_HEIGHT;
-			skirts(g, cx, cy, wl, wl, wl, COL_WATER);
+			skirts(g, cx, cy, wl, wl, wl, COL_WATER, true, true);
 			g.fillStyle(COL_WATER, 1);
 			fillDiamond(g, cx, cy, wl);
 			return;
@@ -1220,7 +1279,17 @@ export class IsoScene extends Phaser.Scene {
 
 		// Sloped terrain in earth tones, then the land-value column rising from
 		// the tile's highest corner.
-		skirts(g, cx, cy, le, ls, lw, COL_EARTH);
+		skirts(
+			g,
+			cx,
+			cy,
+			le,
+			ls,
+			lw,
+			COL_EARTH,
+			this.skirtFaceVisible(x, y + 1),
+			this.skirtFaceVisible(x + 1, y),
+		);
 		g.fillStyle(shade(COL_EARTH, slopeShade(hn, he, hs, hw)), 1);
 		fillSurface(g, cx, cy, ln, le, ls, lw);
 
@@ -1304,8 +1373,9 @@ function fillDiamond(
 
 /**
  * Terrain side skirts: the two viewer-facing faces dropping from the tile's
- * E/S/W corner lifts down to lift 0. Mostly hidden behind nearer tiles;
- * visible at the map edge and along water lines.
+ * E/S/W corner lifts down to lift 0. `swVisible`/`seVisible` come from
+ * `skirtFaceVisible` — faces flush against plain land in front are fully
+ * occluded and skipped, which roughly halves terrain triangles on hilly maps.
  */
 function skirts(
 	g: Phaser.GameObjects.Graphics,
@@ -1315,8 +1385,10 @@ function skirts(
 	ls: number,
 	lw: number,
 	color: number,
+	swVisible: boolean,
+	seVisible: boolean,
 ): void {
-	if (lw > 0 || ls > 0) {
+	if (swVisible && (lw > 0 || ls > 0)) {
 		g.fillStyle(shade(color, 0.6), 1);
 		quad(
 			g,
@@ -1330,7 +1402,7 @@ function skirts(
 			cy + HALF_H - lw,
 		);
 	}
-	if (ls > 0 || le > 0) {
+	if (seVisible && (ls > 0 || le > 0)) {
 		g.fillStyle(shade(color, 0.8), 1);
 		quad(
 			g,
