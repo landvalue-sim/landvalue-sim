@@ -66,6 +66,11 @@ const COL_RAIL = 0x71717a;
 const COL_POWER_LINE = 0xfbbf24;
 const COL_WATER_PIPE = 0x06b6d4;
 const COL_PIPE_DISCONNECTED = 0xf97316; // orange — pipe not reached by water network
+// Bulldozer aimed underground. Magenta rather than the surface bulldozer's red
+// so the two modes are never mistaken for one another at a glance.
+const COL_PIPE_DEMOLISH = 0xe11d8f;
+// Target under the underground bulldozer that holds no pipe: nothing to remove.
+const COL_NO_TARGET = 0x64748b;
 const COL_R_BUILT = 0x16a34a;
 const COL_C_BUILT = 0x2563eb;
 const COL_I_BUILT = 0xca8a04;
@@ -509,7 +514,12 @@ export class IsoScene extends Phaser.Scene {
 			this.hoverY < h
 		) {
 			const go = this.gOverlay;
-			go.lineStyle(2, COL_CURSOR, 0.9);
+			// The cursor takes the bulldozer's underground colour so the retargeted
+			// mode is visible on the grid, not just on the sidebar button.
+			const cursorCol = isUndergroundDemolish(snap.tool, overlay)
+				? COL_PIPE_DEMOLISH
+				: COL_CURSOR;
+			go.lineStyle(2, cursorCol, 0.9);
 			this.pathHoverFace(go, this.hoverX, this.hoverY, overlay);
 			go.strokePath();
 			if (isTerraformTool(snap.tool)) this.drawCornerMarker();
@@ -598,17 +608,27 @@ export class IsoScene extends Phaser.Scene {
 
 	/** Draw a translucent footprint of the tiles the current drag would place. */
 	private drawDragPreview(): void {
-		const tool = this.store.getSnapshot().tool;
+		const snap = this.store.getSnapshot();
+		const tool = snap.tool;
 		if (tool === "none") return;
 
 		const g = this.gOverlay;
-		const color = previewColor(tool);
+		const color = previewColor(tool, snap.overlay);
+		const undergroundDemolish = isUndergroundDemolish(tool, snap.overlay);
 		for (const t of this.dragTiles(tool)) {
 			if (!this.inBounds(t.x, t.y)) continue;
-			g.fillStyle(color, 0.45);
-			this.pathGroundFace(g, t.x, t.y);
-			g.fillPath();
-			g.lineStyle(1, color, 0.9);
+			// Bulldozing underground, a tile with no pipe is a no-op — outline it
+			// in grey rather than in the bulldozer colour so the player can see
+			// what the drag will actually remove.
+			const idx = t.y * this.city.width + t.x;
+			const inert = undergroundDemolish && this.city.waterPipes[idx] !== 1;
+			const c = inert ? COL_NO_TARGET : color;
+			if (!inert) {
+				g.fillStyle(c, 0.45);
+				this.pathGroundFace(g, t.x, t.y);
+				g.fillPath();
+			}
+			g.lineStyle(1, c, inert ? 0.5 : 0.9);
 			this.pathGroundFace(g, t.x, t.y);
 			g.strokePath();
 		}
@@ -1407,7 +1427,17 @@ function isCivicTool(tool: string): boolean {
 	);
 }
 
-function previewColor(tool: string): number {
+/**
+ * Whether the bulldozer is currently aimed at the underground layer. The
+ * demolish tool retargets with the active overlay, so every place that draws or
+ * dispatches a demolish has to agree on this one predicate.
+ */
+function isUndergroundDemolish(tool: string, overlay: string): boolean {
+	return tool === "demolish" && overlay === "underground";
+}
+
+function previewColor(tool: string, overlay: string): number {
+	if (isUndergroundDemolish(tool, overlay)) return COL_PIPE_DEMOLISH;
 	switch (tool) {
 		case "zone-r-low":
 		case "zone-r-med":

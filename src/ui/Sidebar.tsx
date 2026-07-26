@@ -167,16 +167,21 @@ export function Sidebar({ store, sim }: SidebarProps): React.ReactElement {
 							onSelect={store.setTool}
 						/>
 					))}
+					{/* The bulldozer retargets with the view: in the underground
+					    overlay it removes pipes and leaves the surface alone. Say so
+					    on the button, so the mode is never a hidden state. */}
 					<Button
 						className={`category-btn demolish-btn${
 							tool === "demolish" ? " is-active" : ""
-						}`}
+						}${overlay === "underground" ? " is-underground" : ""}`}
 						onPress={() => store.toggleTool("demolish")}
 					>
 						<span className="category-icon" aria-hidden="true">
-							🚜
+							{overlay === "underground" ? "🔧" : "🚜"}
 						</span>
-						<span className="category-label">Demolish (X)</span>
+						<span className="category-label">
+							{overlay === "underground" ? "Demolish Pipe (X)" : "Demolish (X)"}
+						</span>
 					</Button>
 				</div>
 				<Switch
