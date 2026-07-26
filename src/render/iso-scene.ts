@@ -52,7 +52,7 @@ import {
 	ZONE_RESIDENTIAL,
 } from "../sim/index.ts";
 import { type Point, rectTiles, roadLineTiles } from "./drag.ts";
-import { ELEV_HEIGHT, HALF_H, HALF_W, TIER_HEIGHT } from "./iso.ts";
+import { ELEV_HEIGHT, fitZoom, HALF_H, HALF_W, TIER_HEIGHT } from "./iso.ts";
 import { pickTile, tileSurfaceHeight } from "./picking.ts";
 import { CIVIC_MANIFEST, SPRITE_MANIFEST } from "./sprite-manifest.ts";
 import { SpritePool } from "./sprite-pool.ts";
@@ -153,8 +153,16 @@ const ZOOM_REBAKE_MS = 150;
 
 // ---- Camera tuning ---------------------------------------------------------
 
-const MIN_ZOOM = 0.4;
 const MAX_ZOOM = 4;
+// The zoom-out limit is whatever fits the whole grid on the canvas (see
+// `minZoom`), bounded by these two. The ceiling keeps small maps free to pull
+// back past their own edges — a 32x32 map "fits" at zoom > 1, which would
+// otherwise feel locked in. The floor is a perf backstop: a fitted view bakes
+// the entire world in one pass, so an enormous grid stops short of fitting
+// rather than hitching for seconds.
+const MIN_ZOOM_CEILING = 0.4;
+const MIN_ZOOM_FLOOR = 0.05;
+const DEFAULT_ZOOM = 1.4;
 const ZOOM_STEP = 1.15;
 const KEY_PAN_SPEED = 600; // world px / second
 
@@ -325,7 +333,14 @@ export class IsoScene extends Phaser.Scene {
 		const midX = (this.city.width / 2 - this.city.height / 2) * HALF_W;
 		const midY = (this.city.width / 2 + this.city.height / 2) * HALF_H;
 		cam.centerOn(midX, midY);
-		cam.setZoom(1.4);
+		cam.setZoom(Math.max(DEFAULT_ZOOM, this.minZoom()));
+
+		// A bigger canvas fits the map at a closer zoom, tightening the zoom-out
+		// limit — the camera has to follow it in.
+		this.scale.on(Phaser.Scale.Events.RESIZE, this.clampZoom, this);
+		this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+			this.scale.off(Phaser.Scale.Events.RESIZE, this.clampZoom, this);
+		});
 
 		const kb = this.input.keyboard;
 		if (kb !== null) {
@@ -436,13 +451,36 @@ export class IsoScene extends Phaser.Scene {
 		const cam = this.cameras.main;
 		const z0 = cam.zoom;
 		const factor = dy < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
-		const z1 = Phaser.Math.Clamp(z0 * factor, MIN_ZOOM, MAX_ZOOM);
+		const z1 = Phaser.Math.Clamp(z0 * factor, this.minZoom(), MAX_ZOOM);
 		if (z1 === z0) return;
 
 		const dInv = 1 / z0 - 1 / z1;
 		cam.setZoom(z1);
 		cam.scrollX += (pointer.x - cam.centerX) * dInv;
 		cam.scrollY += (pointer.y - cam.centerY) * dInv;
+	}
+
+	/**
+	 * Zoom-out limit: far enough back that the whole grid fits the canvas, so a
+	 * 256x256 map is as viewable in one screen as a 64x64 one. Bounded by
+	 * MIN_ZOOM_FLOOR / MIN_ZOOM_CEILING. Recomputed per use — the canvas resizes
+	 * with the window, and the arithmetic is a handful of ops.
+	 */
+	private minZoom(): number {
+		const fit = fitZoom(
+			this.city.width,
+			this.city.height,
+			this.scale.width,
+			this.scale.height,
+		);
+		return Phaser.Math.Clamp(fit, MIN_ZOOM_FLOOR, MIN_ZOOM_CEILING);
+	}
+
+	/** Pull the camera back inside the zoom range after a canvas resize. */
+	private clampZoom(): void {
+		const cam = this.cameras.main;
+		const z = Phaser.Math.Clamp(cam.zoom, this.minZoom(), MAX_ZOOM);
+		if (z !== cam.zoom) cam.setZoom(z);
 	}
 
 	private panKeys(delta: number): void {
