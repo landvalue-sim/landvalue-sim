@@ -93,6 +93,20 @@ The land-value field is the most expensive system (it diffuses amenity and disam
 values across the grid) and the conceptual centerpiece (the model is accidentally
 Georgist: land value is first-class and capitalizes nearby effects).
 
+### Utility networks
+
+Power and water share one graph model (`src/sim/systems/utility-network.ts`): a
+multi-source breadth-first walk out from every plant or pump, through whatever conducts
+that utility. Because BFS yields tiles in order of network distance, capacity can be
+spent nearest-first — each tile the walk reaches draws its demand, and the walk stops at
+the first tile the network can no longer afford.
+
+Shortfall therefore shows up as a **supply frontier that recedes**, not a citywide
+blackout. Under-build your generation and the outskirts go dark while the core stays
+lit, which is both readable on the overlay and proportional to how short you are. The
+gap between demand and served load is reported per utility so the finances panel can
+show how much of the city is stranded past that frontier.
+
 ## Urbanist levers (make the YIMBY argument playable)
 
 The sharpest pedagogical value is where the classic SimCity model diverges from how cities
@@ -173,6 +187,11 @@ Save format is a versioned binary container:
 
 ## Open decisions
 
+- **Land-value penalty for missing utilities is still binary.** Coverage now degrades
+  gracefully (see Utility networks above), but an uncovered tile takes the full flat
+  `LV_NO_POWER_PENALTY` / `LV_NO_WATER_PENALTY`. Scaling the penalty by how long a tile
+  has gone unserved, rather than applying it the instant the frontier passes it, would
+  stop a brief shortfall from repricing a whole district.
 - **Cloud sync conflict strategy.** MVP: last-write-wins with a "cloud copy is newer"
   check. Revisit if multi-device editing becomes common.
 - **Concurrency headroom.** One sim worker is enough for the MVP. A worker pool (sized to

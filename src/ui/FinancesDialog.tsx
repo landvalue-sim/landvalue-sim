@@ -111,6 +111,10 @@ function FinancesPanel({
 					label="Demand"
 					value={`${Math.floor(stats.powerDemand)} MW`}
 				/>
+				<FinSimpleRow
+					label="Unserved"
+					value={`${Math.floor(stats.powerDemand - stats.powerServed)} MW`}
+				/>
 			</div>
 
 			<div className="fin-section-title">Water</div>
@@ -123,7 +127,15 @@ function FinancesPanel({
 					label="Demand"
 					value={`${Math.floor(stats.waterDemand)}`}
 				/>
+				<FinSimpleRow
+					label="Unserved"
+					value={`${Math.floor(stats.waterDemand - stats.waterServed)}`}
+				/>
 			</div>
+			<p className="fin-hint">
+				Unserved load sits past the edge of the network — either beyond what
+				capacity can reach, or not connected to a plant or pump at all.
+			</p>
 
 			<div className="fin-section-title">Tax Rates</div>
 			<p className="fin-hint">

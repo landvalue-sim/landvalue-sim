@@ -37,8 +37,10 @@ export interface LiveStats {
 	readonly taxI: number;
 	readonly powerCapacity: number;
 	readonly powerDemand: number;
+	readonly powerServed: number;
 	readonly waterCapacity: number;
 	readonly waterDemand: number;
+	readonly waterServed: number;
 	readonly bondPayment: number;
 	readonly totalCrime: number;
 	readonly fireCount: number;
@@ -73,8 +75,10 @@ function readStats(city: CityState): LiveStats {
 		taxI: a[AGG.TAX_RATE_I] ?? 0,
 		powerCapacity: a[AGG.POWER_CAPACITY] ?? 0,
 		powerDemand: a[AGG.POWER_DEMAND] ?? 0,
+		powerServed: a[AGG.POWER_SERVED] ?? 0,
 		waterCapacity: a[AGG.WATER_CAPACITY] ?? 0,
 		waterDemand: a[AGG.WATER_DEMAND] ?? 0,
+		waterServed: a[AGG.WATER_SERVED] ?? 0,
 		bondPayment: a[AGG.BOND_PAYMENT] ?? 0,
 		totalCrime: a[AGG.TOTAL_CRIME] ?? 0,
 		fireCount: a[AGG.FIRE_COUNT] ?? 0,

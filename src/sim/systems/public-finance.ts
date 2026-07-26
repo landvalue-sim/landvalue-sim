@@ -116,7 +116,6 @@ export function updatePublicFinance(state: CityState): void {
 
 	// --- Record this week's breakdown for the finances UI ---
 	aggregates[AGG.REVENUE] = revenueWk;
-	aggregates[AGG.SERVICE_COST] = 0;
 	aggregates[AGG.ROAD_COST] = roadCostWk;
 	aggregates[AGG.CIVIC_COST] = civicCostWk;
 	aggregates[AGG.RAIL_COST] = railCostWk;

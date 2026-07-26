@@ -2,8 +2,12 @@
  * Power system — compute power coverage via BFS flood fill from power plants.
  *
  * Power flows from plants through roads, rail, power lines, civic buildings,
- * and zoned tiles. Unconnected tiles are unpowered. If total capacity < total
- * demand, all tiles lose power (brownout).
+ * and zoned tiles. Unconnected tiles are unpowered.
+ *
+ * Capacity falls off with network distance rather than failing all at once:
+ * the flood fill serves tiles nearest-first and stops where capacity runs out,
+ * so an under-built grid browns out its outskirts while the core stays lit.
+ * See `utility-network.ts` for the walk itself.
  *
  * Buildings grow without power but suffer land-value penalties. With no
  * power plants placed, no tile is powered.
@@ -19,10 +23,14 @@ import {
 	POWER_OUTPUT,
 	TERRAIN_WATER,
 } from "../constants.ts";
+import {
+	clearCoverage,
+	floodCoverage,
+	type NetworkSpec,
+} from "./utility-network.ts";
 
-const MAX_TILES = MAX_GRID_SIZE * MAX_GRID_SIZE;
-const bfsQueue = new Uint32Array(MAX_TILES);
-const visited = new Uint8Array(MAX_TILES);
+// Seed buffer for the flood fill: every plant on the grid, worst case.
+const plantSeeds = new Uint32Array(MAX_GRID_SIZE * MAX_GRID_SIZE);
 
 /** A tile conducts power if it has infrastructure, a civic building, or zoning. */
 function conductsPower(state: CityState, idx: number): boolean {
@@ -35,30 +43,33 @@ function conductsPower(state: CityState, idx: number): boolean {
 	return false;
 }
 
-export function updatePower(state: CityState): void {
-	const { width, height, size, civic, building, power, aggregates } = state;
+/** Only occupied buildings draw power; conduits and empty land draw nothing. */
+function powerDemandAt(state: CityState, idx: number): number {
+	const tier = state.building[idx] ?? 0;
+	if (tier === BUILDING_EMPTY) return 0;
+	return POWER_DEMAND_PER_DENSITY[tier] ?? 0;
+}
 
-	let hasPlants = false;
+const POWER_NETWORK: NetworkSpec = {
+	conducts: conductsPower,
+	demandAt: powerDemandAt,
+};
+
+export function updatePower(state: CityState): void {
+	const { size, civic, building, power, aggregates } = state;
+
 	let totalCapacity = 0;
 	let totalDemand = 0;
-	let head = 0;
-	let tail = 0;
+	let seedCount = 0;
 
-	// Clear visited
-	for (let i = 0; i < size; i++) {
-		visited[i] = 0;
-	}
-
-	// Tally demand and seed BFS with power plants
+	// Tally demand and collect power plants as flood-fill seeds.
 	for (let i = 0; i < size; i++) {
 		const c = civic[i] ?? 0;
 		const output = POWER_OUTPUT[c];
 		if (output !== undefined && output > 0) {
-			hasPlants = true;
 			totalCapacity += output;
-			visited[i] = 1;
-			bfsQueue[tail] = i;
-			tail++;
+			plantSeeds[seedCount] = i;
+			seedCount++;
 		}
 		const tier = building[i] ?? 0;
 		if (tier !== BUILDING_EMPTY) {
@@ -69,56 +80,19 @@ export function updatePower(state: CityState): void {
 	aggregates[AGG.POWER_CAPACITY] = totalCapacity;
 	aggregates[AGG.POWER_DEMAND] = totalDemand;
 
-	// Reset power coverage
-	for (let i = 0; i < size; i++) {
-		power[i] = 0;
+	// No plants: nothing is powered.
+	if (seedCount === 0) {
+		clearCoverage(power, size);
+		aggregates[AGG.POWER_SERVED] = 0;
+		return;
 	}
 
-	// No plants, or demand exceeds capacity (brownout): nothing is powered
-	if (!hasPlants || totalDemand > totalCapacity) return;
-
-	// BFS flood fill through conducting tiles
-	let steps = 0;
-	while (head < tail && steps < MAX_TILES) {
-		steps++;
-		const idx = bfsQueue[head] ?? 0;
-		head++;
-		power[idx] = 1;
-
-		const x = idx % width;
-		const y = (idx - x) / width;
-
-		if (x > 0) {
-			const ni = idx - 1;
-			if (visited[ni] !== 1 && conductsPower(state, ni)) {
-				visited[ni] = 1;
-				bfsQueue[tail] = ni;
-				tail++;
-			}
-		}
-		if (x < width - 1) {
-			const ni = idx + 1;
-			if (visited[ni] !== 1 && conductsPower(state, ni)) {
-				visited[ni] = 1;
-				bfsQueue[tail] = ni;
-				tail++;
-			}
-		}
-		if (y > 0) {
-			const ni = idx - width;
-			if (visited[ni] !== 1 && conductsPower(state, ni)) {
-				visited[ni] = 1;
-				bfsQueue[tail] = ni;
-				tail++;
-			}
-		}
-		if (y < height - 1) {
-			const ni = idx + width;
-			if (visited[ni] !== 1 && conductsPower(state, ni)) {
-				visited[ni] = 1;
-				bfsQueue[tail] = ni;
-				tail++;
-			}
-		}
-	}
+	aggregates[AGG.POWER_SERVED] = floodCoverage(
+		state,
+		plantSeeds,
+		seedCount,
+		POWER_NETWORK,
+		totalCapacity,
+		power,
+	);
 }
