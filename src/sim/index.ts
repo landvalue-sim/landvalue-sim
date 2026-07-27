@@ -95,4 +95,4 @@ export type { Violation } from "./sim-invariants.ts";
 export { clearViolations, getViolations } from "./sim-invariants.ts";
 export { setWaterTile, terraformTile } from "./terraform.ts";
 export { generateTerrain } from "./terrain-gen.ts";
-export { tick } from "./tick.ts";
+export { applyEdits, bumpRevision, refreshDerived, tick } from "./tick.ts";

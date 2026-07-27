@@ -62,6 +62,50 @@ const IDX_FIRE = systemIndex("fire");
 const IDX_PUBLIC_FINANCE = systemIndex("publicFinance");
 const IDX_INVARIANTS = systemIndex("invariants");
 
+/**
+ * Apply a batch of player edits *without* advancing the simulation, then
+ * refresh the layers that are pure functions of the grid so the change reads
+ * correctly on screen straight away. This is what an edit does while the sim
+ * is paused: the road appears, its power and water coverage light up, land
+ * value re-capitalizes — but nothing grows, no taxes settle, and the calendar
+ * does not move. Returns how many commands actually changed the city.
+ *
+ * Running it between ticks is equivalent to letting the next tick process the
+ * batch: the worker is single-threaded, so nothing else can interleave, and
+ * every system called here recomputes its layer from scratch rather than
+ * accumulating, which is what makes calling them off-tick harmless.
+ */
+export function applyEdits(
+	state: CityState,
+	commands: ReadonlyArray<Command>,
+): number {
+	const changed = processCommands(state, commands);
+	refreshDerived(state);
+	if (changed > 0) bumpRevision(state);
+	return changed;
+}
+
+/**
+ * Mark the city's visible state as changed. The render shell rebakes when this
+ * moves, so anything that edits the city outside the tick loop — a paused
+ * build, an undo — has to call it or the change will not be drawn.
+ */
+export function bumpRevision(state: CityState): void {
+	state.aggregates[AGG.REVISION] = (state.aggregates[AGG.REVISION] ?? 0) + 1;
+}
+
+/**
+ * Recompute every layer that is a pure function of the current grid. Used by
+ * `applyEdits` and after an undo restores a snapshot.
+ */
+export function refreshDerived(state: CityState): void {
+	updatePower(state);
+	updateWater(state);
+	updateCivicCoverage(state);
+	updateConnections(state);
+	updateLandValue(state);
+}
+
 export function tick(state: CityState, commands: ReadonlyArray<Command>): void {
 	profilerTickStart();
 
@@ -121,6 +165,7 @@ export function tick(state: CityState, commands: ReadonlyArray<Command>): void {
 
 	const currentTick = state.aggregates[AGG.TICK] ?? 0;
 	state.aggregates[AGG.TICK] = currentTick + 1;
+	bumpRevision(state);
 
 	// Postcondition checks (dev only — stripped in production)
 	t = profilerSystemStart();

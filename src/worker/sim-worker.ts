@@ -10,6 +10,13 @@
  * No `requestAnimationFrame` exists in a worker, so a fixed-cadence
  * `setInterval` accumulates real elapsed time and steps the sim at the rate the
  * current speed dictates — mirroring a fixed-timestep accumulator loop.
+ *
+ * Player edits do not ride the tick loop. They are applied the moment they
+ * arrive, via `applyEdits`, which runs the command processor and recomputes the
+ * grid-derived layers but advances nothing: no growth, no taxes, no calendar.
+ * Between two ticks nothing else can run on this thread, so that is equivalent
+ * to the tick applying them — and it means a paused city stays paused no matter
+ * how much the player builds.
  */
 
 /// <reference lib="webworker" />
@@ -24,9 +31,9 @@ import type {
 	ToWorkerMessage,
 } from "../app/protocol.ts";
 import type { Speed } from "../app/types.ts";
-import type { Command } from "../sim/commands.ts";
 import {
 	AGG,
+	applyEdits,
 	buildTestCity,
 	type CityState,
 	clearViolations,
@@ -55,7 +62,6 @@ let speed: Speed = 4; // Normal
 let accumulator = 0;
 let lastTime = 0;
 let lastStatsTime = 0;
-const pendingCommands: Command[] = [];
 
 // ---- Message handling ------------------------------------------------------
 
@@ -92,14 +98,10 @@ function handleInit(msg: InitMessage): void {
 	post({ type: "ready" });
 }
 
+/** Apply an edit batch immediately, whatever speed the sim is running at. */
 function handleCommands(msg: CommandsMessage): void {
-	for (const cmd of msg.commands) {
-		pendingCommands.push(cmd);
-	}
-	// Apply immediately so zoning/roads appear even while paused.
-	if (speed === 0 && city !== null && pendingCommands.length > 0) {
-		stepOnce();
-	}
+	if (city === null) return;
+	void applyEdits(city, msg.commands);
 }
 
 function handleSpeed(msg: SpeedMessage): void {
@@ -115,7 +117,6 @@ function handleClearViolations(_msg: ClearViolationsMessage): void {
 function handleLoadTestCity(): void {
 	if (city === null) return;
 	buildTestCity(city);
-	pendingCommands.length = 0;
 	accumulator = 0;
 	lastTime = performance.now();
 	// Run one tick so land value, totals, and the finance breakdown are
@@ -161,19 +162,13 @@ function drive(): void {
 	}
 }
 
-/** Run exactly one tick, draining any queued commands into it. */
+/** Run exactly one tick. Player commands are applied on arrival, not here. */
 function stepOnce(): void {
 	if (city === null) return;
-	if (pendingCommands.length > 0) {
-		const batch = pendingCommands.slice();
-		pendingCommands.length = 0;
-		tick(city, batch);
-	} else {
-		tick(city, EMPTY_COMMANDS);
-	}
+	tick(city, EMPTY_COMMANDS);
 }
 
-const EMPTY_COMMANDS: ReadonlyArray<Command> = [];
+const EMPTY_COMMANDS: ReadonlyArray<never> = [];
 
 function post(msg: FromWorkerMessage): void {
 	ctx.postMessage(msg);

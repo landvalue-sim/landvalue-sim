@@ -13,7 +13,8 @@
  * RenderTexture covering the view plus a BAKE_PAD_PX margin on every side.
  * The texture is pinned in world space, so panning slides it under the camera
  * for free; a rebake happens only when the view leaves the padded region or a
- * non-camera input changes — sim tick, overlay mode, zoom, or canvas size
+ * non-camera input changes — the city's revision counter (bumped by a tick and
+ * by an edit applied while paused), overlay mode, zoom, or canvas size
  * (see `bakeDirty`). Zoom-only rebakes are additionally spaced at least
  * ZOOM_REBAKE_MS apart (the cache scales correctly in between). Unchanged
  * frames render just that cached texture plus a small per-frame layer for
@@ -23,7 +24,7 @@
  * current zoom, the bake covers the map itself rather than the view, so
  * panning can never leave the baked region (no pan rebakes at all); and below
  * LOD_ZOOM the bake draws far-LOD content — auto-downscaled sprite companions
- * and no sub-pixel detail — so the full-map bakes that remain (sim tick,
+ * and no sub-pixel detail — so the full-map bakes that remain (revision,
  * overlay, zoom) are several times cheaper.
  */
 
@@ -209,7 +210,7 @@ export class IsoScene extends Phaser.Scene {
 	private sprites!: SpritePool;
 	// Inputs of the last world bake (see bakeDirty). Initialized so that the
 	// very first update() always bakes.
-	private bakedTick = -1;
+	private bakedRevision = -1;
 	private bakedOverlay = "";
 	private bakedZoom = Number.NaN;
 	private bakedCanvasW = 0;
@@ -613,10 +614,10 @@ export class IsoScene extends Phaser.Scene {
 	 *  baked region — the cache texture is world-pinned and pans for free. */
 	private bakeDirty(): boolean {
 		const cam = this.cameras.main;
-		const tick = this.city.aggregates[AGG.TICK] ?? 0;
+		const revision = this.city.aggregates[AGG.REVISION] ?? 0;
 		const overlay = this.store.getSnapshot().overlay;
 		if (
-			tick !== this.bakedTick ||
+			revision !== this.bakedRevision ||
 			overlay !== this.bakedOverlay ||
 			cam.zoom !== this.bakedZoom ||
 			this.scale.width !== this.bakedCanvasW ||
@@ -649,14 +650,14 @@ export class IsoScene extends Phaser.Scene {
 	/** Whether a pending rebake should wait because its only cause is a zoom
 	 *  change inside the ZOOM_REBAKE_MS window. Deferring is allowed only
 	 *  while the previous bake still covers the whole view — a bake that
-	 *  would fill newly revealed ground, or any other dirty input (tick,
+	 *  would fill newly revealed ground, or any other dirty input (revision,
 	 *  overlay, canvas), runs immediately. */
 	private zoomThrottled(time: number): boolean {
 		const cam = this.cameras.main;
 		if (cam.zoom === this.bakedZoom) return false;
-		const tick = this.city.aggregates[AGG.TICK] ?? 0;
+		const revision = this.city.aggregates[AGG.REVISION] ?? 0;
 		if (
-			tick !== this.bakedTick ||
+			revision !== this.bakedRevision ||
 			this.store.getSnapshot().overlay !== this.bakedOverlay ||
 			this.scale.width !== this.bakedCanvasW ||
 			this.scale.height !== this.bakedCanvasH ||
@@ -726,7 +727,7 @@ export class IsoScene extends Phaser.Scene {
 		this.rt.setPosition(x0, y0);
 		this.rt.setDisplaySize(regionW, regionH);
 
-		this.bakedTick = this.city.aggregates[AGG.TICK] ?? 0;
+		this.bakedRevision = this.city.aggregates[AGG.REVISION] ?? 0;
 		this.bakedOverlay = overlay;
 		this.bakedZoom = cam.zoom;
 		this.bakedCanvasW = canvasW;
