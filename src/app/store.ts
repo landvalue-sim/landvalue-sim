@@ -30,7 +30,10 @@ export interface InteractionStore {
 	setSpeed(speed: Speed): void;
 	setDragEnabled(enabled: boolean): void;
 	togglePause(): void;
-	/** Roll back the most recent edit (no-op when there is nothing to undo). */
+	/**
+	 * Roll back the most recent edit. A no-op when there is nothing to undo, and
+	 * while the sim is running — undo is a tool for the paused city.
+	 */
 	undo(): void;
 	/** Install global keyboard shortcuts; returns a teardown function. */
 	installKeyboard(): () => void;
@@ -106,6 +109,11 @@ export function createStore(sim: SimClient): InteractionStore {
 			setSpeed(snapshot.speed === 0 ? lastRunningSpeed : 0);
 		},
 		undo() {
+			// Undo history only outlives the edit while the sim is paused: the first
+			// tick clears it (see sim-worker.ts). Gating here rather than on the
+			// button alone holds Ctrl+Z to the same rule, so the shortcut cannot race
+			// the next tick for whichever edit happens to still be recorded.
+			if (snapshot.speed !== 0) return;
 			sim.undo();
 		},
 		installKeyboard() {

@@ -193,20 +193,26 @@ export function Sidebar({ store, sim }: SidebarProps): React.ReactElement {
 				</div>
 				{/* Undo lives with the build tools because that is what it acts on:
 				    map edits, not the simulation. It rolls back one gesture — a whole
-				    drag, not a tile — and refunds what that gesture cost. History
-				    survives only while the sim is paused: the first tick after an
-				    edit clears it, which is why this button greys out the moment
-				    time moves. */}
+				    drag, not a tile — and refunds what that gesture cost.
+
+				    History survives only while the sim is paused: the first tick after
+				    an edit clears it. So the button is tied to the clock, not just to
+				    the depth — an edit made while time is running would otherwise
+				    light it up for the fraction of a second before the next tick took
+				    the history away again. Saying "paused only" in place of the count
+				    answers the question that greying out on its own would raise. */}
 				<Button
 					className="undo-btn"
-					isDisabled={undoDepth === 0}
+					isDisabled={speed !== 0 || undoDepth === 0}
 					onPress={() => store.undo()}
 				>
 					<span className="category-icon" aria-hidden="true">
 						↶
 					</span>
 					<span className="category-label">Undo (Ctrl+Z)</span>
-					<span className="undo-depth">{undoDepth > 0 ? undoDepth : ""}</span>
+					<span className="undo-depth">
+						{speed !== 0 ? "paused only" : undoDepth > 0 ? undoDepth : ""}
+					</span>
 				</Button>
 				<Switch
 					className="drag-switch"
