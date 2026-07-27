@@ -171,6 +171,10 @@ export function createStore(sim: SimClient): InteractionStore {
 					case "W":
 						store.toggleTool("water-pipe");
 						break;
+					case "l":
+					case "L":
+						store.toggleTool("level");
+						break;
 					case "x":
 					case "X":
 						store.toggleTool("demolish");

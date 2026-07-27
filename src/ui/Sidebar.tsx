@@ -58,6 +58,7 @@ const TOOL_CATEGORIES: ReadonlyArray<ToolCategory> = [
 		tools: [
 			{ id: "terraform-raise", label: "Raise Land", accent: "#a16207" },
 			{ id: "terraform-lower", label: "Lower Land", accent: "#78350f" },
+			{ id: "level", label: "Level Land (L)", accent: "#d97706" },
 			{ id: "water", label: "Water", accent: "#2563eb" },
 			{ id: "drain", label: "Drain", accent: "#0ea5e9" },
 		],

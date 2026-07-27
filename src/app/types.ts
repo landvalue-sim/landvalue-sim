@@ -29,6 +29,7 @@ export type Tool =
 	| "demolish"
 	| "terraform-raise"
 	| "terraform-lower"
+	| "level"
 	| "water"
 	| "drain";
 

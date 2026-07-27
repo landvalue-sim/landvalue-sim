@@ -39,7 +39,7 @@ import {
 	ZONE_NONE,
 } from "../constants.ts";
 import { invariant } from "../invariant.ts";
-import { setWaterTile, terraformTile } from "../terraform.ts";
+import { levelTile, setWaterTile, terraformTile } from "../terraform.ts";
 
 // A single rectangle drag can zone an entire grid at once, so the cap is the
 // whole-grid tile count (still a fixed, provable upper bound — NASA rule 2).
@@ -99,6 +99,8 @@ function applyCommand(state: CityState, cmd: Command): boolean {
 			return applyDemolishPipe(state, cmd.x, cmd.y);
 		case "terraform":
 			return applyTerraform(state, cmd.x, cmd.y, cmd.corner, cmd.dir);
+		case "level-terrain":
+			return applyLevelTerrain(state, cmd.x, cmd.y, cmd.level);
 		case "set-water":
 			return applySetWater(state, cmd.x, cmd.y, cmd.place);
 		case "set-tax-rate":
@@ -259,6 +261,18 @@ function applyTerraform(
 ): boolean {
 	if (!canAfford(state, COST_TERRAFORM)) return false;
 	if (!terraformTile(state, x, y, corner, dir)) return false;
+	charge(state, COST_TERRAFORM);
+	return true;
+}
+
+function applyLevelTerrain(
+	state: CityState,
+	x: number,
+	y: number,
+	level: number,
+): boolean {
+	if (!canAfford(state, COST_TERRAFORM)) return false;
+	if (!levelTile(state, x, y, level)) return false;
 	charge(state, COST_TERRAFORM);
 	return true;
 }

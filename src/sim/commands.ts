@@ -69,6 +69,14 @@ export interface TerraformCommand {
 	readonly dir: 1 | -1;
 }
 
+export interface LevelTerrainCommand {
+	readonly kind: "level-terrain";
+	readonly x: number;
+	readonly y: number;
+	/** Target height (0..ELEVATION_MAX) for all four corners of the tile. */
+	readonly level: number;
+}
+
 export interface SetWaterCommand {
 	readonly kind: "set-water";
 	readonly x: number;
@@ -99,6 +107,7 @@ export type Command =
 	| DemolishCommand
 	| DemolishPipeCommand
 	| TerraformCommand
+	| LevelTerrainCommand
 	| SetWaterCommand
 	| SetTaxRateCommand
 	| IssueBondCommand;

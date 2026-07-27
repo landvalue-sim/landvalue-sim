@@ -20,6 +20,7 @@ export type {
 	DemolishCommand,
 	DemolishPipeCommand,
 	IssueBondCommand,
+	LevelTerrainCommand,
 	PlaceCivicCommand,
 	SetTaxRateCommand,
 	SetWaterCommand,
@@ -94,7 +95,7 @@ export { getProfileSnapshot, SYSTEM_NAMES } from "./profiler.ts";
 export { buildTestCity } from "./scenarios.ts";
 export type { Violation } from "./sim-invariants.ts";
 export { clearViolations, getViolations } from "./sim-invariants.ts";
-export { setWaterTile, terraformTile } from "./terraform.ts";
+export { levelTile, setWaterTile, terraformTile } from "./terraform.ts";
 export { generateTerrain } from "./terrain-gen.ts";
 export { applyEdits, bumpRevision, refreshDerived, tick } from "./tick.ts";
 export type { UndoRing } from "./undo.ts";

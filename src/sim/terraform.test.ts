@@ -14,7 +14,7 @@ import {
 	TERRAIN_WATER,
 } from "./constants.ts";
 import { processCommands } from "./systems/command-processor.ts";
-import { setWaterTile, terraformTile } from "./terraform.ts";
+import { levelTile, setWaterTile, terraformTile } from "./terraform.ts";
 
 const W = 16;
 const H = 16;
@@ -173,6 +173,130 @@ describe("setWaterTile", () => {
 	});
 });
 
+/**
+ * Every edit must leave the corner grid legal: no two orthogonally adjacent
+ * vertices differ by more than 1. Levelling propagates two waves at once, so
+ * this is the property worth asserting on the whole map, not just the corners
+ * the test happened to name.
+ */
+function expectSlopeInvariant(city: CityState): void {
+	for (let vy = 0; vy <= H; vy++) {
+		for (let vx = 0; vx <= W; vx++) {
+			const h = vh(city, vx, vy);
+			if (vx < W) expect(Math.abs(h - vh(city, vx + 1, vy))).toBeLessThan(2);
+			if (vy < H) expect(Math.abs(h - vh(city, vx, vy + 1))).toBeLessThan(2);
+		}
+	}
+}
+
+describe("levelTile", () => {
+	it("raises every corner of a flat tile to the target height", () => {
+		const city = makeCity();
+		expect(levelTile(city, 5, 5, 2)).toBe(true);
+
+		expect(vh(city, 5, 5)).toBe(2);
+		expect(vh(city, 6, 5)).toBe(2);
+		expect(vh(city, 6, 6)).toBe(2);
+		expect(vh(city, 5, 6)).toBe(2);
+		// The plateau grows a unit slope around it, as raising does.
+		expect(vh(city, 4, 5)).toBe(1);
+		expect(vh(city, 3, 5)).toBe(0);
+		expect(city.elevation[5 * W + 5]).toBe(2);
+		expectSlopeInvariant(city);
+	});
+
+	it("lowers a plateau and pulls its surrounding slope back down", () => {
+		const city = makeCity();
+		expect(terraformTile(city, 5, 5, CORNER_ALL, 1)).toBe(true);
+		expect(terraformTile(city, 5, 5, CORNER_ALL, 1)).toBe(true);
+		expect(vh(city, 4, 5)).toBe(1);
+
+		expect(levelTile(city, 5, 5, 0)).toBe(true);
+		expect(vh(city, 5, 5)).toBe(0);
+		expect(vh(city, 6, 6)).toBe(0);
+		// The surrounding ring is legal against the new floor, so it stays put —
+		// levelling digs the tile out, it does not flatten the neighbourhood.
+		// Only the second ring, which sat at 2, is dragged down.
+		expect(vh(city, 4, 5)).toBe(1);
+		expect(city.elevation[5 * W + 5]).toBe(0);
+		expectSlopeInvariant(city);
+	});
+
+	it("drags down terrain that the new floor leaves too steep", () => {
+		const city = makeCity();
+		for (let i = 0; i < 4; i++) {
+			expect(terraformTile(city, 5, 5, CORNER_ALL, 1)).toBe(true);
+		}
+		expect(vh(city, 5, 5)).toBe(4);
+		expect(vh(city, 4, 5)).toBe(3);
+		expect(vh(city, 3, 5)).toBe(2);
+
+		expect(levelTile(city, 5, 5, 1)).toBe(true);
+		expect(vh(city, 5, 5)).toBe(1);
+		expect(vh(city, 4, 5)).toBe(2); // pulled down from 3
+		expect(vh(city, 3, 5)).toBe(2); // already legal
+		expectSlopeInvariant(city);
+	});
+
+	it("flattens a tile whose corners straddle the target height", () => {
+		const city = makeCity();
+		// A 2-high plateau at (5, 5) leaves tile (6, 6) sloping from its shared
+		// corner at 2 down to a corner still at 0 — one edit has to move corners
+		// in both directions.
+		expect(terraformTile(city, 5, 5, CORNER_ALL, 1)).toBe(true);
+		expect(terraformTile(city, 5, 5, CORNER_ALL, 1)).toBe(true);
+		expect(vh(city, 6, 6)).toBe(2);
+		expect(vh(city, 7, 7)).toBe(0);
+
+		expect(levelTile(city, 6, 6, 1)).toBe(true);
+		expect(vh(city, 6, 6)).toBe(1); // lowered
+		expect(vh(city, 7, 6)).toBe(1); // already there
+		expect(vh(city, 7, 7)).toBe(1); // raised
+		expect(vh(city, 6, 7)).toBe(1);
+		// The neighbouring plateau is legal against the new height, so it stays.
+		expect(vh(city, 5, 5)).toBe(2);
+		expect(city.elevation[6 * W + 6]).toBe(1);
+		expectSlopeInvariant(city);
+	});
+
+	it("reports no change when the tile is already flat at the target", () => {
+		const city = makeCity();
+		expect(levelTile(city, 5, 5, 2)).toBe(true);
+		expect(levelTile(city, 5, 5, 2)).toBe(false);
+	});
+
+	it("rejects out-of-range heights, occupied tiles, and off-map tiles", () => {
+		const city = makeCity();
+		expect(levelTile(city, 5, 5, -1)).toBe(false);
+		expect(levelTile(city, 5, 5, ELEVATION_MAX + 1)).toBe(false);
+		expect(levelTile(city, -1, 5, 1)).toBe(false);
+
+		city.roads[7 * W + 7] = 1;
+		expect(levelTile(city, 7, 7, 3)).toBe(false);
+	});
+
+	it("flattens a dragged rectangle to one plateau, tile by tile", () => {
+		const city = makeCity();
+		// Rolling terrain: a hill at one end of the area to be levelled.
+		expect(terraformTile(city, 4, 4, CORNER_ALL, 1)).toBe(true);
+		expect(terraformTile(city, 4, 4, CORNER_ALL, 1)).toBe(true);
+
+		for (let y = 4; y <= 6; y++) {
+			for (let x = 4; x <= 6; x++) {
+				levelTile(city, x, y, 1);
+			}
+		}
+
+		// Every vertex inside the levelled rectangle sits at the target height.
+		for (let vy = 4; vy <= 7; vy++) {
+			for (let vx = 4; vx <= 7; vx++) {
+				expect(vh(city, vx, vy)).toBe(1);
+			}
+		}
+		expectSlopeInvariant(city);
+	});
+});
+
 describe("terraform commands", () => {
 	it("charges COST_TERRAFORM only when the edit succeeds", () => {
 		const city = makeCity();
@@ -188,6 +312,26 @@ describe("terraform commands", () => {
 			{ kind: "terraform", x: 10, y: 10, corner: CORNER_ALL, dir: -1 },
 		]);
 		expect(city.aggregates[AGG.TREASURY]).toBe(before - COST_TERRAFORM);
+	});
+
+	it("charges COST_TERRAFORM per tile a level-terrain drag changes", () => {
+		const city = makeCity();
+		const before = city.aggregates[AGG.TREASURY] ?? 0;
+
+		// Three tiles, but the middle one is already flat at the target height.
+		expect(terraformTile(city, 5, 5, CORNER_ALL, 1)).toBe(true);
+		const afterRaise = city.aggregates[AGG.TREASURY] ?? 0;
+		expect(afterRaise).toBe(before);
+
+		processCommands(city, [
+			{ kind: "level-terrain", x: 5, y: 5, level: 1 },
+			{ kind: "level-terrain", x: 6, y: 5, level: 1 },
+			{ kind: "level-terrain", x: 7, y: 5, level: 1 },
+		]);
+
+		expect(vh(city, 8, 5)).toBe(1);
+		// (5, 5) was already flat at 1 — only the other two are billed.
+		expect(city.aggregates[AGG.TREASURY]).toBe(before - 2 * COST_TERRAFORM);
 	});
 
 	it("charges COST_PLACE_WATER when flooding succeeds", () => {

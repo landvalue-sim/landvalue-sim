@@ -4,9 +4,10 @@
  *
  * Raising a flat tile lifts all four corners by 1; raising a sloped tile
  * flattens it up to its highest corner (lowering mirrors both). A single
- * corner can be moved instead via CORNER_N/E/S/W. Every edit then propagates
- * outward so adjacent vertices never differ by more than 1 — raising a
- * plateau grows unit slopes around it, exactly like RCT's land tool.
+ * corner can be moved instead via CORNER_N/E/S/W. `levelTile` drives all four
+ * corners to one chosen height regardless of where they started. Every edit
+ * then propagates outward so adjacent vertices never differ by more than 1 —
+ * raising a plateau grows unit slopes around it, exactly like RCT's land tool.
  *
  * Water is per-tile: flooding stores a flat surface height in `waterLevel`;
  * raising submerged terrain above its surface reclaims the tile as land.
@@ -44,6 +45,11 @@ const scratch = {
 	minVy: 0,
 	maxVx: 0,
 	maxVy: 0,
+	// The four corner vertices of the tile being levelled, and their heights
+	// before the edit — `levelTile` needs the originals after overwriting them
+	// to know which corners went up and which went down.
+	cornerV: new Int32Array(4),
+	cornerH: new Int32Array(4),
 };
 
 /**
@@ -72,6 +78,76 @@ export function terraformTile(
 	propagate(state, seeded, dir);
 	updateDerivedTiles(state);
 	return true;
+}
+
+/**
+ * Flatten tile (x, y) to `level`: drive all four corners to that height and
+ * re-slope the terrain around it. Returns true if any height changed.
+ *
+ * Unlike raise/lower, one edit can move corners in both directions at once, so
+ * the plateau is written first and then propagated as two independent waves.
+ * They cannot fight: a vertex d steps out is pulled to at least `level - d` by
+ * the raise wave and capped at `level + d` by the lower wave, and since the
+ * raise wave never sets a vertex above `level - 1` while the lower wave never
+ * touches one below `level + 1`, neither can undo the other's work.
+ */
+export function levelTile(
+	state: CityState,
+	x: number,
+	y: number,
+	level: number,
+): boolean {
+	if (!inBounds(state.width, state.height, x, y)) return false;
+	if (level < 0 || level > ELEVATION_MAX) return false;
+	if (tileOccupied(state, y * state.width + x)) return false;
+
+	const vw = state.width + 1;
+	const heights = state.vertexHeights;
+	const cornerV = scratch.cornerV;
+	const cornerH = scratch.cornerH;
+	cornerV[0] = y * vw + x;
+	cornerV[1] = y * vw + x + 1;
+	cornerV[2] = (y + 1) * vw + x + 1;
+	cornerV[3] = (y + 1) * vw + x;
+
+	let raised = 0;
+	let lowered = 0;
+	for (let i = 0; i < 4; i++) {
+		const h = heights[cornerV[i] ?? 0] ?? 0;
+		cornerH[i] = h;
+		if (h < level) raised++;
+		else if (h > level) lowered++;
+	}
+	if (raised === 0 && lowered === 0) return false;
+
+	resetChangedBounds(x, y);
+	for (let i = 0; i < 4; i++) {
+		const v = cornerV[i] ?? 0;
+		heights[v] = level;
+		expandChangedBounds(v % vw, Math.floor(v / vw));
+	}
+
+	if (raised > 0) propagate(state, seedLevelledCorners(level, 1), 1);
+	if (lowered > 0) propagate(state, seedLevelledCorners(level, -1), -1);
+	updateDerivedTiles(state);
+	return true;
+}
+
+/**
+ * Queue the levelled corners that moved in direction `dir`, ready for one
+ * propagation wave. Reads the pre-edit heights recorded by `levelTile`; the
+ * queue is drained by each wave, so the two calls can share it.
+ */
+function seedLevelledCorners(level: number, dir: number): number {
+	const queue = scratch.queue;
+	let tail = 0;
+	for (let i = 0; i < 4; i++) {
+		const h = scratch.cornerH[i] ?? 0;
+		if (dir > 0 ? h < level : h > level) {
+			queue[tail++] = scratch.cornerV[i] ?? 0;
+		}
+	}
+	return tail;
 }
 
 /**
