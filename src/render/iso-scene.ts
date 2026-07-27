@@ -106,6 +106,9 @@ const COL_C_ZONE = 0x3b82f6;
 const COL_I_ZONE = 0xeab308;
 const COL_DEMOLISH = 0xef4444;
 const COL_CURSOR = 0xffffff;
+// Terrain-tool drag previews, matching the sidebar's Terrain accents.
+const COL_RAISE = 0xa16207;
+const COL_LOWER = 0x78350f;
 const COL_CIVIC = 0x78350f;
 const COL_SOLAR = 0xfde047;
 const COL_WATER_PUMP = 0x38bdf8;
@@ -423,8 +426,10 @@ export class IsoScene extends Phaser.Scene {
 			return;
 		}
 
-		// Raise/lower edits one corner or tile per click (repeat to go higher).
-		if (isTerraformTool(snap.tool)) {
+		// Terrain tools drag like the zoning tools: one edit applied to every
+		// tile in the rectangle, so shaping an area is one gesture rather than a
+		// click per tile.
+		if (isTerraformTool(snap.tool) && !snap.dragEnabled) {
 			this.placeTerraform(x, y, snap.tool);
 			return;
 		}
@@ -556,15 +561,42 @@ export class IsoScene extends Phaser.Scene {
 
 	private placeTerraform(x: number, y: number, tool: string): void {
 		if (!this.inBounds(x, y)) return;
-		this.sendCommands([
-			{
-				kind: "terraform",
-				x,
-				y,
-				corner: this.hoverCorner(),
-				dir: tool === "terraform-raise" ? 1 : -1,
-			},
-		]);
+		this.sendCommands([this.terraformCommand(tool, x, y, this.hoverCorner())]);
+	}
+
+	/** The edit one terrain tool makes to one tile. */
+	private terraformCommand(
+		tool: string,
+		x: number,
+		y: number,
+		corner: number,
+	): Command {
+		return {
+			kind: "terraform",
+			x,
+			y,
+			corner,
+			dir: tool === "terraform-raise" ? 1 : -1,
+		};
+	}
+
+	/**
+	 * Commit a terrain drag: one edit per tile in the rectangle. A drag that
+	 * never left the tile it started on is just a click, so it keeps the
+	 * corner precision of the single-tile tool; anything larger moves whole
+	 * tiles, since neighbouring corner edits would only fight each other.
+	 */
+	private commitTerraformDrag(tool: string): void {
+		const single =
+			this.dragStartX === this.hoverX && this.dragStartY === this.hoverY;
+		const corner = single ? this.hoverCorner() : CORNER_ALL;
+
+		const cmds: Command[] = [];
+		for (const t of this.dragTiles(tool)) {
+			if (!this.inBounds(t.x, t.y)) continue;
+			cmds.push(this.terraformCommand(tool, t.x, t.y, corner));
+		}
+		if (cmds.length > 0) this.sendCommands(cmds);
 	}
 
 	/** Commit the current drag as one batch of commands (line or rectangle). */
@@ -572,6 +604,10 @@ export class IsoScene extends Phaser.Scene {
 		const snap = this.store.getSnapshot();
 		const tool = snap.tool;
 		if (tool === "none") return;
+		if (isTerraformTool(tool)) {
+			this.commitTerraformDrag(tool);
+			return;
+		}
 
 		const cmds: Command[] = [];
 		for (const t of this.dragTiles(tool)) {
@@ -1837,6 +1873,10 @@ function previewColor(tool: string, overlay: string): number {
 			return COL_STADIUM_BLDG;
 		case "demolish":
 			return COL_DEMOLISH;
+		case "terraform-raise":
+			return COL_RAISE;
+		case "terraform-lower":
+			return COL_LOWER;
 		case "water":
 			return COL_WATER;
 		case "drain":
