@@ -40,9 +40,11 @@ const MAX_UNDO_STEPS = 32;
  * largest supported map is 65536 tiles, so the tile arena holds two of them;
  * terraform drags spend vertex records at a comparable rate. Together the two
  * arenas are a fixed ~3.2 MB regardless of map size.
+ *
+ * Exported so tests can build histories that lap an arena.
  */
-const TILE_CAPACITY = 1 << 17;
-const VERTEX_CAPACITY = 1 << 17;
+export const TILE_CAPACITY = 1 << 17;
+export const VERTEX_CAPACITY = 1 << 17;
 
 /** Per-tile u8 layers stored in one record, in the order `captureTile` writes. */
 const TILE_U8_COUNT = 11;
@@ -294,14 +296,18 @@ function dropLappedSteps(journal: UndoJournal): void {
 		if (journal.count === 0) return;
 		const oldest =
 			(journal.head + MAX_UNDO_STEPS - journal.count) % MAX_UNDO_STEPS;
+		// A step is judged by where each arena stood when it began, even if it
+		// wrote no records there. The `first` marks grow in ring order, so an
+		// oldest step that predates a lapped one must go with it — sparing it
+		// because it skipped that arena would stop eviction here and leave the
+		// lapped step behind it reachable, and undoing that step would replay
+		// slots newer writes now own.
 		const tileLapped =
-			(journal.stepTileCount[oldest] ?? 0) > 0 &&
 			journal.tileWritten - (journal.stepTileFirst[oldest] ?? 0) >
-				TILE_CAPACITY;
+			TILE_CAPACITY;
 		const vertLapped =
-			(journal.stepVertCount[oldest] ?? 0) > 0 &&
 			journal.vertWritten - (journal.stepVertFirst[oldest] ?? 0) >
-				VERTEX_CAPACITY;
+			VERTEX_CAPACITY;
 		if (!tileLapped && !vertLapped) return;
 		journal.count--;
 	}

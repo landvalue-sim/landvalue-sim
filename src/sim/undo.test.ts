@@ -18,8 +18,11 @@ import {
 	clearJournal,
 	commitStep,
 	createUndoJournal,
+	journalTile,
+	journalVertex,
 	type UndoJournal,
 	undoStep,
+	VERTEX_CAPACITY,
 } from "./undo.ts";
 
 const W = 8;
@@ -294,6 +297,48 @@ describe("undo journal", () => {
 			if ((city.zoning[i] ?? 0) === ZONE_RESIDENTIAL) zoned++;
 		}
 		expect(zoned).toBe(40 - depth);
+	});
+
+	// Eviction judges a step by where the arenas stood when it began, not by
+	// whether it holds records in the lapped arena. A tiles-only step sitting
+	// in front of a lapped vertex step must not stop eviction early: that would
+	// leave the lapped step reachable, and undoing it would replay arena slots
+	// that newer writes now own.
+	it("evicts a lapped step buried behind steps that skipped that arena", () => {
+		const city = makeCity();
+		const journal = createUndoJournal();
+
+		// Oldest step: tile records only, no vertex records.
+		city.roads[0] = 1;
+		beginStep(journal);
+		journalTile(journal, city, 0);
+		expect(commitStep(journal)).toBe(true);
+
+		// Next step: a single vertex record — vertex 0 moving from 5 to 6.
+		city.vertexHeights[0] = 5;
+		beginStep(journal);
+		journalVertex(journal, city, 0);
+		city.vertexHeights[0] = 6;
+		expect(commitStep(journal)).toBe(true);
+
+		// Two steps that together lap the vertex arena, overwriting that record.
+		for (let s = 0; s < 2; s++) {
+			beginStep(journal);
+			for (let i = 0; i < VERTEX_CAPACITY / 2 + 1; i++) {
+				journalVertex(journal, city, 1);
+			}
+			expect(commitStep(journal)).toBe(true);
+		}
+
+		// Everything the lapping overwrote is gone — including the tiles-only
+		// step, which predates the lapped one.
+		expect(journal.count).toBe(1);
+
+		// The survivor unwinds cleanly; the evicted steps stay applied.
+		expect(undoStep(journal, city)).toBe(true);
+		expect(undoStep(journal, city)).toBe(false);
+		expect(city.vertexHeights[0]).toBe(6);
+		expect(city.roads[0]).toBe(1);
 	});
 
 	it("drops its history when the city underneath is replaced", () => {
