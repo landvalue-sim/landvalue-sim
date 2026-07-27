@@ -7,9 +7,14 @@
  * cost. If the player cannot afford it, the command is silently skipped.
  *
  * Every `apply*` reports whether it actually mutated the city, and
- * `processCommands` sums those reports. Undo uses the total to decide whether a
- * batch is worth an undo step — a drag that lands entirely on tiles that
- * already hold what it would place changes nothing, and should not consume one.
+ * `processCommands` sums those reports, which is what tells the render shell
+ * whether the batch is worth redrawing.
+ *
+ * When an `UndoJournal` is passed, each `apply*` records a tile's prior state
+ * immediately before its first write to it — so the journal holds exactly the
+ * cells the batch touched and nothing else (see undo.ts). Commands that only
+ * move aggregates record nothing and so are not undoable. The tick path passes
+ * no journal: only player edits are undoable, and the sim's own writes are not.
  */
 
 import type { CityState } from "../city-state.ts";
@@ -40,6 +45,7 @@ import {
 } from "../constants.ts";
 import { invariant } from "../invariant.ts";
 import { levelTile, setWaterTile, terraformTile } from "../terraform.ts";
+import { journalCharge, journalTile, type UndoJournal } from "../undo.ts";
 
 // A single rectangle drag can zone an entire grid at once, so the cap is the
 // whole-grid tile count (still a fixed, provable upper bound — NASA rule 2).
@@ -49,6 +55,7 @@ const MAX_COMMANDS_PER_TICK = MAX_GRID_SIZE * MAX_GRID_SIZE;
 export function processCommands(
 	state: CityState,
 	commands: ReadonlyArray<Command>,
+	journal: UndoJournal | null = null,
 ): number {
 	const limit = Math.min(commands.length, MAX_COMMANDS_PER_TICK);
 	let changed = 0;
@@ -56,7 +63,7 @@ export function processCommands(
 	for (let i = 0; i < limit; i++) {
 		const cmd = commands[i];
 		invariant(cmd !== undefined, "command missing at index");
-		if (applyCommand(state, cmd)) changed++;
+		if (applyCommand(state, cmd, journal)) changed++;
 	}
 	return changed;
 }
@@ -70,39 +77,49 @@ function canAfford(state: CityState, cost: number): boolean {
 	return (state.aggregates[AGG.TREASURY] ?? 0) >= cost;
 }
 
-function charge(state: CityState, cost: number): void {
+/** Deduct `cost`, recording it so an undo of this step can refund it. */
+function charge(
+	state: CityState,
+	cost: number,
+	journal: UndoJournal | null,
+): void {
 	if (infiniteMoney(state)) return;
 	state.aggregates[AGG.TREASURY] = (state.aggregates[AGG.TREASURY] ?? 0) - cost;
+	journalCharge(journal, cost);
 }
 
 function civicCost(civicType: number): number {
 	return CIVIC_COST_TABLE[civicType] ?? 0;
 }
 
-function applyCommand(state: CityState, cmd: Command): boolean {
+function applyCommand(
+	state: CityState,
+	cmd: Command,
+	journal: UndoJournal | null,
+): boolean {
 	switch (cmd.kind) {
 		case "zone":
-			return applyZone(state, cmd.x, cmd.y, cmd.zoneType, cmd.density);
+			return applyZone(state, cmd.x, cmd.y, cmd.zoneType, cmd.density, journal);
 		case "build-road":
-			return applyBuildRoad(state, cmd.x, cmd.y);
+			return applyBuildRoad(state, cmd.x, cmd.y, journal);
 		case "build-rail":
-			return applyBuildRail(state, cmd.x, cmd.y);
+			return applyBuildRail(state, cmd.x, cmd.y, journal);
 		case "build-power-line":
-			return applyBuildPowerLine(state, cmd.x, cmd.y);
+			return applyBuildPowerLine(state, cmd.x, cmd.y, journal);
 		case "build-water-pipe":
-			return applyBuildWaterPipe(state, cmd.x, cmd.y);
+			return applyBuildWaterPipe(state, cmd.x, cmd.y, journal);
 		case "place-civic":
-			return applyPlaceCivic(state, cmd.x, cmd.y, cmd.civicType);
+			return applyPlaceCivic(state, cmd.x, cmd.y, cmd.civicType, journal);
 		case "demolish":
-			return applyDemolish(state, cmd.x, cmd.y);
+			return applyDemolish(state, cmd.x, cmd.y, journal);
 		case "demolish-pipe":
-			return applyDemolishPipe(state, cmd.x, cmd.y);
+			return applyDemolishPipe(state, cmd.x, cmd.y, journal);
 		case "terraform":
-			return applyTerraform(state, cmd.x, cmd.y, cmd.corner, cmd.dir);
+			return applyTerraform(state, cmd.x, cmd.y, cmd.corner, cmd.dir, journal);
 		case "level-terrain":
-			return applyLevelTerrain(state, cmd.x, cmd.y, cmd.level);
+			return applyLevelTerrain(state, cmd.x, cmd.y, cmd.level, journal);
 		case "set-water":
-			return applySetWater(state, cmd.x, cmd.y, cmd.place);
+			return applySetWater(state, cmd.x, cmd.y, cmd.place, journal);
 		case "set-tax-rate":
 			return applySetTaxRate(state, cmd.sector, cmd.rate);
 		case "issue-bond":
@@ -115,7 +132,8 @@ function applyZone(
 	x: number,
 	y: number,
 	zoneType: number,
-	density?: number,
+	density: number | undefined,
+	journal: UndoJournal | null,
 ): boolean {
 	if (x < 0 || x >= state.width || y < 0 || y >= state.height) return false;
 	const idx = y * state.width + x;
@@ -131,6 +149,7 @@ function applyZone(
 	// De-zoning is free
 	if (zoneType === ZONE_NONE) {
 		if (state.zoning[idx] === ZONE_NONE && !hadBuilding) return false;
+		journalTile(journal, state, idx);
 		state.zoning[idx] = ZONE_NONE;
 		state.densityCap[idx] = 0;
 		state.building[idx] = BUILDING_EMPTY;
@@ -147,6 +166,7 @@ function applyZone(
 		return false;
 	}
 
+	journalTile(journal, state, idx);
 	state.zoning[idx] = zoneType;
 	state.densityCap[idx] = dens;
 
@@ -159,53 +179,78 @@ function applyZone(
 	return true;
 }
 
-function applyBuildRoad(state: CityState, x: number, y: number): boolean {
+function applyBuildRoad(
+	state: CityState,
+	x: number,
+	y: number,
+	journal: UndoJournal | null,
+): boolean {
 	if (x < 0 || x >= state.width || y < 0 || y >= state.height) return false;
 	const idx = y * state.width + x;
 	if (state.terrain[idx] === TERRAIN_WATER) return false;
 	if (state.roads[idx] === 1) return false; // already a road
 	if (!canAfford(state, COST_ROAD)) return false;
-	charge(state, COST_ROAD);
+	charge(state, COST_ROAD, journal);
 
+	journalTile(journal, state, idx);
 	clearTile(state, idx);
 	state.roads[idx] = 1;
 	return true;
 }
 
-function applyBuildRail(state: CityState, x: number, y: number): boolean {
+function applyBuildRail(
+	state: CityState,
+	x: number,
+	y: number,
+	journal: UndoJournal | null,
+): boolean {
 	if (x < 0 || x >= state.width || y < 0 || y >= state.height) return false;
 	const idx = y * state.width + x;
 	if (state.terrain[idx] === TERRAIN_WATER) return false;
 	if (state.rail[idx] === 1) return false;
 	if (!canAfford(state, COST_RAIL)) return false;
-	charge(state, COST_RAIL);
+	charge(state, COST_RAIL, journal);
 
+	journalTile(journal, state, idx);
 	clearTile(state, idx);
 	state.rail[idx] = 1;
 	return true;
 }
 
-function applyBuildPowerLine(state: CityState, x: number, y: number): boolean {
+function applyBuildPowerLine(
+	state: CityState,
+	x: number,
+	y: number,
+	journal: UndoJournal | null,
+): boolean {
 	if (x < 0 || x >= state.width || y < 0 || y >= state.height) return false;
 	const idx = y * state.width + x;
 	if (state.terrain[idx] === TERRAIN_WATER) return false;
 	if (state.powerLines[idx] === 1) return false;
 	if (!canAfford(state, COST_POWER_LINE)) return false;
-	charge(state, COST_POWER_LINE);
+	charge(state, COST_POWER_LINE, journal);
 
+	journalTile(journal, state, idx);
 	clearTile(state, idx);
 	state.powerLines[idx] = 1;
 	return true;
 }
 
 /** Pipes are underground — they coexist with whatever is on the surface. */
-function applyBuildWaterPipe(state: CityState, x: number, y: number): boolean {
+function applyBuildWaterPipe(
+	state: CityState,
+	x: number,
+	y: number,
+	journal: UndoJournal | null,
+): boolean {
 	if (x < 0 || x >= state.width || y < 0 || y >= state.height) return false;
 	const idx = y * state.width + x;
 	if (state.terrain[idx] === TERRAIN_WATER) return false;
 	if (state.waterPipes[idx] === 1) return false;
 	if (!canAfford(state, COST_WATER_PIPE)) return false;
-	charge(state, COST_WATER_PIPE);
+	charge(state, COST_WATER_PIPE, journal);
+
+	journalTile(journal, state, idx);
 	state.waterPipes[idx] = 1;
 	return true;
 }
@@ -215,39 +260,54 @@ function applyPlaceCivic(
 	x: number,
 	y: number,
 	civicType: number,
+	journal: UndoJournal | null,
 ): boolean {
 	if (x < 0 || x >= state.width || y < 0 || y >= state.height) return false;
 	const idx = y * state.width + x;
 	if (state.terrain[idx] === TERRAIN_WATER) return false;
 	const cost = civicCost(civicType);
 	if (!canAfford(state, cost)) return false;
-	charge(state, cost);
+	charge(state, cost, journal);
 
+	journalTile(journal, state, idx);
 	clearTile(state, idx);
 	state.civic[idx] = civicType;
 	return true;
 }
 
-function applyDemolish(state: CityState, x: number, y: number): boolean {
+function applyDemolish(
+	state: CityState,
+	x: number,
+	y: number,
+	journal: UndoJournal | null,
+): boolean {
 	if (x < 0 || x >= state.width || y < 0 || y >= state.height) return false;
 	const idx = y * state.width + x;
 	// Bare land holds nothing to remove. Charging for it would bill a
 	// rectangle drag for every empty tile it happens to sweep over.
 	if (!tileHasSurface(state, idx)) return false;
 	if (!canAfford(state, COST_DEMOLISH)) return false;
-	charge(state, COST_DEMOLISH);
+	charge(state, COST_DEMOLISH, journal);
 
+	journalTile(journal, state, idx);
 	clearTile(state, idx);
 	return true;
 }
 
 /** Remove only the underground water pipe on a tile, leaving surface intact. */
-function applyDemolishPipe(state: CityState, x: number, y: number): boolean {
+function applyDemolishPipe(
+	state: CityState,
+	x: number,
+	y: number,
+	journal: UndoJournal | null,
+): boolean {
 	if (x < 0 || x >= state.width || y < 0 || y >= state.height) return false;
 	const idx = y * state.width + x;
 	if (state.waterPipes[idx] !== 1) return false;
 	if (!canAfford(state, COST_DEMOLISH)) return false;
-	charge(state, COST_DEMOLISH);
+	charge(state, COST_DEMOLISH, journal);
+
+	journalTile(journal, state, idx);
 	state.waterPipes[idx] = 0;
 	return true;
 }
@@ -258,10 +318,11 @@ function applyTerraform(
 	y: number,
 	corner: number,
 	dir: number,
+	journal: UndoJournal | null,
 ): boolean {
 	if (!canAfford(state, COST_TERRAFORM)) return false;
-	if (!terraformTile(state, x, y, corner, dir)) return false;
-	charge(state, COST_TERRAFORM);
+	if (!terraformTile(state, x, y, corner, dir, journal)) return false;
+	charge(state, COST_TERRAFORM, journal);
 	return true;
 }
 
@@ -270,10 +331,11 @@ function applyLevelTerrain(
 	x: number,
 	y: number,
 	level: number,
+	journal: UndoJournal | null,
 ): boolean {
 	if (!canAfford(state, COST_TERRAFORM)) return false;
-	if (!levelTile(state, x, y, level)) return false;
-	charge(state, COST_TERRAFORM);
+	if (!levelTile(state, x, y, level, journal)) return false;
+	charge(state, COST_TERRAFORM, journal);
 	return true;
 }
 
@@ -282,11 +344,12 @@ function applySetWater(
 	x: number,
 	y: number,
 	place: boolean,
+	journal: UndoJournal | null,
 ): boolean {
 	const cost = place ? COST_PLACE_WATER : COST_DRAIN_WATER;
 	if (!canAfford(state, cost)) return false;
-	if (!setWaterTile(state, x, y, place)) return false;
-	charge(state, cost);
+	if (!setWaterTile(state, x, y, place, journal)) return false;
+	charge(state, cost, journal);
 	return true;
 }
 
@@ -324,10 +387,11 @@ function clearTile(state: CityState, idx: number): void {
 }
 
 /**
- * Take out a bond. Reported as a change so it gets its own undo step: undo
- * restores the bond aggregates alongside the treasury (see undo.ts), and
- * without a step of its own the proceeds could be rolled back by a later undo
- * while the debt stayed on the books.
+ * Take out a bond. Reported as a change so the finance readout refreshes, but
+ * nothing is journaled, so it is not undoable: the sim starts amortizing the
+ * debt on the next weekly settlement, and an undo arriving after that would
+ * have to unpick payments the city has already made. Bonds are retired by
+ * paying them off, not by taking them back.
  */
 function applyIssueBond(state: CityState): boolean {
 	const agg = state.aggregates;
@@ -363,7 +427,8 @@ function applySetTaxRate(
 			state.aggregates[AGG.TAX_RATE_I] = clamped;
 			break;
 	}
-	// Rates live in the aggregates, which undo does not snapshot — reporting a
-	// change here would spend an undo step that could never take effect.
+	// A rate is standing policy, not an edit: it should survive an undo of the
+	// map. Nothing is journaled, and reporting no change keeps a slider nudge
+	// from triggering a pointless rebake.
 	return false;
 }

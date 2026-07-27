@@ -34,11 +34,29 @@ import {
 	ZONE_RESIDENTIAL,
 } from "../constants.ts";
 
-export function updateRciDemand(state: CityState): void {
+/**
+ * What one pass over the grid found. Module-level so both callers below share
+ * one tally without allocating (NASA rule 3); it is written and read within a
+ * single synchronous call, never held across one.
+ */
+const supply = {
+	occupiedC: 0,
+	occupiedI: 0,
+	pollutionOnR: 0,
+	rTileCount: 0,
+};
+
+/**
+ * Re-tally population and jobs from the grid and publish the totals.
+ *
+ * Split out of the demand model so an edit or an undo can correct the numbers
+ * the HUD reports without moving the demand curves — bulldozing a block should
+ * drop the population immediately, but it is not a month passing.
+ */
+export function updateSupplyTotals(state: CityState): void {
 	const { size, zoning, building, population, jobs, pollution, aggregates } =
 		state;
 
-	// --- Tally current supply ------------------------------------------------
 	let totalPop = 0;
 	let totalCJobs = 0;
 	let totalIJobs = 0;
@@ -82,12 +100,26 @@ export function updateRciDemand(state: CityState): void {
 		}
 	}
 
-	const totalJobs = totalCJobs + totalIJobs;
-
 	// Store totals
 	aggregates[AGG.TOTAL_POP] = totalPop;
 	aggregates[AGG.TOTAL_C_JOBS] = totalCJobs;
 	aggregates[AGG.TOTAL_I_JOBS] = totalIJobs;
+
+	supply.occupiedC = occupiedC;
+	supply.occupiedI = occupiedI;
+	supply.pollutionOnR = pollutionOnR;
+	supply.rTileCount = rTileCount;
+}
+
+export function updateRciDemand(state: CityState): void {
+	const { aggregates } = state;
+
+	updateSupplyTotals(state);
+	const totalPop = aggregates[AGG.TOTAL_POP] ?? 0;
+	const totalCJobs = aggregates[AGG.TOTAL_C_JOBS] ?? 0;
+	const totalIJobs = aggregates[AGG.TOTAL_I_JOBS] ?? 0;
+	const { occupiedC, occupiedI, pollutionOnR, rTileCount } = supply;
+	const totalJobs = totalCJobs + totalIJobs;
 
 	// --- Tax penalties -------------------------------------------------------
 	const taxR = aggregates[AGG.TAX_RATE_R] ?? TAX_NEUTRAL_RATE;

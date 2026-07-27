@@ -27,6 +27,7 @@ import {
 	TERRAIN_WATER,
 } from "./constants.ts";
 import { invariant } from "./invariant.ts";
+import { journalTile, journalVertex, type UndoJournal } from "./undo.ts";
 
 const MAX_VERTEX_SIDE = MAX_GRID_SIZE + 1;
 const MAX_VERTEX_COUNT = MAX_VERTEX_SIDE * MAX_VERTEX_SIDE;
@@ -56,6 +57,11 @@ const scratch = {
  * Apply one raise/lower edit at tile (x, y). `corner` is CORNER_N/E/S/W for a
  * single corner or CORNER_ALL for the whole tile; `dir` is +1 (raise) or -1
  * (lower). Returns true if any height changed (the caller charges only then).
+ *
+ * `journal`, when present, receives every vertex height and derived tile layer
+ * this edit is about to overwrite, so it can be rolled back later (see undo.ts).
+ * Nothing is journaled on the paths that return false, because those write
+ * nothing.
  */
 export function terraformTile(
 	state: CityState,
@@ -63,6 +69,7 @@ export function terraformTile(
 	y: number,
 	corner: number,
 	dir: number,
+	journal: UndoJournal | null = null,
 ): boolean {
 	if (!inBounds(state.width, state.height, x, y)) return false;
 	if (dir !== 1 && dir !== -1) return false;
@@ -71,12 +78,12 @@ export function terraformTile(
 
 	const seeded =
 		corner === CORNER_ALL
-			? seedWholeTile(state, x, y, dir)
-			: seedCorner(state, x, y, corner, dir);
+			? seedWholeTile(state, x, y, dir, journal)
+			: seedCorner(state, x, y, corner, dir, journal);
 	if (seeded === 0) return false;
 
-	propagate(state, seeded, dir);
-	updateDerivedTiles(state);
+	propagate(state, seeded, dir, journal);
+	updateDerivedTiles(state, journal);
 	return true;
 }
 
@@ -96,6 +103,7 @@ export function levelTile(
 	x: number,
 	y: number,
 	level: number,
+	journal: UndoJournal | null = null,
 ): boolean {
 	if (!inBounds(state.width, state.height, x, y)) return false;
 	if (level < 0 || level > ELEVATION_MAX) return false;
@@ -123,13 +131,15 @@ export function levelTile(
 	resetChangedBounds(x, y);
 	for (let i = 0; i < 4; i++) {
 		const v = cornerV[i] ?? 0;
+		journalVertex(journal, state, v);
 		heights[v] = level;
 		expandChangedBounds(v % vw, Math.floor(v / vw));
 	}
 
-	if (raised > 0) propagate(state, seedLevelledCorners(level, 1), 1);
-	if (lowered > 0) propagate(state, seedLevelledCorners(level, -1), -1);
-	updateDerivedTiles(state);
+	if (raised > 0) propagate(state, seedLevelledCorners(level, 1), 1, journal);
+	if (lowered > 0)
+		propagate(state, seedLevelledCorners(level, -1), -1, journal);
+	updateDerivedTiles(state, journal);
 	return true;
 }
 
@@ -159,12 +169,14 @@ export function setWaterTile(
 	x: number,
 	y: number,
 	place: boolean,
+	journal: UndoJournal | null = null,
 ): boolean {
 	if (!inBounds(state.width, state.height, x, y)) return false;
 	const idx = y * state.width + x;
 
 	if (!place) {
 		if (state.terrain[idx] !== TERRAIN_WATER) return false;
+		journalTile(journal, state, idx);
 		state.terrain[idx] = TERRAIN_LAND;
 		state.waterLevel[idx] = 0;
 		return true;
@@ -182,6 +194,7 @@ export function setWaterTile(
 		heights[(y + 1) * vw + x] ?? 0,
 	);
 
+	journalTile(journal, state, idx);
 	state.terrain[idx] = TERRAIN_WATER;
 	state.waterLevel[idx] = level;
 	// Flooded land loses its zoning and any underground infrastructure. Pipes
@@ -218,6 +231,7 @@ function seedWholeTile(
 	x: number,
 	y: number,
 	dir: number,
+	journal: UndoJournal | null,
 ): number {
 	const vw = state.width + 1;
 	const heights = state.vertexHeights;
@@ -246,6 +260,7 @@ function seedWholeTile(
 	if (dir > 0 ? hW < target : hW > target) corners[tail++] = vW;
 	for (let i = 0; i < tail; i++) {
 		const v = corners[i] ?? 0;
+		journalVertex(journal, state, v);
 		heights[v] = target;
 		expandChangedBounds(v % vw, Math.floor(v / vw));
 	}
@@ -259,6 +274,7 @@ function seedCorner(
 	y: number,
 	corner: number,
 	dir: number,
+	journal: UndoJournal | null,
 ): number {
 	const vw = state.width + 1;
 	let vx = x;
@@ -276,6 +292,7 @@ function seedCorner(
 	const target = (state.vertexHeights[v] ?? 0) + dir;
 	if (target < 0 || target > ELEVATION_MAX) return 0;
 
+	journalVertex(journal, state, v);
 	state.vertexHeights[v] = target;
 	scratch.queue[0] = v;
 	resetChangedBounds(vx, vy);
@@ -288,7 +305,12 @@ function seedCorner(
  * wave is monotone (each ring one step closer to its seeds' shared target),
  * so every vertex settles on first touch and MAX_VERTEX_COUNT bounds the loop.
  */
-function propagate(state: CityState, seedCount: number, dir: number): void {
+function propagate(
+	state: CityState,
+	seedCount: number,
+	dir: number,
+	journal: UndoJournal | null,
+): void {
 	const vw = state.width + 1;
 	const vh = state.height + 1;
 	const heights = state.vertexHeights;
@@ -304,29 +326,31 @@ function propagate(state: CityState, seedCount: number, dir: number): void {
 		const vx = v % vw;
 		const vy = Math.floor(v / vw);
 
-		if (vx > 0) tail = relax(heights, v - 1, limit, dir, queue, tail, vw);
-		if (vx < vw - 1) tail = relax(heights, v + 1, limit, dir, queue, tail, vw);
-		if (vy > 0) tail = relax(heights, v - vw, limit, dir, queue, tail, vw);
-		if (vy < vh - 1) tail = relax(heights, v + vw, limit, dir, queue, tail, vw);
+		if (vx > 0) tail = relax(state, v - 1, limit, dir, tail, journal);
+		if (vx < vw - 1) tail = relax(state, v + 1, limit, dir, tail, journal);
+		if (vy > 0) tail = relax(state, v - vw, limit, dir, tail, journal);
+		if (vy < vh - 1) tail = relax(state, v + vw, limit, dir, tail, journal);
 	}
 	invariant(head >= tail, "terraform propagation did not drain its queue");
 }
 
 /** Pull one neighbor within range of `limit`; queue it if it moved. */
 function relax(
-	heights: Uint8Array,
+	state: CityState,
 	v: number,
 	limit: number,
 	dir: number,
-	queue: Int32Array,
 	tail: number,
-	vw: number,
+	journal: UndoJournal | null,
 ): number {
+	const heights = state.vertexHeights;
 	const h = heights[v] ?? 0;
 	if (dir > 0 ? h >= limit : h <= limit) return tail;
 	invariant(tail < MAX_VERTEX_COUNT, "terraform queue overflow");
+	journalVertex(journal, state, v);
 	heights[v] = limit;
-	queue[tail] = v;
+	scratch.queue[tail] = v;
+	const vw = state.width + 1;
 	expandChangedBounds(v % vw, Math.floor(v / vw));
 	return tail + 1;
 }
@@ -349,8 +373,15 @@ function expandChangedBounds(vx: number, vy: number): void {
  * Refresh the derived per-tile layers for every tile touching a changed
  * vertex: `elevation` = min corner, and water tiles whose terrain now pokes
  * above their surface are reclaimed as land.
+ *
+ * Most tiles in the swept box come out unchanged, so the tile is journaled only
+ * when something is actually about to move — otherwise a one-corner nudge would
+ * spend a record on every tile around it.
  */
-function updateDerivedTiles(state: CityState): void {
+function updateDerivedTiles(
+	state: CityState,
+	journal: UndoJournal | null,
+): void {
 	const { width, height, terrain, elevation, vertexHeights, waterLevel } =
 		state;
 	const vw = width + 1;
@@ -367,11 +398,15 @@ function updateDerivedTiles(state: CityState): void {
 			const hw = vertexHeights[(y + 1) * vw + x] ?? 0;
 
 			const idx = y * width + x;
-			elevation[idx] = Math.min(hn, he, hs, hw);
-			if (
+			const newElevation = Math.min(hn, he, hs, hw);
+			const reclaimed =
 				terrain[idx] === TERRAIN_WATER &&
-				Math.max(hn, he, hs, hw) > (waterLevel[idx] ?? 0)
-			) {
+				Math.max(hn, he, hs, hw) > (waterLevel[idx] ?? 0);
+			if (elevation[idx] === newElevation && !reclaimed) continue;
+
+			journalTile(journal, state, idx);
+			elevation[idx] = newElevation;
+			if (reclaimed) {
 				terrain[idx] = TERRAIN_LAND;
 				waterLevel[idx] = 0;
 			}

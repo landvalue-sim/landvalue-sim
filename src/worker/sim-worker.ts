@@ -16,7 +16,7 @@
  * grid-derived layers but advances nothing: no growth, no taxes, no calendar.
  * Between two ticks nothing else can run on this thread, so that is equivalent
  * to the tick applying them — and it means a paused city stays paused no matter
- * how much the player builds. Each batch is bracketed by an undo snapshot.
+ * how much the player builds. Each batch is recorded as one undo step.
  */
 
 /// <reference lib="webworker" />
@@ -36,20 +36,16 @@ import {
 	AGG,
 	applyEdits,
 	buildTestCity,
-	bumpRevision,
 	type CityState,
-	captureUndo,
-	clearUndo,
+	clearJournal,
 	clearViolations,
-	commitUndo,
-	createUndoRing,
+	createUndoJournal,
 	getProfileSnapshot,
 	getViolations,
 	INFINITE_TREASURY,
-	refreshDerived,
-	restoreUndo,
 	tick,
-	type UndoRing,
+	type UndoJournal,
+	undoEdit,
 	viewCity,
 } from "../sim/index.ts";
 
@@ -67,7 +63,7 @@ const ctx = self as DedicatedWorkerGlobalScope;
 // ---- Mutable worker state (single owner, this thread only) -----------------
 
 let city: CityState | null = null;
-let undoRing: UndoRing | null = null;
+let undoJournal: UndoJournal | null = null;
 let speed: Speed = 4; // Normal
 let accumulator = 0;
 let lastTime = 0;
@@ -104,7 +100,7 @@ ctx.addEventListener("message", (event: MessageEvent<ToWorkerMessage>) => {
 
 function handleInit(msg: InitMessage): void {
 	city = viewCity(msg.buffer, msg.width, msg.height);
-	undoRing = createUndoRing(city);
+	undoJournal = createUndoJournal();
 	accumulator = 0;
 	lastTime = performance.now();
 	lastStatsTime = lastTime;
@@ -114,29 +110,19 @@ function handleInit(msg: InitMessage): void {
 }
 
 /**
- * Apply an edit batch immediately, bracketed by an undo snapshot. The snapshot
- * is staged before the batch and kept only if the batch changed something, so a
- * drag that lands entirely on tiles that already hold what it would place never
- * costs the player an undo step.
+ * Apply an edit batch immediately. The whole batch is one undo step, so a drag
+ * is undone as the single gesture the player made; a batch that changed nothing
+ * records nothing and so leaves no step behind.
  */
 function handleCommands(msg: CommandsMessage): void {
-	if (city === null || undoRing === null) return;
-	captureUndo(undoRing, city);
-	const changed = applyEdits(city, msg.commands);
-	if (changed > 0) {
-		commitUndo(undoRing);
-		postUndoDepth();
-	}
+	if (city === null) return;
+	void applyEdits(city, msg.commands, undoJournal);
+	postUndoDepth();
 }
 
 function handleUndo(_msg: UndoMessage): void {
-	if (city === null || undoRing === null) return;
-	if (!restoreUndo(undoRing, city)) return;
-	// The snapshot carries the grid; the coverage and value layers on top of it
-	// are recomputed rather than trusted. The revision only ever moves forward —
-	// rolling it back would leave the render cache thinking it is current.
-	refreshDerived(city);
-	bumpRevision(city);
+	if (city === null || undoJournal === null) return;
+	if (!undoEdit(city, undoJournal)) return;
 	postUndoDepth();
 }
 
@@ -151,10 +137,10 @@ function handleClearViolations(_msg: ClearViolationsMessage): void {
 }
 
 function handleLoadTestCity(): void {
-	if (city === null || undoRing === null) return;
+	if (city === null) return;
 	buildTestCity(city);
-	// The city those snapshots describe no longer exists.
-	clearUndo(undoRing);
+	// The city those records describe no longer exists.
+	clearJournal(undoJournal);
 	accumulator = 0;
 	lastTime = performance.now();
 	// Run one tick so land value, totals, and the finance breakdown are
@@ -210,7 +196,7 @@ function stepOnce(): void {
 const EMPTY_COMMANDS: ReadonlyArray<never> = [];
 
 function postUndoDepth(): void {
-	post({ type: "undo-depth", depth: undoRing?.count ?? 0 });
+	post({ type: "undo-depth", depth: undoJournal?.count ?? 0 });
 }
 
 function post(msg: FromWorkerMessage): void {
