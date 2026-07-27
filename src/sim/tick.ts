@@ -68,7 +68,7 @@ export function tick(state: CityState, commands: ReadonlyArray<Command>): void {
 	let t: number;
 
 	t = profilerSystemStart();
-	processCommands(state, commands);
+	void processCommands(state, commands);
 	profilerSystemEnd(IDX_COMMANDS, t);
 
 	t = profilerSystemStart();

@@ -6,6 +6,7 @@ import {
 	BUILDING_EMPTY,
 	CIVIC_COAL_PLANT,
 	COST_WATER_PIPE,
+	DENSITY_LOW,
 	TERRAIN_WATER,
 	ZONE_COMMERCIAL,
 	ZONE_INDUSTRIAL,
@@ -17,6 +18,47 @@ import { processCommands } from "./command-processor.ts";
 function smallCity() {
 	return createCity({ width: 8, height: 8, seed: 1 });
 }
+
+describe("processCommands change reporting", () => {
+	it("counts only the commands that changed the city", () => {
+		const city = smallCity();
+
+		expect(processCommands(city, [{ kind: "build-road", x: 1, y: 1 }])).toBe(1);
+		// The same road again is a no-op, and so is bulldozing bare land.
+		expect(
+			processCommands(city, [
+				{ kind: "build-road", x: 1, y: 1 },
+				{ kind: "demolish", x: 5, y: 5 },
+			]),
+		).toBe(0);
+	});
+
+	it("does not bill a bulldozer dragged across bare land", () => {
+		const city = smallCity();
+		const before = city.aggregates[AGG.TREASURY] ?? 0;
+
+		processCommands(city, [
+			{ kind: "demolish", x: 5, y: 5 },
+			{ kind: "demolish", x: 6, y: 5 },
+		]);
+
+		expect(city.aggregates[AGG.TREASURY]).toBe(before);
+	});
+
+	it("re-zoning to the same type and density changes nothing", () => {
+		const city = smallCity();
+		const zone: Command = {
+			kind: "zone",
+			x: 3,
+			y: 3,
+			zoneType: ZONE_RESIDENTIAL,
+			density: DENSITY_LOW,
+		};
+
+		expect(processCommands(city, [zone])).toBe(1);
+		expect(processCommands(city, [zone])).toBe(0);
+	});
+});
 
 describe("processCommands", () => {
 	it("zones a tile", () => {
