@@ -20,6 +20,7 @@ import {
 	createUndoJournal,
 	journalTile,
 	journalVertex,
+	TILE_CAPACITY,
 	type UndoJournal,
 	undoStep,
 	VERTEX_CAPACITY,
@@ -339,6 +340,64 @@ describe("undo journal", () => {
 		expect(undoStep(journal, city)).toBe(false);
 		expect(city.vertexHeights[0]).toBe(6);
 		expect(city.roads[0]).toBe(1);
+	});
+
+	// A step that outgrows a whole arena overwrites its own earliest records, so
+	// nothing could replay it later. Rather than keep a half-recorded step that
+	// would undo into garbage, the commit throws the history away and reports
+	// that it kept nothing.
+	it("drops the history when one edit outgrows an arena", () => {
+		const city = makeCity();
+		const journal = createUndoJournal();
+
+		// A normal step first, so there is history to lose.
+		expect(edit(journal, city, [{ kind: "build-road", x: 1, y: 1 }])).toBe(
+			true,
+		);
+		expect(journal.count).toBe(1);
+
+		// One step writing more tile records than the tile arena can hold.
+		beginStep(journal);
+		for (let i = 0; i < TILE_CAPACITY + 1; i++) {
+			journalTile(journal, city, 0);
+		}
+		expect(journal.overflowed).toBe(true);
+		expect(commitStep(journal)).toBe(false);
+
+		// Nothing is undoable, and the city keeps everything both steps did —
+		// dropping the record of an edit never rolls the edit back.
+		expect(journal.count).toBe(0);
+		expect(undoStep(journal, city)).toBe(false);
+		expect(city.roads[1 * W + 1]).toBe(1);
+
+		// The journal is still usable: the next edit records and unwinds normally.
+		expect(edit(journal, city, [{ kind: "build-road", x: 2, y: 2 }])).toBe(
+			true,
+		);
+		expect(journal.count).toBe(1);
+		expect(undoStep(journal, city)).toBe(true);
+		expect(city.roads[2 * W + 2]).toBe(0);
+	});
+
+	// The same rule on the other arena, which terraform drags fill instead.
+	it("drops the history when one terraform edit outgrows the vertex arena", () => {
+		const city = makeCity();
+		const journal = createUndoJournal();
+
+		expect(edit(journal, city, [{ kind: "build-road", x: 3, y: 3 }])).toBe(
+			true,
+		);
+
+		beginStep(journal);
+		for (let i = 0; i < VERTEX_CAPACITY + 1; i++) {
+			journalVertex(journal, city, 0);
+		}
+		expect(journal.overflowed).toBe(true);
+		expect(commitStep(journal)).toBe(false);
+
+		expect(journal.count).toBe(0);
+		expect(undoStep(journal, city)).toBe(false);
+		expect(city.roads[3 * W + 3]).toBe(1);
 	});
 
 	it("drops its history when the city underneath is replaced", () => {
