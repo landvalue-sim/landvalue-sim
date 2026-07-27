@@ -117,7 +117,10 @@ export function createStore(sim: SimClient): InteractionStore {
 					return;
 				}
 				if (e.ctrlKey || e.metaKey) {
-					if (e.key === "z" || e.key === "Z") {
+					// Plain Ctrl+Z only. Ctrl+Shift+Z is redo by convention, and until
+					// a redo exists it must do nothing — not quietly undo a second
+					// step, which is the opposite of what the player asked for.
+					if (!e.shiftKey && (e.key === "z" || e.key === "Z")) {
 						store.undo();
 						e.preventDefault();
 					}
