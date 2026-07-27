@@ -17,6 +17,10 @@
  * Between two ticks nothing else can run on this thread, so that is equivalent
  * to the tick applying them — and it means a paused city stays paused no matter
  * how much the player builds. Each batch is recorded as one undo step.
+ *
+ * Undo history lasts only until the sim next advances. Undo is a planning tool
+ * for the paused city; once a tick has moved the world on, rolling an edit back
+ * would fight the sim rather than correct a mistake (see `stepOnce`).
  */
 
 /// <reference lib="webworker" />
@@ -191,6 +195,15 @@ function drive(): void {
 function stepOnce(): void {
 	if (city === null) return;
 	tick(city, EMPTY_COMMANDS);
+	// A tick moves the city on from under the recorded history: growth lands on
+	// the edit's tiles, and the economy banks money a refund would hand back a
+	// second time. Undoing across that boundary would fight the sim instead of
+	// correcting a mistake, so the history dies with the tick — undo is for
+	// experimenting while time is stopped.
+	if (undoJournal !== null && undoJournal.count > 0) {
+		clearJournal(undoJournal);
+		postUndoDepth();
+	}
 }
 
 const EMPTY_COMMANDS: ReadonlyArray<never> = [];

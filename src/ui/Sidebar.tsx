@@ -193,7 +193,10 @@ export function Sidebar({ store, sim }: SidebarProps): React.ReactElement {
 				</div>
 				{/* Undo lives with the build tools because that is what it acts on:
 				    map edits, not the simulation. It rolls back one gesture — a whole
-				    drag, not a tile — and refunds what that gesture cost. */}
+				    drag, not a tile — and refunds what that gesture cost. History
+				    survives only while the sim is paused: the first tick after an
+				    edit clears it, which is why this button greys out the moment
+				    time moves. */}
 				<Button
 					className="undo-btn"
 					isDisabled={undoDepth === 0}
