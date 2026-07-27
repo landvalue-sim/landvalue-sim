@@ -67,6 +67,14 @@ const BUILDING_SPRITES = new Map<string, TileSpriteEntry>();
 const CLUSTER_SPRITES = new Map<string, TileSpriteEntry>();
 const CIVIC_SPRITES = new Map<number, TileSpriteEntry>();
 
+// Far-zoom LOD companions, auto-generated from whatever full-res entry is
+// registered (placeholder or loaded asset) by `generateLodSprites`. Keyed the
+// same as their full-res registries; a missing key means LOD generation was
+// skipped and the full-res entry is used at every zoom.
+const BUILDING_SPRITES_LOD = new Map<string, TileSpriteEntry>();
+const CLUSTER_SPRITES_LOD = new Map<string, TileSpriteEntry>();
+const CIVIC_SPRITES_LOD = new Map<number, TileSpriteEntry>();
+
 /** Register a solo (1x1) building sprite for a zone + density. */
 export function registerBuildingSprite(
 	zone: "r" | "c" | "i",
@@ -93,29 +101,116 @@ export function registerCivicSprite(
 	CIVIC_SPRITES.set(civicType, entry);
 }
 
-/** Look up the solo sprite for a zoned building (undefined = procedural). */
+/** Look up the solo sprite for a zoned building (undefined = procedural).
+ *  With `lod`, prefers the far-zoom companion; falls back to full-res. */
 export function getBuildingSprite(
 	zone: number,
 	density: number,
+	lod: boolean,
 ): TileSpriteEntry | undefined {
 	const z = zone === 1 ? "r" : zone === 2 ? "c" : zone === 3 ? "i" : null;
 	if (z === null || density < 1 || density > 3) return undefined;
-	return BUILDING_SPRITES.get(`${z}${density}`);
+	const key = `${z}${density}`;
+	if (lod) {
+		const entry = BUILDING_SPRITES_LOD.get(key);
+		if (entry !== undefined) return entry;
+	}
+	return BUILDING_SPRITES.get(key);
 }
 
-/** Look up the cluster sprite for a zoned building (undefined = no cluster). */
+/** Look up the cluster sprite for a zoned building (undefined = no cluster).
+ *  With `lod`, prefers the far-zoom companion; falls back to full-res. */
 export function getClusterSprite(
 	zone: number,
 	density: number,
+	lod: boolean,
 ): TileSpriteEntry | undefined {
 	const z = zone === 1 ? "r" : zone === 2 ? "c" : zone === 3 ? "i" : null;
 	if (z === null || density < 1 || density > 3) return undefined;
-	return CLUSTER_SPRITES.get(`${z}${density}`);
+	const key = `${z}${density}`;
+	if (lod) {
+		const entry = CLUSTER_SPRITES_LOD.get(key);
+		if (entry !== undefined) return entry;
+	}
+	return CLUSTER_SPRITES.get(key);
 }
 
-/** Look up the sprite for a civic building (undefined = procedural). */
-export function getCivicSprite(civicType: number): TileSpriteEntry | undefined {
+/** Look up the sprite for a civic building (undefined = procedural).
+ *  With `lod`, prefers the far-zoom companion; falls back to full-res. */
+export function getCivicSprite(
+	civicType: number,
+	lod: boolean,
+): TileSpriteEntry | undefined {
+	if (lod) {
+		const entry = CIVIC_SPRITES_LOD.get(civicType);
+		if (entry !== undefined) return entry;
+	}
 	return CIVIC_SPRITES.get(civicType);
+}
+
+// ---- Far-zoom LOD generation --------------------------------------------------
+
+/** Resolution of auto-generated LOD textures relative to their source. */
+const LOD_TEXTURE_SCALE = 0.25;
+
+/**
+ * Build a downscaled LOD companion for every registered sprite. Call once
+ * after all registrations (placeholders, then manifest overrides) — any asset
+ * added to the manifest later gets its LOD version with no extra work here.
+ * Entries whose source can't be read back keep using full-res at every zoom.
+ */
+export function generateLodSprites(scene: Phaser.Scene): void {
+	for (const [key, entry] of BUILDING_SPRITES) {
+		const lod = makeLodEntry(scene, entry);
+		if (lod !== null) BUILDING_SPRITES_LOD.set(key, lod);
+	}
+	for (const [key, entry] of CLUSTER_SPRITES) {
+		const lod = makeLodEntry(scene, entry);
+		if (lod !== null) CLUSTER_SPRITES_LOD.set(key, lod);
+	}
+	for (const [key, entry] of CIVIC_SPRITES) {
+		const lod = makeLodEntry(scene, entry);
+		if (lod !== null) CIVIC_SPRITES_LOD.set(key, lod);
+	}
+}
+
+/**
+ * Downscale one entry's texture into `<key>__lod` (reused if it already
+ * exists, e.g. across scene restarts) and return the LOD entry pointing at
+ * it. Returns null — caller keeps full-res — for atlas-frame entries (their
+ * frame rects would need rescaling; none are used today) and sources that
+ * aren't a readable image/canvas element.
+ */
+function makeLodEntry(
+	scene: Phaser.Scene,
+	entry: TileSpriteEntry,
+): TileSpriteEntry | null {
+	if (entry.frame !== undefined) return null;
+	if (!scene.textures.exists(entry.textureKey)) return null;
+	const src = scene.textures.get(entry.textureKey).getSourceImage();
+	if (!(src instanceof HTMLImageElement || src instanceof HTMLCanvasElement)) {
+		if (import.meta.env.DEV) {
+			console.warn(`lod: unreadable texture source: ${entry.textureKey}`);
+		}
+		return null;
+	}
+	const w = Math.max(1, Math.round(src.width * LOD_TEXTURE_SCALE));
+	const h = Math.max(1, Math.round(src.height * LOD_TEXTURE_SCALE));
+	const lodKey = `${entry.textureKey}__lod`;
+	if (!scene.textures.exists(lodKey)) {
+		const canvas = document.createElement("canvas");
+		canvas.width = w;
+		canvas.height = h;
+		const ctx = canvas.getContext("2d");
+		if (ctx === null) return null;
+		ctx.imageSmoothingEnabled = true;
+		ctx.imageSmoothingQuality = "high";
+		ctx.drawImage(src, 0, 0, w, h);
+		if (scene.textures.addCanvas(lodKey, canvas) === null) return null;
+	}
+	// Scale by the exact downscale ratio (rounding keeps it from being exactly
+	// 1 / LOD_TEXTURE_SCALE) so the LOD sprite covers the same world footprint.
+	return { ...entry, textureKey: lodKey, scale: entry.scale * (src.width / w) };
 }
 
 // ---- Placeholder textures ---------------------------------------------------

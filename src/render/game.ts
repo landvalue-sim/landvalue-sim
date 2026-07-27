@@ -9,7 +9,7 @@ import { IsoScene, type SceneDeps } from "./iso-scene.ts";
 
 export function createGame(parent: HTMLElement, deps: SceneDeps): Phaser.Game {
 	const scene = new IsoScene(deps);
-	return new Phaser.Game({
+	const game = new Phaser.Game({
 		type: Phaser.AUTO,
 		parent,
 		backgroundColor: "#0f172a",
@@ -24,4 +24,9 @@ export function createGame(parent: HTMLElement, deps: SceneDeps): Phaser.Game {
 		},
 		scene,
 	});
+	// Dev-only handle for poking the game from the browser console.
+	if (import.meta.env.DEV) {
+		Reflect.set(window, "__game", game);
+	}
+	return game;
 }

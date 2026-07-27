@@ -1,19 +1,37 @@
 /**
  * IsoScene — the Phaser render shell.
  *
- * Reads the city `SharedArrayBuffer` view each frame (zero-copy) and paints it
- * as isometric tiles with a back-to-front diagonal sweep: RCT-style sloped
+ * Reads the city `SharedArrayBuffer` view (zero-copy) and paints it as
+ * isometric tiles with a back-to-front diagonal sweep: RCT-style sloped
  * terrain from per-corner heights, flat water planes, extruded buildings, and
  * a translucent overlay (land value / pollution / power / water) on top. It
  * also owns the camera and pointer input, translating clicks into sim
  * commands (including corner-precision terraforming). It writes nothing to
  * the city state — the worker is the only writer.
+ *
+ * Redraw policy: the world (terrain, buildings, overlays) is baked into a
+ * RenderTexture covering the view plus a BAKE_PAD_PX margin on every side.
+ * The texture is pinned in world space, so panning slides it under the camera
+ * for free; a rebake happens only when the view leaves the padded region or a
+ * non-camera input changes — sim tick, overlay mode, zoom, or canvas size
+ * (see `bakeDirty`). Zoom-only rebakes are additionally spaced at least
+ * ZOOM_REBAKE_MS apart (the cache scales correctly in between). Unchanged
+ * frames render just that cached texture plus a small per-frame layer for
+ * the hover cursor and drag preview.
+ *
+ * Far zoom gets two extra tiers: once the whole map fits the texture at the
+ * current zoom, the bake covers the map itself rather than the view, so
+ * panning can never leave the baked region (no pan rebakes at all); and below
+ * LOD_ZOOM the bake draws far-LOD content — auto-downscaled sprite companions
+ * and no sub-pixel detail — so the full-map bakes that remain (sim tick,
+ * overlay, zoom) are several times cheaper.
  */
 
 import Phaser from "phaser";
 import type { InteractionStore } from "../app/store.ts";
 import type { Command } from "../sim/commands.ts";
 import {
+	AGG,
 	CIVIC_COAL_PLANT,
 	CIVIC_COLLEGE,
 	CIVIC_FIRE_STATION,
@@ -41,11 +59,19 @@ import {
 	ZONE_RESIDENTIAL,
 } from "../sim/index.ts";
 import { type Point, rectTiles, roadLineTiles } from "./drag.ts";
-import { ELEV_HEIGHT, HALF_H, HALF_W, TIER_HEIGHT } from "./iso.ts";
+import {
+	ELEV_HEIGHT,
+	fitZoom,
+	HALF_H,
+	HALF_W,
+	mapWorldBounds,
+	TIER_HEIGHT,
+} from "./iso.ts";
 import { pickTile, tileSurfaceHeight } from "./picking.ts";
 import { CIVIC_MANIFEST, SPRITE_MANIFEST } from "./sprite-manifest.ts";
 import { SpritePool } from "./sprite-pool.ts";
 import {
+	generateLodSprites,
 	generatePlaceholders,
 	getBuildingSprite,
 	getCivicSprite,
@@ -121,10 +147,43 @@ const COL_EARTH = 0x6b4f2a; // dirt sides exposed under raised terrain
 // Directional shading strength for sloped grass (per unit of corner tilt).
 const SLOPE_SHADE = 0.07;
 
+// ---- Bake culling ----------------------------------------------------------
+// World-px above the view a tile's content may reach while its anchor row is
+// off-screen: max terrain lift + tallest building/cluster sprite + popup pip.
+const CULL_UP_PX = 200;
+// Extra tiles kept on every side so multi-tile cluster anchors just outside
+// the view still bake (a culled anchor would degrade its cluster to solos).
+const CULL_TILE_MARGIN = 4;
+// Screen-px margin baked around the view on every side. Panning inside this
+// margin needs no rebake — the cached texture just slides under the camera.
+const BAKE_PAD_PX = 256;
+// Minimum ms between rebakes whose only cause is a zoom change. A wheel
+// gesture fires a notch every few frames; rebaking each one hitches at low
+// zoom. A zoom rebake is deferred only while the previous bake still covers
+// the whole view (the world-pinned cache scales correctly, just soft) — the
+// moment zooming out reveals ground beyond the baked region, it bakes
+// immediately so uncovered tiles never show. The final notch still bakes
+// once the window elapses because the zoom stays dirty.
+const ZOOM_REBAKE_MS = 150;
+// Below this zoom the bake draws far-LOD content: quarter-resolution sprite
+// companions (see generateLodSprites) and none of the sub-pixel detail —
+// skirts, road grading, foundation pads, zone outlines, popup pips. A tile is
+// under ~8 screen px wide here, so the dropped detail isn't resolvable, and
+// the full-map bakes that dominate far zoom get several times cheaper.
+const LOD_ZOOM = 0.25;
+
 // ---- Camera tuning ---------------------------------------------------------
 
-const MIN_ZOOM = 0.4;
 const MAX_ZOOM = 4;
+// The zoom-out limit is whatever fits the whole grid on the canvas (see
+// `minZoom`), bounded by these two. The ceiling keeps small maps free to pull
+// back past their own edges — a 32x32 map "fits" at zoom > 1, which would
+// otherwise feel locked in. The floor is a perf backstop: a fitted view bakes
+// the entire world in one pass, so an enormous grid stops short of fitting
+// rather than hitching for seconds.
+const MIN_ZOOM_CEILING = 0.4;
+const MIN_ZOOM_FLOOR = 0.05;
+const DEFAULT_ZOOM = 1.4;
 const ZOOM_STEP = 1.15;
 const KEY_PAN_SPEED = 600; // world px / second
 
@@ -139,9 +198,32 @@ export class IsoScene extends Phaser.Scene {
 	private readonly store: InteractionStore;
 	private readonly sendCommands: (cmds: ReadonlyArray<Command>) => void;
 
+	// Scratch layers for the world bake — off the display list; they render
+	// only into `rt`, never directly to the screen.
 	private g!: Phaser.GameObjects.Graphics;
 	private gOverlay!: Phaser.GameObjects.Graphics;
+	/** Live per-frame layer: hover cursor, corner marker, drag preview. */
+	private gDynamic!: Phaser.GameObjects.Graphics;
+	/** Screen-sized cache holding the baked world view. */
+	private rt!: Phaser.GameObjects.RenderTexture;
 	private sprites!: SpritePool;
+	// Inputs of the last world bake (see bakeDirty). Initialized so that the
+	// very first update() always bakes.
+	private bakedTick = -1;
+	private bakedOverlay = "";
+	private bakedZoom = Number.NaN;
+	private bakedCanvasW = 0;
+	private bakedCanvasH = 0;
+	// World-space rect the cache texture currently holds (view + pad, or the
+	// whole map in full-map mode — see bakeWorld).
+	private bakedX0 = 0;
+	private bakedY0 = 0;
+	private bakedX1 = 0;
+	private bakedY1 = 0;
+	/** Whether the last bake covered the entire map (pans can never dirty it). */
+	private bakedFullMap = false;
+	/** Scene time of the last bake triggered by a zoom change (see ZOOM_REBAKE_MS). */
+	private lastZoomBakeTime = 0;
 	/** Per-frame scratch: tiles covered by a multi-tile cluster sprite. */
 	private covered!: Uint8Array;
 	private keys!: {
@@ -197,10 +279,24 @@ export class IsoScene extends Phaser.Scene {
 	}
 
 	create(): void {
-		this.g = this.add.graphics();
-		this.g.setDepth(-1);
-		this.gOverlay = this.add.graphics();
-		this.gOverlay.setDepth(10000);
+		// Bake scratch layers stay off the display list (`make`, not `add`);
+		// only the cache texture and the dynamic layer are scene children.
+		this.g = this.make.graphics({}, false);
+		this.gOverlay = this.make.graphics({}, false);
+		this.rt = this.add.existing(
+			new Phaser.GameObjects.RenderTexture(
+				this,
+				0,
+				0,
+				this.scale.width + 2 * BAKE_PAD_PX,
+				this.scale.height + 2 * BAKE_PAD_PX,
+				false,
+			),
+		);
+		this.rt.setOrigin(0, 0);
+		this.rt.setDepth(-1);
+		this.gDynamic = this.add.graphics();
+		this.gDynamic.setDepth(10000);
 
 		// Sprite system: blank texture for pool, placeholder buildings.
 		const blankG = this.add.graphics();
@@ -252,6 +348,10 @@ export class IsoScene extends Phaser.Scene {
 			);
 		}
 
+		// Auto-generate far-zoom LOD companions for every registered sprite —
+		// placeholders and loaded assets alike. Must run after all registrations.
+		generateLodSprites(this);
+
 		this.sprites = new SpritePool(this, "_blank");
 		this.covered = new Uint8Array(this.city.width * this.city.height);
 
@@ -261,7 +361,14 @@ export class IsoScene extends Phaser.Scene {
 		const midX = (this.city.width / 2 - this.city.height / 2) * HALF_W;
 		const midY = (this.city.width / 2 + this.city.height / 2) * HALF_H;
 		cam.centerOn(midX, midY);
-		cam.setZoom(1.4);
+		cam.setZoom(Math.max(DEFAULT_ZOOM, this.minZoom()));
+
+		// A bigger canvas fits the map at a closer zoom, tightening the zoom-out
+		// limit — the camera has to follow it in.
+		this.scale.on(Phaser.Scale.Events.RESIZE, this.clampZoom, this);
+		this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+			this.scale.off(Phaser.Scale.Events.RESIZE, this.clampZoom, this);
+		});
 
 		const kb = this.input.keyboard;
 		if (kb !== null) {
@@ -289,9 +396,10 @@ export class IsoScene extends Phaser.Scene {
 		this.input.on(Phaser.Input.Events.POINTER_WHEEL, this.onWheel, this);
 	}
 
-	update(_time: number, delta: number): void {
+	update(time: number, delta: number): void {
 		this.panKeys(delta);
-		this.draw();
+		if (this.bakeDirty() && !this.zoomThrottled(time)) this.bakeWorld(time);
+		this.drawDynamic();
 	}
 
 	// ---- Input ---------------------------------------------------------------
@@ -371,13 +479,36 @@ export class IsoScene extends Phaser.Scene {
 		const cam = this.cameras.main;
 		const z0 = cam.zoom;
 		const factor = dy < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
-		const z1 = Phaser.Math.Clamp(z0 * factor, MIN_ZOOM, MAX_ZOOM);
+		const z1 = Phaser.Math.Clamp(z0 * factor, this.minZoom(), MAX_ZOOM);
 		if (z1 === z0) return;
 
 		const dInv = 1 / z0 - 1 / z1;
 		cam.setZoom(z1);
 		cam.scrollX += (pointer.x - cam.centerX) * dInv;
 		cam.scrollY += (pointer.y - cam.centerY) * dInv;
+	}
+
+	/**
+	 * Zoom-out limit: far enough back that the whole grid fits the canvas, so a
+	 * 256x256 map is as viewable in one screen as a 64x64 one. Bounded by
+	 * MIN_ZOOM_FLOOR / MIN_ZOOM_CEILING. Recomputed per use — the canvas resizes
+	 * with the window, and the arithmetic is a handful of ops.
+	 */
+	private minZoom(): number {
+		const fit = fitZoom(
+			this.city.width,
+			this.city.height,
+			this.scale.width,
+			this.scale.height,
+		);
+		return Phaser.Math.Clamp(fit, MIN_ZOOM_FLOOR, MIN_ZOOM_CEILING);
+	}
+
+	/** Pull the camera back inside the zoom range after a canvas resize. */
+	private clampZoom(): void {
+		const cam = this.cameras.main;
+		const z = Phaser.Math.Clamp(cam.zoom, this.minZoom(), MAX_ZOOM);
+		if (z !== cam.zoom) cam.setZoom(z);
 	}
 
 	private panKeys(delta: number): void {
@@ -477,53 +608,210 @@ export class IsoScene extends Phaser.Scene {
 
 	// ---- Drawing -------------------------------------------------------------
 
-	private draw(): void {
-		const g = this.g;
-		const city = this.city;
-		const w = city.width;
-		const h = city.height;
-		const snap = this.store.getSnapshot();
-		const overlay = snap.overlay;
+	/** Whether any input of the baked world view changed since the last bake.
+	 *  Camera scroll alone dirties nothing until the view leaves the padded
+	 *  baked region — the cache texture is world-pinned and pans for free. */
+	private bakeDirty(): boolean {
+		const cam = this.cameras.main;
+		const tick = this.city.aggregates[AGG.TICK] ?? 0;
+		const overlay = this.store.getSnapshot().overlay;
+		if (
+			tick !== this.bakedTick ||
+			overlay !== this.bakedOverlay ||
+			cam.zoom !== this.bakedZoom ||
+			this.scale.width !== this.bakedCanvasW ||
+			this.scale.height !== this.bakedCanvasH
+		) {
+			return true;
+		}
+		return !this.viewCovered();
+	}
 
-		g.clear();
+	/** Whether the current camera view lies entirely inside the baked region —
+	 *  i.e. the cache texture covers every visible pixel. */
+	private viewCovered(): boolean {
+		// A full-map bake covers everything there is to draw; panning past it
+		// reveals only background beyond the map edge, never unbaked world.
+		if (this.bakedFullMap) return true;
+		const cam = this.cameras.main;
+		const viewW = this.scale.width / cam.zoom;
+		const viewH = this.scale.height / cam.zoom;
+		const vx0 = cam.scrollX + this.scale.width / 2 - viewW / 2;
+		const vy0 = cam.scrollY + this.scale.height / 2 - viewH / 2;
+		return (
+			vx0 >= this.bakedX0 &&
+			vy0 >= this.bakedY0 &&
+			vx0 + viewW <= this.bakedX1 &&
+			vy0 + viewH <= this.bakedY1
+		);
+	}
+
+	/** Whether a pending rebake should wait because its only cause is a zoom
+	 *  change inside the ZOOM_REBAKE_MS window. Deferring is allowed only
+	 *  while the previous bake still covers the whole view — a bake that
+	 *  would fill newly revealed ground, or any other dirty input (tick,
+	 *  overlay, canvas), runs immediately. */
+	private zoomThrottled(time: number): boolean {
+		const cam = this.cameras.main;
+		if (cam.zoom === this.bakedZoom) return false;
+		const tick = this.city.aggregates[AGG.TICK] ?? 0;
+		if (
+			tick !== this.bakedTick ||
+			this.store.getSnapshot().overlay !== this.bakedOverlay ||
+			this.scale.width !== this.bakedCanvasW ||
+			this.scale.height !== this.bakedCanvasH ||
+			!this.viewCovered()
+		) {
+			return false;
+		}
+		return time - this.lastZoomBakeTime < ZOOM_REBAKE_MS;
+	}
+
+	/** Rebuild the world layers and bake them into the cache texture. */
+	private bakeWorld(time: number): void {
+		const cam = this.cameras.main;
+		if (cam.zoom !== this.bakedZoom) this.lastZoomBakeTime = time;
+		const canvasW = this.scale.width;
+		const canvasH = this.scale.height;
+		const rtW = canvasW + 2 * BAKE_PAD_PX;
+		const rtH = canvasH + 2 * BAKE_PAD_PX;
+		const overlay = this.store.getSnapshot().overlay;
+
+		if (canvasW !== this.bakedCanvasW || canvasH !== this.bakedCanvasH) {
+			this.rt.resize(rtW, rtH, false);
+		}
+
+		// World rect the bake covers. Normally view + pad, centered on the view;
+		// but once the whole map (plus CULL_UP_PX of sprite headroom) fits the
+		// texture at this zoom, bake the map itself — the view can then never
+		// leave the baked region, so far-zoom pans trigger no rebakes at all.
+		const regionW = rtW / cam.zoom;
+		const regionH = rtH / cam.zoom;
+		const bounds = mapWorldBounds(
+			this.city.width,
+			this.city.height,
+			CULL_UP_PX,
+		);
+		const fullMap = bounds.width <= regionW && bounds.height <= regionH;
+		let x0: number;
+		let y0: number;
+		if (fullMap) {
+			x0 = bounds.x0 - (regionW - bounds.width) / 2;
+			y0 = bounds.y0 - (regionH - bounds.height) / 2;
+		} else {
+			x0 = cam.scrollX + canvasW / 2 - regionW / 2;
+			y0 = cam.scrollY + canvasH / 2 - regionH / 2;
+		}
+
+		// Aim the texture's internal camera so its world view starts at (x0, y0),
+		// one texel per screen pixel. A camera's visible rect starts at
+		// scroll + viewport/2 - viewport/(2*zoom), i.e. scroll + rtW/2 - regionW/2.
+		this.rt.camera.scrollX = x0 - rtW / 2 + regionW / 2;
+		this.rt.camera.scrollY = y0 - rtH / 2 + regionH / 2;
+		this.rt.camera.zoom = cam.zoom;
+
+		this.buildLayers(overlay, x0, y0, regionW, regionH);
+
+		// Composite in display order: terrain below sprites, overlay above.
+		this.rt.clear();
+		this.rt.draw(this.g);
+		this.sprites.drawInto(this.rt);
+		this.rt.draw(this.gOverlay);
+		// Phaser 4 queues texture draws in a command buffer; nothing reaches
+		// the texture until render() executes them.
+		this.rt.render();
+
+		// Pin the texture over the baked world rect so the scene camera maps
+		// it back to the screen 1:1 (and slides it during pans).
+		this.rt.setPosition(x0, y0);
+		this.rt.setDisplaySize(regionW, regionH);
+
+		this.bakedTick = this.city.aggregates[AGG.TICK] ?? 0;
+		this.bakedOverlay = overlay;
+		this.bakedZoom = cam.zoom;
+		this.bakedCanvasW = canvasW;
+		this.bakedCanvasH = canvasH;
+		this.bakedX0 = x0;
+		this.bakedY0 = y0;
+		this.bakedX1 = x0 + regionW;
+		this.bakedY1 = y0 + regionH;
+		this.bakedFullMap = fullMap;
+	}
+
+	/** Rebuild the bake scratch layers: terrain graphics, sprites, overlays.
+	 *  (vx0, vy0, viewW, viewH) is the world rect the bake covers. */
+	private buildLayers(
+		overlay: string,
+		vx0: number,
+		vy0: number,
+		viewW: number,
+		viewH: number,
+	): void {
+		const w = this.city.width;
+		const h = this.city.height;
+		const lod = this.cameras.main.zoom < LOD_ZOOM;
+
+		this.g.clear();
 		this.gOverlay.clear();
 		this.sprites.begin();
 		this.covered.fill(0);
 
-		// Back-to-front diagonal sweep so extruded buildings occlude correctly.
+		// Cull the sweep to the baked world rect. A tile (x, y) occupies
+		// column a = x - y (spanning (a±1)*HALF_W horizontally) and diagonal
+		// d = x + y (top at d*HALF_H, bottom 2*HALF_H below). CULL_UP_PX
+		// keeps tiles whose tall content (terrain lift, buildings, popups)
+		// reaches down into the view; CULL_TILE_MARGIN keeps cluster-sprite
+		// anchor tiles that sit just outside it.
+		const aMin = Math.floor(vx0 / HALF_W) - 1 - CULL_TILE_MARGIN;
+		const aMax = Math.ceil((vx0 + viewW) / HALF_W) + 1 + CULL_TILE_MARGIN;
+		const dMin = Math.max(0, Math.floor(vy0 / HALF_H) - 2 - CULL_TILE_MARGIN);
 		const maxD = w - 1 + (h - 1);
-		for (let d = 0; d <= maxD; d++) {
-			const xStart = Math.max(0, d - (h - 1));
-			const xEnd = Math.min(w - 1, d);
+		const dMax = Math.min(
+			maxD,
+			Math.ceil((vy0 + viewH + CULL_UP_PX) / HALF_H) + CULL_TILE_MARGIN,
+		);
+
+		// Back-to-front diagonal sweep so extruded buildings occlude correctly.
+		for (let d = dMin; d <= dMax; d++) {
+			const xStart = Math.max(0, d - (h - 1), Math.ceil((d + aMin) / 2));
+			const xEnd = Math.min(w - 1, d, Math.floor((d + aMax) / 2));
 			for (let x = xStart; x <= xEnd; x++) {
 				const y = d - x;
-				this.drawTile(x, y, overlay);
+				this.drawTile(x, y, overlay, lod);
 			}
 		}
 
 		this.sprites.end();
+	}
 
-		// While dragging, preview the affected footprint; otherwise highlight the
-		// single hovered tile.
+	/** Per-frame layer: drag preview while dragging, else the hover cursor. */
+	private drawDynamic(): void {
+		const g = this.gDynamic;
+		g.clear();
+
 		if (this.dragging) {
 			this.drawDragPreview();
-		} else if (
-			this.hoverX >= 0 &&
-			this.hoverX < w &&
-			this.hoverY >= 0 &&
-			this.hoverY < h
-		) {
-			const go = this.gOverlay;
-			// The cursor takes the bulldozer's underground colour so the retargeted
-			// mode is visible on the grid, not just on the sidebar button.
-			const cursorCol = isUndergroundDemolish(snap.tool, overlay)
-				? COL_PIPE_DEMOLISH
-				: COL_CURSOR;
-			go.lineStyle(2, cursorCol, 0.9);
-			this.pathHoverFace(go, this.hoverX, this.hoverY, overlay);
-			go.strokePath();
-			if (isTerraformTool(snap.tool)) this.drawCornerMarker();
+			return;
 		}
+
+		const snap = this.store.getSnapshot();
+		if (
+			this.hoverX < 0 ||
+			this.hoverX >= this.city.width ||
+			this.hoverY < 0 ||
+			this.hoverY >= this.city.height
+		) {
+			return;
+		}
+		// The cursor takes the bulldozer's underground colour so the retargeted
+		// mode is visible on the grid, not just on the sidebar button.
+		const cursorCol = isUndergroundDemolish(snap.tool, snap.overlay)
+			? COL_PIPE_DEMOLISH
+			: COL_CURSOR;
+		g.lineStyle(2, cursorCol, 0.9);
+		this.pathHoverFace(g, this.hoverX, this.hoverY, snap.overlay);
+		g.strokePath();
+		if (isTerraformTool(snap.tool)) this.drawCornerMarker();
 	}
 
 	/** Path the terrain surface under the cursor for selection highlighting. */
@@ -595,7 +883,7 @@ export class IsoScene extends Phaser.Scene {
 		const lift = this.vertexHeight(vx, vy) * ELEV_HEIGHT;
 		const px = (vx - vy) * HALF_W;
 		const py = (vx + vy) * HALF_H - lift;
-		const g = this.gOverlay;
+		const g = this.gDynamic;
 		g.fillStyle(COL_CURSOR, 0.9);
 		g.beginPath();
 		g.moveTo(px, py - 3);
@@ -612,7 +900,7 @@ export class IsoScene extends Phaser.Scene {
 		const tool = snap.tool;
 		if (tool === "none") return;
 
-		const g = this.gOverlay;
+		const g = this.gDynamic;
 		const color = previewColor(tool, snap.overlay);
 		const undergroundDemolish = isUndergroundDemolish(tool, snap.overlay);
 		for (const t of this.dragTiles(tool)) {
@@ -632,6 +920,21 @@ export class IsoScene extends Phaser.Scene {
 			this.pathGroundFace(g, t.x, t.y);
 			g.strokePath();
 		}
+	}
+
+	/** Whether a skirt face toward front neighbor (nx, ny) can ever be seen.
+	 *  A plain land tile in front draws its surface starting flush at the
+	 *  shared vertices, hiding the face completely (and the sheet below it is
+	 *  covered by induction — every column ends at a face-drawing tile). Only
+	 *  the map edge, water gaps (flat plane below the shared vertices), and
+	 *  road grading (surface may dip below the shared vertices) leave a skirt
+	 *  visible. */
+	private skirtFaceVisible(nx: number, ny: number): boolean {
+		if (nx >= this.city.width || ny >= this.city.height) return true;
+		const idx = ny * this.city.width + nx;
+		return (
+			this.city.terrain[idx] === TERRAIN_WATER || this.city.roads[idx] === 1
+		);
 	}
 
 	/** Corner height (0..ELEVATION_MAX) at vertex (vx, vy) of the corner grid. */
@@ -733,11 +1036,11 @@ export class IsoScene extends Phaser.Scene {
 		return true;
 	}
 
-	private drawTile(x: number, y: number, overlay: string): void {
+	private drawTile(x: number, y: number, overlay: string, lod: boolean): void {
 		// Land value gets its own representation: buildings are hidden and each
 		// tile is extruded by its land value instead.
 		if (overlay === "land-value") {
-			this.drawLandValueTile(x, y);
+			this.drawLandValueTile(x, y, lod);
 			return;
 		}
 
@@ -811,11 +1114,12 @@ export class IsoScene extends Phaser.Scene {
 
 		// SC3K-style roads: compute graded surface heights before terrain
 		// rendering so the ground is shaped to match the road — no floating.
+		// At far LOD the grade is sub-pixel; the raw sloped surface suffices.
 		let rn = ln;
 		let re = le;
 		let rs = ls;
 		let rw = lw;
-		if (isRoad) {
+		if (isRoad && !lod) {
 			roadGrade(city, x, y, idx, ln, le, ls, lw, _roadOut);
 			rn = _roadOut[0] ?? 0;
 			re = _roadOut[1] ?? 0;
@@ -830,20 +1134,35 @@ export class IsoScene extends Phaser.Scene {
 		const gs = isRoad ? rs : ls;
 		const gw = isRoad ? rw : lw;
 
-		skirts(g, cx, cy, ge, gs, gw, isWater ? COL_WATER : COL_EARTH);
+		// Water tiles always draw their skirts (shoreline walls); land skirts
+		// draw only where something in front can fail to cover them. At far LOD
+		// every skirt face is sub-pixel — skip them all.
+		if (!lod) {
+			const swVis = isWater || this.skirtFaceVisible(x, y + 1);
+			const seVis = isWater || this.skirtFaceVisible(x + 1, y);
+			skirts(
+				g,
+				cx,
+				cy,
+				ge,
+				gs,
+				gw,
+				isWater ? COL_WATER : COL_EARTH,
+				swVis,
+				seVis,
+			);
+		}
 		if (isWater) {
 			g.fillStyle(COL_WATER, 1);
 		} else {
 			g.fillStyle(shade(COL_GRASS, slopeShade(hn, he, hs, hw)), 1);
 		}
-		surfacePath(g, cx, cy, gn, ge, gs, gw);
-		g.fillPath();
+		fillSurface(g, cx, cy, gn, ge, gs, gw);
 
 		// Road surface painted on the graded terrain.
 		if (isRoad) {
 			g.fillStyle(top, 1);
-			surfacePath(g, cx, cy, rn, re, rs, rw);
-			g.fillPath();
+			fillSurface(g, cx, cy, rn, re, rs, rw);
 		}
 
 		// Everything else built sits on a flat pad at the tile's highest
@@ -852,7 +1171,8 @@ export class IsoScene extends Phaser.Scene {
 			!isRoad && (isRail || isPowerLine || civicType !== 0 || buildHeight > 0);
 		const topLift = baseLift + buildHeight;
 		if (flatTop) {
-			if (minLift < baseLift) {
+			// Foundation pads are sub-pixel at far LOD.
+			if (!lod && minLift < baseLift) {
 				extrudeColumn(g, cx, cy, minLift, baseLift, COL_EARTH);
 			}
 
@@ -863,7 +1183,7 @@ export class IsoScene extends Phaser.Scene {
 				if (civicType === 0) {
 					const bZone = city.zoning[idx] ?? 0;
 					const bDensity = city.building[idx] ?? 0;
-					const cluster = getClusterSprite(bZone, bDensity);
+					const cluster = getClusterSprite(bZone, bDensity, lod);
 					if (
 						cluster !== undefined &&
 						this.tryCluster(x, y, bZone, bDensity, cluster)
@@ -875,10 +1195,11 @@ export class IsoScene extends Phaser.Scene {
 				if (!usedSprite) {
 					const spriteEntry =
 						civicType !== 0
-							? getCivicSprite(civicType)
+							? getCivicSprite(civicType, lod)
 							: getBuildingSprite(
 									city.zoning[idx] ?? 0,
 									city.building[idx] ?? 0,
+									lod,
 								);
 					if (spriteEntry !== undefined) {
 						this.placeTileSprite(spriteEntry, cx, cy, baseLift, x + y);
@@ -891,8 +1212,7 @@ export class IsoScene extends Phaser.Scene {
 
 			if (!usedSprite) {
 				g.fillStyle(top, 1);
-				diamondPath(g, cx, cy, topLift);
-				g.fillPath();
+				fillDiamond(g, cx, cy, topLift);
 			}
 		}
 
@@ -906,7 +1226,8 @@ export class IsoScene extends Phaser.Scene {
 		const tw = flatTop ? topLift : isRoad ? rw : lw;
 
 		// Empty zoned land: colored outline so zoning reads before it builds.
-		if (!flatTop && !isWater) {
+		// A 1.5px stroke vanishes on a sub-8px tile — skipped at far LOD.
+		if (!lod && !flatTop && !isWater) {
 			const zoneOutline = zoneOutlineColor(city.zoning[idx] ?? 0);
 			if (zoneOutline >= 0) {
 				go.lineStyle(1.5, zoneOutline, 0.9);
@@ -918,8 +1239,7 @@ export class IsoScene extends Phaser.Scene {
 		// Fire indicator (always visible regardless of overlay)
 		if (city.fire[idx] === 1) {
 			go.fillStyle(COL_FIRE_OV, 0.7);
-			surfacePath(go, cx, cy, tn, te, ts, tw);
-			go.fillPath();
+			fillSurface(go, cx, cy, tn, te, ts, tw);
 		}
 
 		// Overlay tints
@@ -927,15 +1247,13 @@ export class IsoScene extends Phaser.Scene {
 			const pol = city.pollution[idx] ?? 0;
 			if (pol > 0) {
 				go.fillStyle(COL_POLLUTION, Math.min(0.6, (pol / 255) * 0.7));
-				surfacePath(go, cx, cy, tn, te, ts, tw);
-				go.fillPath();
+				fillSurface(go, cx, cy, tn, te, ts, tw);
 			}
 		} else if (overlay === "power") {
 			if (!isWater) {
 				const powered = city.power[idx] === 1;
 				go.fillStyle(powered ? COL_POWERED : COL_UNPOWERED, 0.45);
-				surfacePath(go, cx, cy, tn, te, ts, tw);
-				go.fillPath();
+				fillSurface(go, cx, cy, tn, te, ts, tw);
 			}
 		} else if (overlay === "water") {
 			if (!isWater) {
@@ -948,8 +1266,7 @@ export class IsoScene extends Phaser.Scene {
 				} else {
 					go.fillStyle(watered ? COL_WATERED : COL_UNWATERED, 0.45);
 				}
-				surfacePath(go, cx, cy, tn, te, ts, tw);
-				go.fillPath();
+				fillSurface(go, cx, cy, tn, te, ts, tw);
 			}
 		} else if (overlay === "underground") {
 			if (!isWater) {
@@ -967,55 +1284,49 @@ export class IsoScene extends Phaser.Scene {
 				} else {
 					go.fillStyle(0x000000, 0.5);
 				}
-				surfacePath(go, cx, cy, tn, te, ts, tw);
-				go.fillPath();
+				fillSurface(go, cx, cy, tn, te, ts, tw);
 			}
 		} else if (overlay === "crime") {
 			const cr = city.crime[idx] ?? 0;
 			if (cr > 0) {
 				go.fillStyle(COL_CRIME, Math.min(0.7, (cr / 255) * 0.8));
-				surfacePath(go, cx, cy, tn, te, ts, tw);
-				go.fillPath();
+				fillSurface(go, cx, cy, tn, te, ts, tw);
 			}
 		} else if (overlay === "traffic") {
 			const tr = city.traffic[idx] ?? 0;
 			if (tr > 0) {
 				go.fillStyle(COL_TRAFFIC_OV, Math.min(0.7, (tr / 255) * 0.8));
-				surfacePath(go, cx, cy, tn, te, ts, tw);
-				go.fillPath();
+				fillSurface(go, cx, cy, tn, te, ts, tw);
 			}
 		} else if (overlay === "police") {
 			if (!isWater) {
 				const covered = city.policeCoverage[idx] === 1;
 				go.fillStyle(covered ? COL_POWERED : COL_UNPOWERED, 0.45);
-				surfacePath(go, cx, cy, tn, te, ts, tw);
-				go.fillPath();
+				fillSurface(go, cx, cy, tn, te, ts, tw);
 			}
 		} else if (overlay === "fire") {
 			if (!isWater) {
 				const covered = city.fireCoverage[idx] === 1;
 				go.fillStyle(covered ? COL_POWERED : COL_UNPOWERED, 0.45);
-				surfacePath(go, cx, cy, tn, te, ts, tw);
-				go.fillPath();
+				fillSurface(go, cx, cy, tn, te, ts, tw);
 			}
 		} else if (overlay === "education") {
 			if (!isWater) {
 				const covered = city.educationCoverage[idx] === 1;
 				go.fillStyle(covered ? COL_POWERED : COL_UNPOWERED, 0.45);
-				surfacePath(go, cx, cy, tn, te, ts, tw);
-				go.fillPath();
+				fillSurface(go, cx, cy, tn, te, ts, tw);
 			}
 		} else if (overlay === "health") {
 			if (!isWater) {
 				const covered = city.healthCoverage[idx] === 1;
 				go.fillStyle(covered ? COL_POWERED : COL_UNPOWERED, 0.45);
-				surfacePath(go, cx, cy, tn, te, ts, tw);
-				go.fillPath();
+				fillSurface(go, cx, cy, tn, te, ts, tw);
 			}
 		}
 
 		// Utility popups: small icons above buildings missing power/water.
-		if (buildHeight > 0 && civicType === 0) {
+		// Skipped at far LOD — the pips would be bigger than the buildings.
+		if (!lod && buildHeight > 0 && civicType === 0) {
 			const needsPower = city.power[idx] !== 1;
 			const needsWater = city.waterCoverage[idx] !== 1;
 
@@ -1038,7 +1349,7 @@ export class IsoScene extends Phaser.Scene {
 	 * value, colored by what occupies the plot — zoning (R/C/I), road, or bare
 	 * land. Water stays flat for orientation.
 	 */
-	private drawLandValueTile(x: number, y: number): void {
+	private drawLandValueTile(x: number, y: number, lod: boolean): void {
 		const g = this.g;
 		const city = this.city;
 		const idx = y * city.width + x;
@@ -1049,10 +1360,9 @@ export class IsoScene extends Phaser.Scene {
 		const isWater = !isRoad && city.terrain[idx] === TERRAIN_WATER;
 		if (isWater) {
 			const wl = (city.waterLevel[idx] ?? 0) * ELEV_HEIGHT;
-			skirts(g, cx, cy, wl, wl, wl, COL_WATER);
+			if (!lod) skirts(g, cx, cy, wl, wl, wl, COL_WATER, true, true);
 			g.fillStyle(COL_WATER, 1);
-			diamondPath(g, cx, cy, wl);
-			g.fillPath();
+			fillDiamond(g, cx, cy, wl);
 			return;
 		}
 
@@ -1073,16 +1383,26 @@ export class IsoScene extends Phaser.Scene {
 		const col = isRoad ? COL_ROAD : builtColor(city.zoning[idx] ?? 0);
 
 		// Sloped terrain in earth tones, then the land-value column rising from
-		// the tile's highest corner.
-		skirts(g, cx, cy, le, ls, lw, COL_EARTH);
+		// the tile's highest corner. Skirts are sub-pixel at far LOD.
+		if (!lod) {
+			skirts(
+				g,
+				cx,
+				cy,
+				le,
+				ls,
+				lw,
+				COL_EARTH,
+				this.skirtFaceVisible(x, y + 1),
+				this.skirtFaceVisible(x + 1, y),
+			);
+		}
 		g.fillStyle(shade(COL_EARTH, slopeShade(hn, he, hs, hw)), 1);
-		surfacePath(g, cx, cy, ln, le, ls, lw);
-		g.fillPath();
+		fillSurface(g, cx, cy, ln, le, ls, lw);
 
 		if (valueH > 0) extrudeColumn(g, cx, cy, ground, ground + valueH, col);
 		g.fillStyle(col, 1);
-		diamondPath(g, cx, cy, ground + valueH);
-		g.fillPath();
+		fillDiamond(g, cx, cy, ground + valueH);
 	}
 }
 
@@ -1125,9 +1445,44 @@ function diamondPath(
 }
 
 /**
+ * Fill a tile's (possibly sloped) top face as two triangles. Equivalent to
+ * surfacePath + fillPath, but a Graphics FILL_TRIANGLE renders directly while
+ * FILL_PATH re-runs earcut triangulation on every render — in the bake's
+ * per-tile hot path that difference dominates. Strokes still use the paths.
+ */
+function fillSurface(
+	g: Phaser.GameObjects.Graphics,
+	cx: number,
+	cy: number,
+	ln: number,
+	le: number,
+	ls: number,
+	lw: number,
+): void {
+	const ex = cx + HALF_W;
+	const ey = cy + HALF_H - le;
+	const sy = cy + 2 * HALF_H - ls;
+	const wx = cx - HALF_W;
+	const wy = cy + HALF_H - lw;
+	g.fillTriangle(cx, cy - ln, ex, ey, cx, sy);
+	g.fillTriangle(cx, cy - ln, cx, sy, wx, wy);
+}
+
+/** Fill a flat diamond at a uniform lift (see fillSurface). */
+function fillDiamond(
+	g: Phaser.GameObjects.Graphics,
+	cx: number,
+	cy: number,
+	lift: number,
+): void {
+	fillSurface(g, cx, cy, lift, lift, lift, lift);
+}
+
+/**
  * Terrain side skirts: the two viewer-facing faces dropping from the tile's
- * E/S/W corner lifts down to lift 0. Mostly hidden behind nearer tiles;
- * visible at the map edge and along water lines.
+ * E/S/W corner lifts down to lift 0. `swVisible`/`seVisible` come from
+ * `skirtFaceVisible` — faces flush against plain land in front are fully
+ * occluded and skipped, which roughly halves terrain triangles on hilly maps.
  */
 function skirts(
 	g: Phaser.GameObjects.Graphics,
@@ -1137,8 +1492,10 @@ function skirts(
 	ls: number,
 	lw: number,
 	color: number,
+	swVisible: boolean,
+	seVisible: boolean,
 ): void {
-	if (lw > 0 || ls > 0) {
+	if (swVisible && (lw > 0 || ls > 0)) {
 		g.fillStyle(shade(color, 0.6), 1);
 		quad(
 			g,
@@ -1152,7 +1509,7 @@ function skirts(
 			cy + HALF_H - lw,
 		);
 	}
-	if (ls > 0 || le > 0) {
+	if (seVisible && (ls > 0 || le > 0)) {
 		g.fillStyle(shade(color, 0.8), 1);
 		quad(
 			g,
@@ -1266,6 +1623,7 @@ function slopeShade(hn: number, he: number, hs: number, hw: number): number {
 	return Math.max(0.7, Math.min(1.3, f));
 }
 
+/** Fill a convex quad as two triangles (see fillSurface for why not a path). */
 function quad(
 	g: Phaser.GameObjects.Graphics,
 	x1: number,
@@ -1277,13 +1635,8 @@ function quad(
 	x4: number,
 	y4: number,
 ): void {
-	g.beginPath();
-	g.moveTo(x1, y1);
-	g.lineTo(x2, y2);
-	g.lineTo(x3, y3);
-	g.lineTo(x4, y4);
-	g.closePath();
-	g.fillPath();
+	g.fillTriangle(x1, y1, x2, y2, x3, y3);
+	g.fillTriangle(x1, y1, x3, y3, x4, y4);
 }
 
 // ---- Utility popup icons ---------------------------------------------------

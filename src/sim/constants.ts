@@ -1,8 +1,8 @@
 // ---------------------------------------------------------------------------
 // Grid
 // ---------------------------------------------------------------------------
-export const DEFAULT_WIDTH = 64;
-export const DEFAULT_HEIGHT = 64;
+export const DEFAULT_WIDTH = 256;
+export const DEFAULT_HEIGHT = 256;
 export const MAX_GRID_SIZE = 256;
 
 // ---------------------------------------------------------------------------
