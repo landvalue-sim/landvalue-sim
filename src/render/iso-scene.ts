@@ -18,6 +18,13 @@
  * ZOOM_REBAKE_MS apart (the cache scales correctly in between). Unchanged
  * frames render just that cached texture plus a small per-frame layer for
  * the hover cursor and drag preview.
+ *
+ * Far zoom gets two extra tiers: once the whole map fits the texture at the
+ * current zoom, the bake covers the map itself rather than the view, so
+ * panning can never leave the baked region (no pan rebakes at all); and below
+ * LOD_ZOOM the bake draws far-LOD content — auto-downscaled sprite companions
+ * and no sub-pixel detail — so the full-map bakes that remain (sim tick,
+ * overlay, zoom) are several times cheaper.
  */
 
 import Phaser from "phaser";
@@ -52,11 +59,19 @@ import {
 	ZONE_RESIDENTIAL,
 } from "../sim/index.ts";
 import { type Point, rectTiles, roadLineTiles } from "./drag.ts";
-import { ELEV_HEIGHT, fitZoom, HALF_H, HALF_W, TIER_HEIGHT } from "./iso.ts";
+import {
+	ELEV_HEIGHT,
+	fitZoom,
+	HALF_H,
+	HALF_W,
+	mapWorldBounds,
+	TIER_HEIGHT,
+} from "./iso.ts";
 import { pickTile, tileSurfaceHeight } from "./picking.ts";
 import { CIVIC_MANIFEST, SPRITE_MANIFEST } from "./sprite-manifest.ts";
 import { SpritePool } from "./sprite-pool.ts";
 import {
+	generateLodSprites,
 	generatePlaceholders,
 	getBuildingSprite,
 	getCivicSprite,
@@ -150,6 +165,12 @@ const BAKE_PAD_PX = 256;
 // immediately so uncovered tiles never show. The final notch still bakes
 // once the window elapses because the zoom stays dirty.
 const ZOOM_REBAKE_MS = 150;
+// Below this zoom the bake draws far-LOD content: quarter-resolution sprite
+// companions (see generateLodSprites) and none of the sub-pixel detail —
+// skirts, road grading, foundation pads, zone outlines, popup pips. A tile is
+// under ~8 screen px wide here, so the dropped detail isn't resolvable, and
+// the full-map bakes that dominate far zoom get several times cheaper.
+const LOD_ZOOM = 0.25;
 
 // ---- Camera tuning ---------------------------------------------------------
 
@@ -193,11 +214,14 @@ export class IsoScene extends Phaser.Scene {
 	private bakedZoom = Number.NaN;
 	private bakedCanvasW = 0;
 	private bakedCanvasH = 0;
-	// World-space rect the cache texture currently holds (view + pad).
+	// World-space rect the cache texture currently holds (view + pad, or the
+	// whole map in full-map mode — see bakeWorld).
 	private bakedX0 = 0;
 	private bakedY0 = 0;
 	private bakedX1 = 0;
 	private bakedY1 = 0;
+	/** Whether the last bake covered the entire map (pans can never dirty it). */
+	private bakedFullMap = false;
 	/** Scene time of the last bake triggered by a zoom change (see ZOOM_REBAKE_MS). */
 	private lastZoomBakeTime = 0;
 	/** Per-frame scratch: tiles covered by a multi-tile cluster sprite. */
@@ -323,6 +347,10 @@ export class IsoScene extends Phaser.Scene {
 				}),
 			);
 		}
+
+		// Auto-generate far-zoom LOD companions for every registered sprite —
+		// placeholders and loaded assets alike. Must run after all registrations.
+		generateLodSprites(this);
 
 		this.sprites = new SpritePool(this, "_blank");
 		this.covered = new Uint8Array(this.city.width * this.city.height);
@@ -602,6 +630,9 @@ export class IsoScene extends Phaser.Scene {
 	/** Whether the current camera view lies entirely inside the baked region —
 	 *  i.e. the cache texture covers every visible pixel. */
 	private viewCovered(): boolean {
+		// A full-map bake covers everything there is to draw; panning past it
+		// reveals only background beyond the map edge, never unbaked world.
+		if (this.bakedFullMap) return true;
 		const cam = this.cameras.main;
 		const viewW = this.scale.width / cam.zoom;
 		const viewH = this.scale.height / cam.zoom;
@@ -650,19 +681,34 @@ export class IsoScene extends Phaser.Scene {
 			this.rt.resize(rtW, rtH, false);
 		}
 
-		// Aim the texture's internal camera at the view center, one texel per
-		// screen pixel. A camera's midpoint is scroll + viewport/2, so with the
-		// larger viewport the scroll shifts back by the pad to keep the same
-		// midpoint; the extra rtW/zoom - viewW world units land in the margins.
-		this.rt.camera.scrollX = cam.scrollX - BAKE_PAD_PX;
-		this.rt.camera.scrollY = cam.scrollY - BAKE_PAD_PX;
-		this.rt.camera.zoom = cam.zoom;
-
-		// World rect the bake covers: view + pad, centered on the view center.
+		// World rect the bake covers. Normally view + pad, centered on the view;
+		// but once the whole map (plus CULL_UP_PX of sprite headroom) fits the
+		// texture at this zoom, bake the map itself — the view can then never
+		// leave the baked region, so far-zoom pans trigger no rebakes at all.
 		const regionW = rtW / cam.zoom;
 		const regionH = rtH / cam.zoom;
-		const x0 = cam.scrollX + canvasW / 2 - regionW / 2;
-		const y0 = cam.scrollY + canvasH / 2 - regionH / 2;
+		const bounds = mapWorldBounds(
+			this.city.width,
+			this.city.height,
+			CULL_UP_PX,
+		);
+		const fullMap = bounds.width <= regionW && bounds.height <= regionH;
+		let x0: number;
+		let y0: number;
+		if (fullMap) {
+			x0 = bounds.x0 - (regionW - bounds.width) / 2;
+			y0 = bounds.y0 - (regionH - bounds.height) / 2;
+		} else {
+			x0 = cam.scrollX + canvasW / 2 - regionW / 2;
+			y0 = cam.scrollY + canvasH / 2 - regionH / 2;
+		}
+
+		// Aim the texture's internal camera so its world view starts at (x0, y0),
+		// one texel per screen pixel. A camera's visible rect starts at
+		// scroll + viewport/2 - viewport/(2*zoom), i.e. scroll + rtW/2 - regionW/2.
+		this.rt.camera.scrollX = x0 - rtW / 2 + regionW / 2;
+		this.rt.camera.scrollY = y0 - rtH / 2 + regionH / 2;
+		this.rt.camera.zoom = cam.zoom;
 
 		this.buildLayers(overlay, x0, y0, regionW, regionH);
 
@@ -689,6 +735,7 @@ export class IsoScene extends Phaser.Scene {
 		this.bakedY0 = y0;
 		this.bakedX1 = x0 + regionW;
 		this.bakedY1 = y0 + regionH;
+		this.bakedFullMap = fullMap;
 	}
 
 	/** Rebuild the bake scratch layers: terrain graphics, sprites, overlays.
@@ -702,6 +749,7 @@ export class IsoScene extends Phaser.Scene {
 	): void {
 		const w = this.city.width;
 		const h = this.city.height;
+		const lod = this.cameras.main.zoom < LOD_ZOOM;
 
 		this.g.clear();
 		this.gOverlay.clear();
@@ -729,7 +777,7 @@ export class IsoScene extends Phaser.Scene {
 			const xEnd = Math.min(w - 1, d, Math.floor((d + aMax) / 2));
 			for (let x = xStart; x <= xEnd; x++) {
 				const y = d - x;
-				this.drawTile(x, y, overlay);
+				this.drawTile(x, y, overlay, lod);
 			}
 		}
 
@@ -988,11 +1036,11 @@ export class IsoScene extends Phaser.Scene {
 		return true;
 	}
 
-	private drawTile(x: number, y: number, overlay: string): void {
+	private drawTile(x: number, y: number, overlay: string, lod: boolean): void {
 		// Land value gets its own representation: buildings are hidden and each
 		// tile is extruded by its land value instead.
 		if (overlay === "land-value") {
-			this.drawLandValueTile(x, y);
+			this.drawLandValueTile(x, y, lod);
 			return;
 		}
 
@@ -1066,11 +1114,12 @@ export class IsoScene extends Phaser.Scene {
 
 		// SC3K-style roads: compute graded surface heights before terrain
 		// rendering so the ground is shaped to match the road — no floating.
+		// At far LOD the grade is sub-pixel; the raw sloped surface suffices.
 		let rn = ln;
 		let re = le;
 		let rs = ls;
 		let rw = lw;
-		if (isRoad) {
+		if (isRoad && !lod) {
 			roadGrade(city, x, y, idx, ln, le, ls, lw, _roadOut);
 			rn = _roadOut[0] ?? 0;
 			re = _roadOut[1] ?? 0;
@@ -1086,20 +1135,23 @@ export class IsoScene extends Phaser.Scene {
 		const gw = isRoad ? rw : lw;
 
 		// Water tiles always draw their skirts (shoreline walls); land skirts
-		// draw only where something in front can fail to cover them.
-		const swVis = isWater || this.skirtFaceVisible(x, y + 1);
-		const seVis = isWater || this.skirtFaceVisible(x + 1, y);
-		skirts(
-			g,
-			cx,
-			cy,
-			ge,
-			gs,
-			gw,
-			isWater ? COL_WATER : COL_EARTH,
-			swVis,
-			seVis,
-		);
+		// draw only where something in front can fail to cover them. At far LOD
+		// every skirt face is sub-pixel — skip them all.
+		if (!lod) {
+			const swVis = isWater || this.skirtFaceVisible(x, y + 1);
+			const seVis = isWater || this.skirtFaceVisible(x + 1, y);
+			skirts(
+				g,
+				cx,
+				cy,
+				ge,
+				gs,
+				gw,
+				isWater ? COL_WATER : COL_EARTH,
+				swVis,
+				seVis,
+			);
+		}
 		if (isWater) {
 			g.fillStyle(COL_WATER, 1);
 		} else {
@@ -1119,7 +1171,8 @@ export class IsoScene extends Phaser.Scene {
 			!isRoad && (isRail || isPowerLine || civicType !== 0 || buildHeight > 0);
 		const topLift = baseLift + buildHeight;
 		if (flatTop) {
-			if (minLift < baseLift) {
+			// Foundation pads are sub-pixel at far LOD.
+			if (!lod && minLift < baseLift) {
 				extrudeColumn(g, cx, cy, minLift, baseLift, COL_EARTH);
 			}
 
@@ -1130,7 +1183,7 @@ export class IsoScene extends Phaser.Scene {
 				if (civicType === 0) {
 					const bZone = city.zoning[idx] ?? 0;
 					const bDensity = city.building[idx] ?? 0;
-					const cluster = getClusterSprite(bZone, bDensity);
+					const cluster = getClusterSprite(bZone, bDensity, lod);
 					if (
 						cluster !== undefined &&
 						this.tryCluster(x, y, bZone, bDensity, cluster)
@@ -1142,10 +1195,11 @@ export class IsoScene extends Phaser.Scene {
 				if (!usedSprite) {
 					const spriteEntry =
 						civicType !== 0
-							? getCivicSprite(civicType)
+							? getCivicSprite(civicType, lod)
 							: getBuildingSprite(
 									city.zoning[idx] ?? 0,
 									city.building[idx] ?? 0,
+									lod,
 								);
 					if (spriteEntry !== undefined) {
 						this.placeTileSprite(spriteEntry, cx, cy, baseLift, x + y);
@@ -1172,7 +1226,8 @@ export class IsoScene extends Phaser.Scene {
 		const tw = flatTop ? topLift : isRoad ? rw : lw;
 
 		// Empty zoned land: colored outline so zoning reads before it builds.
-		if (!flatTop && !isWater) {
+		// A 1.5px stroke vanishes on a sub-8px tile — skipped at far LOD.
+		if (!lod && !flatTop && !isWater) {
 			const zoneOutline = zoneOutlineColor(city.zoning[idx] ?? 0);
 			if (zoneOutline >= 0) {
 				go.lineStyle(1.5, zoneOutline, 0.9);
@@ -1270,7 +1325,8 @@ export class IsoScene extends Phaser.Scene {
 		}
 
 		// Utility popups: small icons above buildings missing power/water.
-		if (buildHeight > 0 && civicType === 0) {
+		// Skipped at far LOD — the pips would be bigger than the buildings.
+		if (!lod && buildHeight > 0 && civicType === 0) {
 			const needsPower = city.power[idx] !== 1;
 			const needsWater = city.waterCoverage[idx] !== 1;
 
@@ -1293,7 +1349,7 @@ export class IsoScene extends Phaser.Scene {
 	 * value, colored by what occupies the plot — zoning (R/C/I), road, or bare
 	 * land. Water stays flat for orientation.
 	 */
-	private drawLandValueTile(x: number, y: number): void {
+	private drawLandValueTile(x: number, y: number, lod: boolean): void {
 		const g = this.g;
 		const city = this.city;
 		const idx = y * city.width + x;
@@ -1304,7 +1360,7 @@ export class IsoScene extends Phaser.Scene {
 		const isWater = !isRoad && city.terrain[idx] === TERRAIN_WATER;
 		if (isWater) {
 			const wl = (city.waterLevel[idx] ?? 0) * ELEV_HEIGHT;
-			skirts(g, cx, cy, wl, wl, wl, COL_WATER, true, true);
+			if (!lod) skirts(g, cx, cy, wl, wl, wl, COL_WATER, true, true);
 			g.fillStyle(COL_WATER, 1);
 			fillDiamond(g, cx, cy, wl);
 			return;
@@ -1327,18 +1383,20 @@ export class IsoScene extends Phaser.Scene {
 		const col = isRoad ? COL_ROAD : builtColor(city.zoning[idx] ?? 0);
 
 		// Sloped terrain in earth tones, then the land-value column rising from
-		// the tile's highest corner.
-		skirts(
-			g,
-			cx,
-			cy,
-			le,
-			ls,
-			lw,
-			COL_EARTH,
-			this.skirtFaceVisible(x, y + 1),
-			this.skirtFaceVisible(x + 1, y),
-		);
+		// the tile's highest corner. Skirts are sub-pixel at far LOD.
+		if (!lod) {
+			skirts(
+				g,
+				cx,
+				cy,
+				le,
+				ls,
+				lw,
+				COL_EARTH,
+				this.skirtFaceVisible(x, y + 1),
+				this.skirtFaceVisible(x + 1, y),
+			);
+		}
 		g.fillStyle(shade(COL_EARTH, slopeShade(hn, he, hs, hw)), 1);
 		fillSurface(g, cx, cy, ln, le, ls, lw);
 

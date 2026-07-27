@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { fitZoom, HALF_H, HALF_W } from "./iso.ts";
+import {
+	fitZoom,
+	gridToScreen,
+	HALF_H,
+	HALF_W,
+	mapWorldBounds,
+} from "./iso.ts";
 
 /** Screen-px the grid occupies at `zoom`, ignoring elevation headroom. */
 function screenSpan(
@@ -47,5 +53,40 @@ describe("fitZoom", () => {
 
 	it("stays positive on a canvas smaller than the margins", () => {
 		expect(fitZoom(256, 256, 8, 8)).toBeGreaterThan(0);
+	});
+});
+
+describe("mapWorldBounds", () => {
+	it("encloses every tile corner of a 256x128 grid", () => {
+		const w = 256;
+		const h = 128;
+		const b = mapWorldBounds(w, h, 0);
+		// Extreme projected corners: west corner of tile (0, h-1), east corner
+		// of (w-1, 0), north corner of (0, 0), south corner of (w-1, h-1).
+		const west = gridToScreen(0, h - 1).x - HALF_W;
+		const east = gridToScreen(w - 1, 0).x + HALF_W;
+		const north = gridToScreen(0, 0).y;
+		const south = gridToScreen(w - 1, h - 1).y + 2 * HALF_H;
+		expect(b.x0).toBe(west);
+		expect(b.x0 + b.width).toBe(east);
+		expect(b.y0).toBe(north);
+		expect(b.y0 + b.height).toBe(south);
+	});
+
+	it("extends only the top edge by the headroom", () => {
+		const flat = mapWorldBounds(64, 64, 0);
+		const padded = mapWorldBounds(64, 64, 200);
+		expect(padded.y0).toBe(flat.y0 - 200);
+		expect(padded.y0 + padded.height).toBe(flat.y0 + flat.height);
+		expect(padded.x0).toBe(flat.x0);
+		expect(padded.width).toBe(flat.width);
+	});
+
+	it("matches the span fitZoom fits to", () => {
+		// fitZoom and mapWorldBounds must agree on the projected diamond size,
+		// or the full-map bake condition would disagree with the zoom-out limit.
+		const b = mapWorldBounds(256, 256, 0);
+		expect(b.width).toBe((256 + 256) * HALF_W);
+		expect(b.height).toBe((256 + 256) * HALF_H);
 	});
 });

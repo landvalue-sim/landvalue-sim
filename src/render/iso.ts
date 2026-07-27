@@ -54,6 +54,34 @@ export function fitZoom(
 	return Math.min(usableW / worldW, usableH / worldH);
 }
 
+/** World-space bounding rect of a grid's rendered content (see mapWorldBounds). */
+export interface WorldBounds {
+	readonly x0: number;
+	readonly y0: number;
+	readonly width: number;
+	readonly height: number;
+}
+
+/**
+ * World-space rect enclosing everything a `w` x `h` grid can draw: the
+ * projected diamond of all tile faces, extended `headroomPx` above the top
+ * corner for terrain lift and tall building sprites. Skirts and columns only
+ * ever draw upward from the base diamond, so no bottom headroom is needed.
+ */
+export function mapWorldBounds(
+	w: number,
+	h: number,
+	headroomPx: number,
+): WorldBounds {
+	const span = w + h;
+	return {
+		x0: -h * HALF_W,
+		y0: 0 - headroomPx, // subtraction, not negation: avoids -0 at headroom 0
+		width: span * HALF_W,
+		height: span * HALF_H + headroomPx,
+	};
+}
+
 /** Grid (x, y) -> world-space pixel at the tile's center. */
 export function gridToScreen(x: number, y: number): Point {
 	return { x: (x - y) * HALF_W, y: (x + y) * HALF_H };
