@@ -172,6 +172,51 @@ body {
 	color: #fecaca;
 }
 
+/* Undo borrows the category button's shape but is an action, not a mode: it
+   never latches, and it greys out when there is no history left. */
+.undo-btn {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	padding: 8px 10px;
+	margin-top: 6px;
+	background: #111827;
+	border: 1px solid #374151;
+	border-radius: 4px;
+	color: #d1d5db;
+	font-family: inherit;
+	font-size: 12.5px;
+	text-align: left;
+	cursor: pointer;
+}
+
+.undo-btn[data-hovered] {
+	background: #1e293b;
+	border-color: #4b5563;
+}
+
+.undo-btn[data-pressed] {
+	background: #172033;
+}
+
+.undo-btn[data-disabled] {
+	color: #4b5563;
+	cursor: default;
+	border-color: #2b3444;
+}
+
+.undo-btn[data-focus-visible] {
+	outline: 2px solid #93c5fd;
+	outline-offset: 1px;
+}
+
+.undo-depth {
+	color: #6b7280;
+	font-variant-numeric: tabular-nums;
+	font-size: 11px;
+}
+
 /* The flyout popover renders in a portal at document root. */
 .tool-flyout {
 	background: #1f2937;

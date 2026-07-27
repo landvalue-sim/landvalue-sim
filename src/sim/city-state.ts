@@ -136,6 +136,27 @@ export function cityByteLength(width: number, height: number): number {
 	return computeLayout(width, height).byteLength;
 }
 
+/** A contiguous byte span of the city buffer. */
+export interface ByteRange {
+	readonly byteOffset: number;
+	readonly byteLength: number;
+}
+
+/**
+ * The byte span covering every *grid* layer — the u16 block, the u8 block, and
+ * the vertex heights — but not the aggregates or the PRNG, which sit ahead of
+ * it. The layout orders sections so this is one unbroken run, which lets undo
+ * snapshot the whole map with a single copy while leaving the clock, the
+ * demand curves, and the RNG stream untouched (see undo.ts).
+ */
+export function gridByteRange(width: number, height: number): ByteRange {
+	const layout = computeLayout(width, height);
+	return {
+		byteOffset: layout.u16,
+		byteLength: layout.byteLength - layout.u16,
+	};
+}
+
 /**
  * Construct all typed-array views over `buffer` without writing any data.
  * The caller is responsible for initialization (see `createCity`).

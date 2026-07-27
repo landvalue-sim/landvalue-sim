@@ -44,13 +44,19 @@ export interface SetInfiniteMoneyMessage {
 	readonly enabled: boolean;
 }
 
+/** Roll the city back to before the most recent edit. */
+export interface UndoMessage {
+	readonly type: "undo";
+}
+
 export type ToWorkerMessage =
 	| InitMessage
 	| CommandsMessage
 	| SpeedMessage
 	| ClearViolationsMessage
 	| LoadTestCityMessage
-	| SetInfiniteMoneyMessage;
+	| SetInfiniteMoneyMessage
+	| UndoMessage;
 
 // ---- Worker -> Main --------------------------------------------------------
 
@@ -64,4 +70,14 @@ export interface StatsMessage {
 	readonly violations: ReadonlyArray<Violation>;
 }
 
-export type FromWorkerMessage = ReadyMessage | StatsMessage;
+/**
+ * How many edits are currently undoable. The worker owns the undo ring (it is
+ * the only writer of city state), so the main thread learns the depth only by
+ * being told — it drives the Undo button's enabled state.
+ */
+export interface UndoDepthMessage {
+	readonly type: "undo-depth";
+	readonly depth: number;
+}
+
+export type FromWorkerMessage = ReadyMessage | StatsMessage | UndoDepthMessage;

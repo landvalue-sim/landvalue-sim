@@ -1,9 +1,10 @@
 // Public API for the simulation core
 
-export type { CityState, CreateCityOptions } from "./city-state.ts";
+export type { ByteRange, CityState, CreateCityOptions } from "./city-state.ts";
 export {
 	cityByteLength,
 	createCity,
+	gridByteRange,
 	inBounds,
 	tileIndex,
 	vertexIndex,
@@ -96,3 +97,11 @@ export { clearViolations, getViolations } from "./sim-invariants.ts";
 export { setWaterTile, terraformTile } from "./terraform.ts";
 export { generateTerrain } from "./terrain-gen.ts";
 export { applyEdits, bumpRevision, refreshDerived, tick } from "./tick.ts";
+export type { UndoRing } from "./undo.ts";
+export {
+	captureUndo,
+	clearUndo,
+	commitUndo,
+	createUndoRing,
+	restoreUndo,
+} from "./undo.ts";

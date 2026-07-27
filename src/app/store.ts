@@ -30,6 +30,8 @@ export interface InteractionStore {
 	setSpeed(speed: Speed): void;
 	setDragEnabled(enabled: boolean): void;
 	togglePause(): void;
+	/** Roll back the most recent edit (no-op when there is nothing to undo). */
+	undo(): void;
 	/** Install global keyboard shortcuts; returns a teardown function. */
 	installKeyboard(): () => void;
 }
@@ -103,6 +105,9 @@ export function createStore(sim: SimClient): InteractionStore {
 		togglePause() {
 			setSpeed(snapshot.speed === 0 ? lastRunningSpeed : 0);
 		},
+		undo() {
+			sim.undo();
+		},
 		installKeyboard() {
 			function onKeyDown(e: KeyboardEvent): void {
 				if (
@@ -111,6 +116,16 @@ export function createStore(sim: SimClient): InteractionStore {
 				) {
 					return;
 				}
+				if (e.ctrlKey || e.metaKey) {
+					if (e.key === "z" || e.key === "Z") {
+						store.undo();
+						e.preventDefault();
+					}
+					// Every other chord belongs to the browser: the bare-letter tool
+					// shortcuts below must not swallow Ctrl+R, Ctrl+W and friends.
+					return;
+				}
+				if (e.altKey) return;
 				let handled = true;
 				switch (e.key) {
 					case "1":

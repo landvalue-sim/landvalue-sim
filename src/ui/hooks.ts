@@ -123,6 +123,16 @@ export function useSimStats(sim: SimClient): SimStats | null {
 	return stats;
 }
 
+/**
+ * How many edits are currently undoable. The worker owns the undo history, so
+ * this arrives by message rather than being read from the shared buffer.
+ */
+export function useUndoDepth(sim: SimClient): number {
+	const [depth, setDepth] = useState(0);
+	useEffect(() => sim.onUndoDepth(setDepth), [sim]);
+	return depth;
+}
+
 const MONTH_NAMES = [
 	"Jan",
 	"Feb",

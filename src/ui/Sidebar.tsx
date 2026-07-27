@@ -22,7 +22,12 @@ import type { OverlayMode, Speed, Tool } from "../app/types.ts";
 import { MAX_DEMAND } from "../sim/index.ts";
 import { DevPanel } from "./DevPanel.tsx";
 import { FinancesDialog } from "./FinancesDialog.tsx";
-import { formatDate, useInteraction, useLiveStats } from "./hooks.ts";
+import {
+	formatDate,
+	useInteraction,
+	useLiveStats,
+	useUndoDepth,
+} from "./hooks.ts";
 
 // ---- Tool definitions -------------------------------------------------------
 
@@ -148,6 +153,7 @@ interface SidebarProps {
 export function Sidebar({ store, sim }: SidebarProps): React.ReactElement {
 	const { tool, overlay, speed, dragEnabled } = useInteraction(store);
 	const stats = useLiveStats(sim.city);
+	const undoDepth = useUndoDepth(sim);
 
 	function firstKey(keys: Set<Key>): string | null {
 		for (const k of keys) return String(k);
@@ -184,6 +190,20 @@ export function Sidebar({ store, sim }: SidebarProps): React.ReactElement {
 						</span>
 					</Button>
 				</div>
+				{/* Undo lives with the build tools because that is what it acts on:
+				    map edits, not the simulation. It rolls back one gesture — a whole
+				    drag, not a tile — and refunds what that gesture cost. */}
+				<Button
+					className="undo-btn"
+					isDisabled={undoDepth === 0}
+					onPress={() => store.undo()}
+				>
+					<span className="category-icon" aria-hidden="true">
+						↶
+					</span>
+					<span className="category-label">Undo (Ctrl+Z)</span>
+					<span className="undo-depth">{undoDepth > 0 ? undoDepth : ""}</span>
+				</Button>
 				<Switch
 					className="drag-switch"
 					isSelected={dragEnabled}
