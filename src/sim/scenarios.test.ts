@@ -3,7 +3,9 @@ import { createCity } from "./city-state.ts";
 import {
 	AGG,
 	BUILDING_EMPTY,
+	CIVIC_WATER_PUMP,
 	STARTING_TREASURY,
+	TERRAIN_WATER,
 	ZONE_COMMERCIAL,
 	ZONE_INDUSTRIAL,
 	ZONE_NONE,
@@ -101,28 +103,62 @@ describe("buildTestCity", () => {
 });
 
 describe("buildDenseCity", () => {
-	it("fills every non-road tile with a built high-density R or C parcel", () => {
+	it("fills the map with roads, built R/C/I parcels, civics, and ponds", () => {
 		const city = createCity({ width: 64, height: 64, seed: 1 });
 		buildDenseCity(city);
 
 		let roads = 0;
-		let built = 0;
+		let civics = 0;
+		let water = 0;
+		const zoneCounts = [0, 0, 0, 0];
 		for (let t = 0; t < city.size; t++) {
 			if (city.roads[t] === 1) {
 				roads++;
 				expect(city.building[t]).toBe(BUILDING_EMPTY);
+			} else if ((city.civic[t] ?? 0) !== 0) {
+				civics++;
+				expect(city.building[t]).toBe(BUILDING_EMPTY);
+			} else if (city.terrain[t] === TERRAIN_WATER) {
+				water++;
+				expect(city.building[t]).toBe(BUILDING_EMPTY);
 			} else {
-				built++;
+				// Every remaining tile is a built parcel of one of the three zones.
 				expect(city.building[t]).not.toBe(BUILDING_EMPTY);
-				const zone = city.zoning[t];
-				expect(zone === ZONE_RESIDENTIAL || zone === ZONE_COMMERCIAL).toBe(
-					true,
-				);
+				const zone = city.zoning[t] ?? 0;
+				zoneCounts[zone] = (zoneCounts[zone] ?? 0) + 1;
 			}
 		}
-		expect(roads + built).toBe(city.size);
 		expect(roads).toBeGreaterThan(0);
-		expect(built).toBeGreaterThan(0);
+		expect(civics).toBeGreaterThan(0);
+		expect(water).toBeGreaterThan(0);
+		expect(zoneCounts[ZONE_NONE]).toBe(0);
+		expect(zoneCounts[ZONE_RESIDENTIAL]).toBeGreaterThan(0);
+		expect(zoneCounts[ZONE_COMMERCIAL]).toBeGreaterThan(0);
+		expect(zoneCounts[ZONE_INDUSTRIAL]).toBeGreaterThan(0);
+	});
+
+	it("lays rail and places every water pump beside a pond", () => {
+		const city = createCity({ width: 64, height: 64, seed: 1 });
+		buildDenseCity(city);
+
+		let rail = 0;
+		let pumps = 0;
+		for (let t = 0; t < city.size; t++) {
+			if (city.rail[t] === 1) rail++;
+			if (city.civic[t] === CIVIC_WATER_PUMP) {
+				pumps++;
+				// Orthogonally adjacent water, so updateWater treats it as active.
+				const x = t % city.width;
+				const adjacentWater =
+					(x > 0 && city.terrain[t - 1] === TERRAIN_WATER) ||
+					(x < city.width - 1 && city.terrain[t + 1] === TERRAIN_WATER) ||
+					city.terrain[t - city.width] === TERRAIN_WATER ||
+					city.terrain[t + city.width] === TERRAIN_WATER;
+				expect(adjacentWater).toBe(true);
+			}
+		}
+		expect(rail).toBeGreaterThan(0);
+		expect(pumps).toBeGreaterThan(0);
 	});
 
 	it("produces a city that ticks without invariant violations", () => {

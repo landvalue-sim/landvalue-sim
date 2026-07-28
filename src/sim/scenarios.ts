@@ -14,6 +14,13 @@ import {
 	BUILDING_LOW,
 	BUILDING_MED,
 	CIVIC_COAL_PLANT,
+	CIVIC_FIRE_STATION,
+	CIVIC_HOSPITAL,
+	CIVIC_PARK,
+	CIVIC_POLICE,
+	CIVIC_SCHOOL,
+	CIVIC_STADIUM,
+	CIVIC_WATER_PUMP,
 	DENSITY_HIGH,
 	DENSITY_LOW,
 	DENSITY_MED,
@@ -22,6 +29,7 @@ import {
 	POP_PER_DENSITY,
 	STARTING_TREASURY,
 	TERRAIN_LAND,
+	TERRAIN_WATER,
 	ZONE_COMMERCIAL,
 	ZONE_INDUSTRIAL,
 	ZONE_NONE,
@@ -94,40 +102,94 @@ function specForChar(c: string): ZoneSpec | null {
 }
 
 // Dense city: every 4th row/column is road; the 3x3 blocks between are fully
-// built out at high density, block columns alternating commercial/residential.
+// built out at high density, block columns cycling commercial/residential/
+// industrial. Every DENSE_CELL-sized cell also gets a civic kit (coal plant,
+// pond + water pump, police, fire, hospital, school, park) and every
+// DENSE_RAIL_STRIDE-th road row carries rail, so no system idles.
 const DENSE_STRIDE = 4;
+const DENSE_CELL = 16;
+const DENSE_RAIL_STRIDE = 16;
+
+/** Overwrite a parcel with a civic building (mirrors placePowerPlant). */
+function stampCivic(
+	state: CityState,
+	x: number,
+	y: number,
+	kind: number,
+): void {
+	if (!inBounds(state.width, state.height, x, y)) return;
+	const idx = tileIndex(state.width, x, y);
+	state.civic[idx] = kind;
+	state.roads[idx] = 0;
+	state.zoning[idx] = ZONE_NONE;
+	state.densityCap[idx] = 0;
+	state.building[idx] = 0;
+	state.population[idx] = 0;
+	state.jobs[idx] = 0;
+}
+
+/** Overwrite a parcel with water so an adjacent pump can activate. */
+function stampPond(state: CityState, x: number, y: number): void {
+	if (!inBounds(state.width, state.height, x, y)) return;
+	const idx = tileIndex(state.width, x, y);
+	state.terrain[idx] = TERRAIN_WATER;
+	state.roads[idx] = 0;
+	state.zoning[idx] = ZONE_NONE;
+	state.densityCap[idx] = 0;
+	state.building[idx] = 0;
+	state.population[idx] = 0;
+	state.jobs[idx] = 0;
+}
 
 /**
  * Replace the current city with a worst-case dense grid that fills the whole
  * map: a 4-stride road lattice with every block built out at high density.
  * This is the benchmark city for the per-tick budget (issue #11) — maximum
- * occupied R tiles, maximum R-to-C commute pairs, no empty land. Fully
- * deterministic and terrain-flat so timings measure the systems, not the map.
+ * occupied R tiles, maximum commute pairs, industrial pollution sources,
+ * rail, and a civic kit per 16x16 cell so power, water, civic coverage, and
+ * externalities all do representative work rather than idling. Power and
+ * water capacity intentionally fall short of full demand (a fully powered
+ * build-out would need ~1500 coal plants under the current flat demand
+ * tiers); the flood fills still walk the grid until capacity runs out.
+ * Fully deterministic and terrain-flat so timings measure the systems.
  */
 export function buildDenseCity(state: CityState): void {
 	resetCity(state);
 
-	const cSpec: ZoneSpec = {
-		zone: ZONE_COMMERCIAL,
-		tier: BUILDING_HIGH,
-		density: DENSITY_HIGH,
-	};
-	const rSpec: ZoneSpec = {
-		zone: ZONE_RESIDENTIAL,
-		tier: BUILDING_HIGH,
-		density: DENSITY_HIGH,
-	};
+	const specs: readonly ZoneSpec[] = [
+		{ zone: ZONE_COMMERCIAL, tier: BUILDING_HIGH, density: DENSITY_HIGH },
+		{ zone: ZONE_RESIDENTIAL, tier: BUILDING_HIGH, density: DENSITY_HIGH },
+		{ zone: ZONE_INDUSTRIAL, tier: BUILDING_HIGH, density: DENSITY_HIGH },
+	];
 
 	for (let y = 0; y < state.height; y++) {
 		for (let x = 0; x < state.width; x++) {
 			if (x % DENSE_STRIDE === 0 || y % DENSE_STRIDE === 0) {
 				setRoad(state, x, y);
+				if (y % DENSE_RAIL_STRIDE === 0) {
+					state.rail[tileIndex(state.width, x, y)] = 1;
+				}
 				continue;
 			}
-			const commercial = Math.floor(x / DENSE_STRIDE) % 2 === 0;
-			fillTile(state, x, y, commercial ? cSpec : rSpec);
+			const spec = specs[Math.floor(x / DENSE_STRIDE) % 3];
+			if (spec !== undefined) fillTile(state, x, y, spec);
 		}
 	}
+
+	// One civic kit per cell, on block-interior offsets (never a road tile).
+	for (let cy = 0; cy + DENSE_CELL <= state.height; cy += DENSE_CELL) {
+		for (let cx = 0; cx + DENSE_CELL <= state.width; cx += DENSE_CELL) {
+			stampCivic(state, cx + 2, cy + 2, CIVIC_COAL_PLANT);
+			stampPond(state, cx + 5, cy + 2);
+			stampCivic(state, cx + 6, cy + 2, CIVIC_WATER_PUMP);
+			stampCivic(state, cx + 10, cy + 2, CIVIC_POLICE);
+			stampCivic(state, cx + 14, cy + 2, CIVIC_FIRE_STATION);
+			stampCivic(state, cx + 2, cy + 6, CIVIC_HOSPITAL);
+			stampCivic(state, cx + 6, cy + 6, CIVIC_SCHOOL);
+			stampCivic(state, cx + 10, cy + 6, CIVIC_PARK);
+		}
+	}
+	stampCivic(state, 14, 6, CIVIC_STADIUM);
 }
 
 /** Replace the current city with a deterministic pre-built downtown. */
