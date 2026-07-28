@@ -17,7 +17,10 @@ import { tick } from "./tick.ts";
  */
 
 // Loose CI bound, well above the 20 ms target — see the header comment.
-const MAX_AVG_TICK_MS = 500;
+// The dense tick averages ~17 ms after the issue #11 optimisation passes
+// (205 ms before them), so this catches a structural regression with room
+// for slow shared runners.
+const MAX_AVG_TICK_MS = 150;
 
 const WARMUP_TICKS = 2;
 const MEASURED_TICKS = 5;
