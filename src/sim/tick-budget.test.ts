@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createCity } from "./city-state.ts";
 import { MAX_GRID_SIZE } from "./constants.ts";
-import { getProfileSnapshot, SYSTEM_NAMES } from "./profiler.ts";
+import { getProfileSnapshot, profilerReset, SYSTEM_NAMES } from "./profiler.ts";
 import { buildDenseCity } from "./scenarios.ts";
 import { tick } from "./tick.ts";
 
@@ -14,13 +14,19 @@ import { tick } from "./tick.ts";
  * but a CI-safe hard assertion has to be far looser than that to survive
  * shared runners. Tightening the budget below is deliberate; a failure here
  * means a system got structurally slower, not that a runner had a bad day.
+ *
+ * Note the per-system rows and TOTAL both time dev-mode code: the invariants
+ * row is dev-only (stripped from production builds), and every system runs
+ * under Vite's module transform. Production tick time is lower — treat any
+ * production figure derived from this table as an estimate, not a measurement.
  */
 
-// Loose CI bound, well above the 20 ms target — see the header comment.
-// The dense tick averages ~17 ms after the issue #11 optimisation passes
-// (205 ms before them), so this catches a structural regression with room
-// for slow shared runners.
-const MAX_AVG_TICK_MS = 150;
+// Loose CI bound, above the 20 ms target — see the header comment.
+// After the benchmark city gained industry, civics, and utilities, the dense
+// tick averages ~35 ms locally (externalities' industrial pollution spread is
+// the largest cost). ~3.5x headroom absorbs slow shared runners while still
+// catching a structural regression.
+const MAX_AVG_TICK_MS = 120;
 
 const WARMUP_TICKS = 2;
 const MEASURED_TICKS = 5;
@@ -35,11 +41,15 @@ describe("tick budget", () => {
 		buildDenseCity(city);
 
 		for (let i = 0; i < WARMUP_TICKS; i++) tick(city, []);
+		// Drop the warmup samples so the per-system table below averages
+		// exactly the ticks that TOTAL averages.
+		profilerReset();
 		const t0 = performance.now();
 		for (let i = 0; i < MEASURED_TICKS; i++) tick(city, []);
 		const avgTick = (performance.now() - t0) / MEASURED_TICKS;
 
 		const snapshot = getProfileSnapshot();
+		expect(snapshot.sampleCount).toBe(MEASURED_TICKS);
 		const rows: string[] = [];
 		for (const name of SYSTEM_NAMES) {
 			const stats = snapshot.systems.get(name);
