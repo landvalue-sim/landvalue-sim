@@ -8,6 +8,9 @@ import {
 	COST_ROAD,
 	DENSITY_LOW,
 	ELEVATION_MAX,
+	INFINITE_TREASURY,
+	MAX_GRID_SIZE,
+	MAX_TERRAFORM_DRAG_SIDE,
 	ZONE_RESIDENTIAL,
 } from "./constants.ts";
 import { processCommands } from "./systems/command-processor.ts";
@@ -600,5 +603,53 @@ describe("undo tile record format", () => {
 			).toBe(true);
 		}
 		expect(perTile.length).toBe(classified.size);
+	});
+});
+
+/**
+ * The terraform drag cap exists to keep one gesture inside the undo arenas.
+ * That is a relationship between two constants in different modules with a
+ * terrain-dependent ripple in between, so it is measured rather than argued:
+ * raise MAX_TERRAFORM_DRAG_SIDE, or shrink an arena, and this fails.
+ */
+describe("terraform drag cap", () => {
+	it("keeps its undo step at the worst case the cap allows", () => {
+		const city = createCity({
+			width: MAX_GRID_SIZE,
+			height: MAX_GRID_SIZE,
+			seed: 1,
+		});
+		// The most expensive ground there is: flat at sea level, so every tile in
+		// the drag ripples the full ELEVATION_MAX rings to reach the target.
+		city.vertexHeights.fill(0);
+		city.aggregates[AGG.DEBUG_INFINITE_MONEY] = 1;
+		city.aggregates[AGG.TREASURY] = INFINITE_TREASURY;
+
+		// Centred, so no map edge clips the ripple and shortens the record count.
+		const side = MAX_TERRAFORM_DRAG_SIDE;
+		const off = Math.floor((MAX_GRID_SIZE - side) / 2);
+		const cmds: Command[] = [];
+		for (let y = off; y < off + side; y++) {
+			for (let x = off; x < off + side; x++) {
+				cmds.push({ kind: "level-terrain", x, y, level: ELEVATION_MAX });
+			}
+		}
+
+		const journal = createUndoJournal();
+		expect(applyEdits(city, cmds, journal)).toBe(side * side);
+
+		// The point of the cap: the largest terraform gesture the player can make
+		// is still undoable. Before it, this drag lapped both arenas and took the
+		// whole history with it.
+		expect(journal.overflowed).toBe(false);
+		expect(journal.count).toBe(1);
+		expect(journal.vertWritten).toBeLessThan(VERTEX_CAPACITY);
+		expect(journal.tileWritten).toBeLessThan(TILE_CAPACITY);
+
+		expect(undoEdit(city, journal)).toBe(true);
+		expect(journal.count).toBe(0);
+		for (let i = 0; i < city.vertexHeights.length; i++) {
+			expect(city.vertexHeights[i]).toBe(0);
+		}
 	});
 });

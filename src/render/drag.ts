@@ -63,6 +63,37 @@ export function roadLineTiles(
 	return tiles;
 }
 
+/**
+ * Pull the far corner (bx, by) in so the rectangle it spans with (ax, ay) is at
+ * most `maxSide` tiles on each axis, and return where it ends up.
+ *
+ * The drag start is the anchor: the rectangle stops growing under the pointer
+ * rather than sliding along after it, so a player who keeps dragging sees the
+ * footprint hold still at its limit instead of drifting off the ground they
+ * meant to cover. Callers clamp before building the tile list, which is what
+ * makes the preview and the committed batch agree.
+ */
+export function clampRectSpan(
+	ax: number,
+	ay: number,
+	bx: number,
+	by: number,
+	maxSide: number,
+): Point {
+	return {
+		x: clampSpan(ax, bx, maxSide),
+		y: clampSpan(ay, by, maxSide),
+	};
+}
+
+/** One axis of `clampRectSpan`: `b` pulled within maxSide-1 of the anchor `a`. */
+function clampSpan(a: number, b: number, maxSide: number): number {
+	const reach = maxSide - 1;
+	if (b - a > reach) return a + reach;
+	if (a - b > reach) return a - reach;
+	return b;
+}
+
 /** Every tile in the rectangle spanned by the two corners (inclusive). */
 export function rectTiles(
 	ax: number,
