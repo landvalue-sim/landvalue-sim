@@ -36,12 +36,19 @@ import {
 	ZONE_INDUSTRIAL,
 	ZONE_RESIDENTIAL,
 } from "../constants.ts";
+import { invariant } from "../invariant.ts";
 
 const RADIUS = TRAFFIC_SPREAD_RADIUS;
 
 // Per-trip contribution at path-step k is max(1, floor(load * DECAY^(k-1))),
 // precomputed for every load a Uint8 building tier can produce. k never
 // exceeds RADIUS because a trip's total length |dx|+|dy| is capped there.
+// Entries fit Uint8 only while decay never amplifies (load itself is <= 255);
+// check that once at module load so retuning TRAFFIC_DECAY fails loudly.
+invariant(
+	TRAFFIC_DECAY > 0 && TRAFFIC_DECAY <= 1,
+	"traffic: TRAFFIC_DECAY outside (0, 1] would overflow STEP_VALUES",
+);
 const STEP_VALUES = new Uint8Array(256 * RADIUS);
 for (let load = 1; load < 256; load++) {
 	for (let k = 1; k <= RADIUS; k++) {

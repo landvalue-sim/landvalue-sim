@@ -63,8 +63,8 @@ export function updateExternalities(state: CityState): void {
 		if (t > 0) {
 			const trafficPol = Math.floor(t * trafficFactor);
 			if (trafficPol > 0) {
-				const current = pollution[i] ?? 0;
-				pollution[i] = current + trafficPol > cap ? cap : current + trafficPol;
+				const next = (pollution[i] ?? 0) + trafficPol;
+				pollution[i] = next > cap ? cap : next;
 			}
 		}
 	}
@@ -94,13 +94,13 @@ function spreadPollution(
 			const ni = ny * width + nx;
 
 			if (dist === 0) {
-				const current = pollution[ni] ?? 0;
-				pollution[ni] = current + amount > cap ? cap : current + amount;
+				const next = (pollution[ni] ?? 0) + amount;
+				pollution[ni] = next > cap ? cap : next;
 			} else {
 				const spread = Math.floor(amount * (DECAY_POW[dist] ?? 0));
 				if (spread > 0) {
-					const current = pollution[ni] ?? 0;
-					pollution[ni] = current + spread > cap ? cap : current + spread;
+					const next = (pollution[ni] ?? 0) + spread;
+					pollution[ni] = next > cap ? cap : next;
 				}
 			}
 		}

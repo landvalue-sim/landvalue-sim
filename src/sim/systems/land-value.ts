@@ -33,6 +33,7 @@
  */
 
 import { type CityState, inBounds } from "../city-state.ts";
+import { invariant } from "../invariant.ts";
 import {
 	BUILDING_EMPTY,
 	CIVIC_PARK,
@@ -130,6 +131,22 @@ for (let bits = 0; bits <= FLAG_BONUS_MASK; bits++) {
 	if ((bits & F_STADIUM) !== 0) bonus += LV_STADIUM_BONUS;
 	FLAG_BONUS[bits] = bonus;
 }
+
+// selfValue is an Int16Array; its choice of width is safe only while the
+// worst-case combination of the constants above stays inside Int16 range.
+// Check it once at module load so retuning a constant fails loudly in dev
+// instead of wrapping silently.
+const SELF_VALUE_MIN =
+	LV_BASE -
+	255 * LV_POLLUTION_FACTOR -
+	Math.floor(255 * LV_CRIME_FACTOR) -
+	LV_NO_POWER_PENALTY -
+	LV_NO_WATER_PENALTY;
+const SELF_VALUE_MAX = LV_BASE + Math.floor(255 * LV_ELEVATION_FACTOR);
+invariant(
+	SELF_VALUE_MIN >= -32768 && SELF_VALUE_MAX <= 32767,
+	"land-value: worst-case selfValue exceeds Int16 range",
+);
 
 export function updateLandValue(state: CityState): void {
 	const { width, height, traffic, landValue, zoning } = state;
