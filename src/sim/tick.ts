@@ -42,7 +42,11 @@ import { updateLandValue } from "./systems/land-value.ts";
 import { processMigration } from "./systems/migration.ts";
 import { updatePower } from "./systems/power.ts";
 import { updatePublicFinance } from "./systems/public-finance.ts";
-import { updateRciDemand, updateSupplyTotals } from "./systems/rci-demand.ts";
+import {
+	createSupplyScratch,
+	updateRciDemand,
+	updateSupplyTotals,
+} from "./systems/rci-demand.ts";
 import { updateTraffic } from "./systems/traffic.ts";
 import { updateWater } from "./systems/water.ts";
 import { beginStep, commitStep, type UndoJournal, undoStep } from "./undo.ts";
@@ -120,6 +124,13 @@ export function bumpRevision(state: CityState): void {
 }
 
 /**
+ * Somewhere for `refreshDerived`'s supply pass to put the counts only the demand
+ * model reads. Allocated once, at module load, and discarded on every use — the
+ * demand curves keep their own (NASA rule 3).
+ */
+const refreshSupply = createSupplyScratch();
+
+/**
  * Recompute every layer that is a pure function of the current grid. Used by
  * `applyEdits` and after an undo puts tiles back.
  *
@@ -134,7 +145,7 @@ export function refreshDerived(state: CityState): void {
 	updateCivicCoverage(state);
 	updateConnections(state);
 	updateLandValue(state);
-	updateSupplyTotals(state);
+	updateSupplyTotals(state, refreshSupply);
 }
 
 export function tick(state: CityState, commands: ReadonlyArray<Command>): void {

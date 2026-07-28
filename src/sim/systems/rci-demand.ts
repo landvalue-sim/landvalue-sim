@@ -35,25 +35,38 @@ import {
 } from "../constants.ts";
 
 /**
- * What one pass over the grid found. Module-level so both callers below share
- * one tally without allocating (NASA rule 3); it is written and read within a
- * single synchronous call, never held across one.
+ * The part of one grid pass that does not fit in the aggregates: counts the
+ * demand model needs but the HUD never shows.
+ *
+ * It is an out-param rather than a return value so the pass allocates nothing
+ * (NASA rule 3), and each caller owns its own so one call can never overwrite
+ * another's numbers. `updateRciDemand` reads its copy immediately; the caller in
+ * `refreshDerived` wants only the aggregates and throws its copy away.
  */
-const supply = {
-	occupiedC: 0,
-	occupiedI: 0,
-	pollutionOnR: 0,
-	rTileCount: 0,
-};
+export interface SupplyScratch {
+	occupiedC: number;
+	occupiedI: number;
+	pollutionOnR: number;
+	rTileCount: number;
+}
+
+/** Allocate a scratch struct. Call once, at module load — never per tick. */
+export function createSupplyScratch(): SupplyScratch {
+	return { occupiedC: 0, occupiedI: 0, pollutionOnR: 0, rTileCount: 0 };
+}
+
+/** `updateRciDemand`'s own scratch. Nothing else may hold a reference to it. */
+const demandSupply = createSupplyScratch();
 
 /**
- * Re-tally population and jobs from the grid and publish the totals.
+ * Re-tally population and jobs from the grid, publish the totals to the
+ * aggregates, and write the rest into `out`.
  *
  * Split out of the demand model so an edit or an undo can correct the numbers
  * the HUD reports without moving the demand curves — bulldozing a block should
  * drop the population immediately, but it is not a month passing.
  */
-export function updateSupplyTotals(state: CityState): void {
+export function updateSupplyTotals(state: CityState, out: SupplyScratch): void {
 	const { size, zoning, building, population, jobs, pollution, aggregates } =
 		state;
 	// Hoisted imported constants: under Vite's dev/test module transform an
@@ -115,20 +128,20 @@ export function updateSupplyTotals(state: CityState): void {
 	aggregates[AGG.TOTAL_C_JOBS] = totalCJobs;
 	aggregates[AGG.TOTAL_I_JOBS] = totalIJobs;
 
-	supply.occupiedC = occupiedC;
-	supply.occupiedI = occupiedI;
-	supply.pollutionOnR = pollutionOnR;
-	supply.rTileCount = rTileCount;
+	out.occupiedC = occupiedC;
+	out.occupiedI = occupiedI;
+	out.pollutionOnR = pollutionOnR;
+	out.rTileCount = rTileCount;
 }
 
 export function updateRciDemand(state: CityState): void {
 	const { aggregates } = state;
 
-	updateSupplyTotals(state);
+	updateSupplyTotals(state, demandSupply);
 	const totalPop = aggregates[AGG.TOTAL_POP] ?? 0;
 	const totalCJobs = aggregates[AGG.TOTAL_C_JOBS] ?? 0;
 	const totalIJobs = aggregates[AGG.TOTAL_I_JOBS] ?? 0;
-	const { occupiedC, occupiedI, pollutionOnR, rTileCount } = supply;
+	const { occupiedC, occupiedI, pollutionOnR, rTileCount } = demandSupply;
 	const totalJobs = totalCJobs + totalIJobs;
 
 	// --- Tax penalties -------------------------------------------------------
