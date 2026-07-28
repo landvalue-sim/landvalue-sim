@@ -22,10 +22,10 @@ import { tick } from "./tick.ts";
  */
 
 // Loose CI bound, above the 20 ms target — see the header comment.
-// After the benchmark city gained industry, civics, and utilities, the dense
-// tick averages ~35 ms locally (externalities' industrial pollution spread is
-// the largest cost). ~3.5x headroom absorbs slow shared runners while still
-// catching a structural regression.
+// After the benchmark city gained industry, civics, and utilities and the
+// pollution spread was kernelised, the dense tick averages ~19 ms locally.
+// ~6x headroom absorbs slow shared runners while still catching a
+// structural regression.
 const MAX_AVG_TICK_MS = 120;
 
 const WARMUP_TICKS = 2;
