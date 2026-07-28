@@ -203,9 +203,43 @@ export function updateLandValue(state: CityState): void {
 	}
 
 	// --- Pass 2: diffusion (bounded iterations) ------------------------------
-	for (let iter = 0; iter < LV_DIFFUSION_ITERATIONS; iter++) {
-		scratch.set(landValue);
-		diffuseOnce(state);
+	if (width < 2 || height < 2) {
+		for (let iter = 0; iter < LV_DIFFUSION_ITERATIONS; iter++) {
+			scratch.set(landValue);
+			diffuseOnceDirect(state);
+		}
+	} else {
+		// The eligibility mask and its row 3-counts depend only on tileFlags,
+		// which is constant across iterations — build them once, not per pass.
+		buildDiffusionMask(state);
+		for (let iter = 0; iter < LV_DIFFUSION_ITERATIONS; iter++) {
+			scratch.set(landValue);
+			diffuseOnce(state);
+		}
+	}
+}
+
+/**
+ * Diffusion eligibility (road/rail neighbors are masked out of the averages)
+ * and its horizontal 3-window counts. Constant across the diffusion
+ * iterations of one update; requires width >= 2.
+ */
+function buildDiffusionMask(state: CityState): void {
+	const { width, height, size } = state;
+
+	for (let i = 0; i < size; i++) {
+		eligible[i] = ((tileFlags[i] ?? 0) & F_SUM_SKIP) === 0 ? 1 : 0;
+	}
+
+	for (let y = 0; y < height; y++) {
+		const rowBase = y * width;
+		const last = rowBase + width - 1;
+		rowCount[rowBase] = (eligible[rowBase] ?? 0) + (eligible[rowBase + 1] ?? 0);
+		for (let i = rowBase + 1; i < last; i++) {
+			rowCount[i] =
+				(eligible[i - 1] ?? 0) + (eligible[i] ?? 0) + (eligible[i + 1] ?? 0);
+		}
+		rowCount[last] = (eligible[last - 1] ?? 0) + (eligible[last] ?? 0);
 	}
 }
 
@@ -304,21 +338,16 @@ function buildTileIndex(state: CityState): void {
  * therefore the averages — are identical to visiting each neighbor.
  * Road and rail neighbors are masked out; water and other zero-value tiles
  * still count toward the average, exactly as the direct scan did.
+ *
+ * Requires width/height >= 2 and buildDiffusionMask run for this update.
  */
 function diffuseOnce(state: CityState): void {
 	const { width, height, size, landValue } = state;
 	// Hoisted imported constant — see updateLandValue.
 	const rate = LV_DIFFUSION_RATE;
 
-	if (width < 2 || height < 2) {
-		diffuseOnceDirect(state);
-		return;
-	}
-
 	for (let i = 0; i < size; i++) {
-		const e = ((tileFlags[i] ?? 0) & F_SUM_SKIP) === 0 ? 1 : 0;
-		eligible[i] = e;
-		maskedValue[i] = e === 1 ? (scratch[i] ?? 0) : 0;
+		maskedValue[i] = eligible[i] === 1 ? (scratch[i] ?? 0) : 0;
 	}
 
 	// Horizontal 3-sums, row-clamped at the first and last column.
@@ -327,17 +356,13 @@ function diffuseOnce(state: CityState): void {
 		const last = rowBase + width - 1;
 		rowSum[rowBase] =
 			(maskedValue[rowBase] ?? 0) + (maskedValue[rowBase + 1] ?? 0);
-		rowCount[rowBase] = (eligible[rowBase] ?? 0) + (eligible[rowBase + 1] ?? 0);
 		for (let i = rowBase + 1; i < last; i++) {
 			rowSum[i] =
 				(maskedValue[i - 1] ?? 0) +
 				(maskedValue[i] ?? 0) +
 				(maskedValue[i + 1] ?? 0);
-			rowCount[i] =
-				(eligible[i - 1] ?? 0) + (eligible[i] ?? 0) + (eligible[i + 1] ?? 0);
 		}
 		rowSum[last] = (maskedValue[last - 1] ?? 0) + (maskedValue[last] ?? 0);
-		rowCount[last] = (eligible[last - 1] ?? 0) + (eligible[last] ?? 0);
 	}
 
 	// Vertical combine and write, column-clamped at the first and last row.
