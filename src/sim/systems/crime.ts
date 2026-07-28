@@ -37,12 +37,28 @@ export function updateCrime(state: CityState): void {
 	// Unemployment ratio: 0 when full employment, rises when pop > jobs * 2.5
 	const unemployment =
 		totalPop > 0 ? Math.max(0, 1 - (totalJobs * 2.5) / totalPop) : 0;
+	// The unemployment term is the same for every tile — hoist it.
+	const unemploymentCrime = Math.floor(
+		unemployment * CRIME_UNEMPLOYMENT_FACTOR * 100,
+	);
+
+	// Hoisted imported constants: under Vite's dev/test module transform an
+	// imported binding is a namespace property read on every use, which is
+	// ruinous inside per-tile loops. Locals compile to registers everywhere.
+	const zoneNone = ZONE_NONE;
+	const empty = BUILDING_EMPTY;
+	const crimeBase = CRIME_BASE;
+	const densityFactor = CRIME_DENSITY_FACTOR;
+	const lowValueThreshold = CRIME_LOW_VALUE_THRESHOLD;
+	const lowValueBonus = CRIME_LOW_VALUE_BONUS;
+	const policeFactor = 1 - CRIME_POLICE_SUPPRESSION;
+	const maxCrime = MAX_CRIME;
 
 	let totalCrime = 0;
 
 	for (let i = 0; i < size; i++) {
 		const zone = zoning[i] ?? 0;
-		if (zone === ZONE_NONE || building[i] === BUILDING_EMPTY) {
+		if (zone === zoneNone || building[i] === empty) {
 			crime[i] = 0;
 			continue;
 		}
@@ -50,25 +66,25 @@ export function updateCrime(state: CityState): void {
 		const bld = building[i] ?? 0;
 		const lv = landValue[i] ?? 0;
 
-		let c = CRIME_BASE;
+		let c = crimeBase;
 
 		// Higher density = more crime
-		c += bld * CRIME_DENSITY_FACTOR;
+		c += bld * densityFactor;
 
 		// Low land value areas attract crime
-		if (lv < CRIME_LOW_VALUE_THRESHOLD) {
-			c += CRIME_LOW_VALUE_BONUS;
+		if (lv < lowValueThreshold) {
+			c += lowValueBonus;
 		}
 
 		// Unemployment drives crime
-		c += Math.floor(unemployment * CRIME_UNEMPLOYMENT_FACTOR * 100);
+		c += unemploymentCrime;
 
 		// Police coverage suppresses crime
 		if (policeCoverage[i] === 1) {
-			c = Math.floor(c * (1 - CRIME_POLICE_SUPPRESSION));
+			c = Math.floor(c * policeFactor);
 		}
 
-		const clamped = Math.min(MAX_CRIME, Math.max(0, c));
+		const clamped = c > maxCrime ? maxCrime : c > 0 ? c : 0;
 		crime[i] = clamped;
 		totalCrime += clamped;
 	}

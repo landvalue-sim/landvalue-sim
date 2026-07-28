@@ -57,6 +57,12 @@ const POWER_NETWORK: NetworkSpec = {
 
 export function updatePower(state: CityState): void {
 	const { size, civic, building, power, aggregates } = state;
+	// Hoisted imported constants: under Vite's dev/test module transform an
+	// imported binding is a namespace property read on every use, which is
+	// ruinous inside per-tile loops. Locals compile to registers everywhere.
+	const outputs = POWER_OUTPUT;
+	const demandPerDensity = POWER_DEMAND_PER_DENSITY;
+	const empty = BUILDING_EMPTY;
 
 	let totalCapacity = 0;
 	let totalDemand = 0;
@@ -65,15 +71,15 @@ export function updatePower(state: CityState): void {
 	// Tally demand and collect power plants as flood-fill seeds.
 	for (let i = 0; i < size; i++) {
 		const c = civic[i] ?? 0;
-		const output = POWER_OUTPUT[c];
+		const output = outputs[c];
 		if (output !== undefined && output > 0) {
 			totalCapacity += output;
 			plantSeeds[seedCount] = i;
 			seedCount++;
 		}
 		const tier = building[i] ?? 0;
-		if (tier !== BUILDING_EMPTY) {
-			totalDemand += POWER_DEMAND_PER_DENSITY[tier] ?? 0;
+		if (tier !== empty) {
+			totalDemand += demandPerDensity[tier] ?? 0;
 		}
 	}
 

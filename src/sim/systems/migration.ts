@@ -61,14 +61,19 @@ function growZone(state: CityState, zoneType: number, demand: number): void {
 	if (demand < GROWTH_DEMAND_THRESHOLD) return;
 
 	const { size, terrain, zoning, building, landValue } = state;
+	// Hoisted imported constants: under Vite's dev/test module transform an
+	// imported binding is a namespace property read on every use, which is
+	// ruinous inside per-tile loops. Locals compile to registers everywhere.
+	const empty = BUILDING_EMPTY;
+	const water = TERRAIN_WATER;
 
 	// Collect empty zoned tiles that have road access
 	let count = 0;
 	for (let i = 0; i < size; i++) {
 		if (
 			zoning[i] === zoneType &&
-			building[i] === BUILDING_EMPTY &&
-			terrain[i] !== TERRAIN_WATER &&
+			building[i] === empty &&
+			terrain[i] !== water &&
 			hasRoadAccess(state, i)
 		) {
 			candIdx[count] = i;
@@ -109,14 +114,17 @@ function upgradeZone(state: CityState, zoneType: number, demand: number): void {
 	if (demand < UPGRADE_DEMAND_THRESHOLD) return;
 
 	const { size, zoning, building, densityCap, landValue } = state;
+	// Hoisted imported constants — see growZone.
+	const empty = BUILDING_EMPTY;
+	const densityLow = DENSITY_LOW;
 
 	// Collect occupied tiles below their density cap
 	let count = 0;
 	for (let i = 0; i < size; i++) {
-		const cap = densityCap[i] ?? DENSITY_LOW;
+		const cap = densityCap[i] ?? densityLow;
 		if (
 			zoning[i] === zoneType &&
-			building[i] !== BUILDING_EMPTY &&
+			building[i] !== empty &&
 			(building[i] ?? 0) < cap
 		) {
 			candIdx[count] = i;
@@ -152,11 +160,13 @@ function abandonZone(state: CityState, zoneType: number, demand: number): void {
 	if (demand > ABANDON_DEMAND_THRESHOLD) return;
 
 	const { size, zoning, building, landValue } = state;
+	// Hoisted imported constant — see growZone.
+	const empty = BUILDING_EMPTY;
 
 	// Collect occupied tiles of this zone type
 	let count = 0;
 	for (let i = 0; i < size; i++) {
-		if (zoning[i] === zoneType && building[i] !== BUILDING_EMPTY) {
+		if (zoning[i] === zoneType && building[i] !== empty) {
 			candIdx[count] = i;
 			candVal[count] = landValue[i] ?? 0;
 			count++;
