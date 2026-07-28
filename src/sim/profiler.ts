@@ -114,13 +114,15 @@ export function profilerTickEnd(): void {
  * snapshot's averages cover exactly the ticks it means to measure.
  */
 export function profilerReset(): void {
-	for (let i = 0; i < SYSTEM_COUNT; i++) {
-		buffers[i]?.fill(0);
-		currentTimings[i] = 0;
+	if (import.meta.env.DEV) {
+		for (let i = 0; i < SYSTEM_COUNT; i++) {
+			buffers[i]?.fill(0);
+			currentTimings[i] = 0;
+		}
+		tickBuffer.fill(0);
+		cursor = 0;
+		sampleCount = 0;
 	}
-	tickBuffer.fill(0);
-	cursor = 0;
-	sampleCount = 0;
 }
 
 /** Read current profiling stats. */
