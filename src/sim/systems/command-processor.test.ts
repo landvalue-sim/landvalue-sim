@@ -3,6 +3,9 @@ import { createCity } from "../city-state.ts";
 import type { Command } from "../commands.ts";
 import {
 	AGG,
+	BOND_AMOUNT,
+	BOND_MONTHLY_PAYMENT,
+	BOND_TERM_MONTHS,
 	BUILDING_EMPTY,
 	CIVIC_COAL_PLANT,
 	COST_WATER_PIPE,
@@ -121,6 +124,24 @@ describe("processCommands", () => {
 		expect(city.aggregates[AGG.TAX_RATE_R]).toBeCloseTo(0.15);
 		expect(city.aggregates[AGG.TAX_RATE_C]).toBe(0);
 		expect(city.aggregates[AGG.TAX_RATE_I]).toBeCloseTo(0.2);
+	});
+
+	it("applies aggregate-only commands without reporting a change", () => {
+		const city = smallCity();
+		const before = city.aggregates[AGG.TREASURY] ?? 0;
+
+		// A bond and a tax rate both move aggregates and nothing else. Reporting
+		// a change would make `applyEdits` rebake the whole world for a number
+		// the finance readout already reads straight out of the buffer.
+		const changed = processCommands(city, [
+			{ kind: "issue-bond" },
+			{ kind: "set-tax-rate", sector: "r", rate: 0.15 },
+		]);
+
+		expect(changed).toBe(0);
+		expect(city.aggregates[AGG.TREASURY]).toBe(before + BOND_AMOUNT);
+		expect(city.aggregates[AGG.BOND_SLOT_0]).toBe(BOND_TERM_MONTHS);
+		expect(city.aggregates[AGG.BOND_PAYMENT]).toBe(BOND_MONTHLY_PAYMENT);
 	});
 
 	it("ignores out-of-bounds zone commands", () => {
