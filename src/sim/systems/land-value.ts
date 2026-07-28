@@ -33,7 +33,6 @@
  */
 
 import { type CityState, inBounds } from "../city-state.ts";
-import { invariant } from "../invariant.ts";
 import {
 	BUILDING_EMPTY,
 	CIVIC_PARK,
@@ -61,6 +60,7 @@ import {
 	ZONE_INDUSTRIAL,
 	ZONE_RESIDENTIAL,
 } from "../constants.ts";
+import { invariant } from "../invariant.ts";
 
 // Pre-allocated scratch buffers for diffusion passes.
 const scratch = new Uint16Array(MAX_GRID_SIZE * MAX_GRID_SIZE);
