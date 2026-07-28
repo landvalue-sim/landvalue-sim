@@ -17,11 +17,19 @@
  * value radiates outward from amenities.
  *
  * The per-tile facts every neighbor scan needs (infrastructure, amenities,
- * occupied zoning) are packed into flag bytes once per update, and the grid
- * interior runs a fast path with precomputed neighbor offsets and no bounds
- * checks — only the border rows and columns pay for coordinate clamping.
- * The arithmetic is unchanged from the straightforward implementation; only
- * the traversal is restructured (issue #11).
+ * occupied zoning) are packed into flag bytes once per update, and every
+ * 8-neighbor aggregate is computed separably: a horizontal 3-window pass
+ * over each row (OR of flags, sum of zone counts, max of traffic, sum of
+ * diffusion values) followed by a vertical 3-row combine, with the center
+ * tile's own contribution subtracted where the aggregate must exclude it.
+ * Row edges clamp to 2-windows, so borders need no special casing in the
+ * combine. Floor-multiply terms come from lookup tables built from the same
+ * expressions the direct code used. The arithmetic is unchanged from the
+ * straightforward per-neighbor implementation; only the traversal is
+ * restructured (issue #11) — see the golden pins in land-value.test.ts.
+ *
+ * Scratch buffers are statically sized at MAX_GRID_SIZE^2 (~1.2 MB total)
+ * regardless of actual city size — the no-allocation-after-init trade.
  */
 
 import { type CityState, inBounds } from "../city-state.ts";
@@ -53,11 +61,11 @@ import {
 	ZONE_RESIDENTIAL,
 } from "../constants.ts";
 
-// Pre-allocated scratch buffers for diffusion passes. The 3x1 row sums of
-// masked values can reach 3 * 65535, so they need 32 bits.
+// Pre-allocated scratch buffers for diffusion passes.
 const scratch = new Uint16Array(MAX_GRID_SIZE * MAX_GRID_SIZE);
 const eligible = new Uint8Array(MAX_GRID_SIZE * MAX_GRID_SIZE);
 const maskedValue = new Uint16Array(MAX_GRID_SIZE * MAX_GRID_SIZE);
+// rowSum needs 32 bits: a 3x1 row sum of masked values can reach 3 * 65535.
 const rowSum = new Uint32Array(MAX_GRID_SIZE * MAX_GRID_SIZE);
 const rowCount = new Uint8Array(MAX_GRID_SIZE * MAX_GRID_SIZE);
 
@@ -257,8 +265,9 @@ function buildTileIndex(state: CityState): void {
 	const noWaterPenalty = LV_NO_WATER_PENALTY;
 
 	// Three separate sweeps, not one: the grid layers are equal-sized slices
-	// of one backing buffer, so they alias the same cache sets — streaming a
-	// dozen at once thrashes; a few at a time stays fast.
+	// of one backing buffer, so they alias the same cache sets. Measured on
+	// the dense 256x256 tick benchmark: one merged sweep costs the landValue
+	// system ~12.7 ms vs ~7.7 ms split (Node 22, 2026-07).
 	for (let i = 0; i < size; i++) {
 		const c = civic[i] ?? 0;
 		tileFlags[i] =
