@@ -10,6 +10,17 @@
  * No `requestAnimationFrame` exists in a worker, so a fixed-cadence
  * `setInterval` accumulates real elapsed time and steps the sim at the rate the
  * current speed dictates — mirroring a fixed-timestep accumulator loop.
+ *
+ * Player edits do not ride the tick loop. They are applied the moment they
+ * arrive, via `applyEdits`, which runs the command processor and recomputes the
+ * grid-derived layers but advances nothing: no growth, no taxes, no calendar.
+ * Between two ticks nothing else can run on this thread, so that is equivalent
+ * to the tick applying them — and it means a paused city stays paused no matter
+ * how much the player builds. Each batch is recorded as one undo step.
+ *
+ * Undo history lasts only until the sim next advances. Undo is a planning tool
+ * for the paused city; once a tick has moved the world on, rolling an edit back
+ * would fight the sim rather than correct a mistake (see `stepOnce`).
  */
 
 /// <reference lib="webworker" />
@@ -22,18 +33,23 @@ import type {
 	SetInfiniteMoneyMessage,
 	SpeedMessage,
 	ToWorkerMessage,
+	UndoMessage,
 } from "../app/protocol.ts";
 import type { Speed } from "../app/types.ts";
-import type { Command } from "../sim/commands.ts";
 import {
 	AGG,
+	applyEdits,
 	buildTestCity,
 	type CityState,
+	clearJournal,
 	clearViolations,
+	createUndoJournal,
 	getProfileSnapshot,
 	getViolations,
 	INFINITE_TREASURY,
 	tick,
+	type UndoJournal,
+	undoEdit,
 	viewCity,
 } from "../sim/index.ts";
 
@@ -51,11 +67,11 @@ const ctx = self as DedicatedWorkerGlobalScope;
 // ---- Mutable worker state (single owner, this thread only) -----------------
 
 let city: CityState | null = null;
+let undoJournal: UndoJournal | null = null;
 let speed: Speed = 4; // Normal
 let accumulator = 0;
 let lastTime = 0;
 let lastStatsTime = 0;
-const pendingCommands: Command[] = [];
 
 // ---- Message handling ------------------------------------------------------
 
@@ -80,26 +96,38 @@ ctx.addEventListener("message", (event: MessageEvent<ToWorkerMessage>) => {
 		case "set-infinite-money":
 			handleSetInfiniteMoney(msg);
 			break;
+		case "undo":
+			handleUndo(msg);
+			break;
 	}
 });
 
 function handleInit(msg: InitMessage): void {
 	city = viewCity(msg.buffer, msg.width, msg.height);
+	undoJournal = createUndoJournal();
 	accumulator = 0;
 	lastTime = performance.now();
 	lastStatsTime = lastTime;
 	ctx.setInterval(drive, DRIVER_INTERVAL_MS);
 	post({ type: "ready" });
+	postUndoDepth();
 }
 
+/**
+ * Apply an edit batch immediately. The whole batch is one undo step, so a drag
+ * is undone as the single gesture the player made; a batch that changed nothing
+ * records nothing and so leaves no step behind.
+ */
 function handleCommands(msg: CommandsMessage): void {
-	for (const cmd of msg.commands) {
-		pendingCommands.push(cmd);
-	}
-	// Apply immediately so zoning/roads appear even while paused.
-	if (speed === 0 && city !== null && pendingCommands.length > 0) {
-		stepOnce();
-	}
+	if (city === null) return;
+	void applyEdits(city, msg.commands, undoJournal);
+	postUndoDepth();
+}
+
+function handleUndo(_msg: UndoMessage): void {
+	if (city === null || undoJournal === null) return;
+	if (!undoEdit(city, undoJournal)) return;
+	postUndoDepth();
 }
 
 function handleSpeed(msg: SpeedMessage): void {
@@ -115,12 +143,14 @@ function handleClearViolations(_msg: ClearViolationsMessage): void {
 function handleLoadTestCity(): void {
 	if (city === null) return;
 	buildTestCity(city);
-	pendingCommands.length = 0;
+	// The city those records describe no longer exists.
+	clearJournal(undoJournal);
 	accumulator = 0;
 	lastTime = performance.now();
 	// Run one tick so land value, totals, and the finance breakdown are
 	// populated immediately, even if the sim is paused.
 	stepOnce();
+	postUndoDepth();
 }
 
 function handleSetInfiniteMoney(msg: SetInfiniteMoneyMessage): void {
@@ -161,19 +191,26 @@ function drive(): void {
 	}
 }
 
-/** Run exactly one tick, draining any queued commands into it. */
+/** Run exactly one tick. Player commands are applied on arrival, not here. */
 function stepOnce(): void {
 	if (city === null) return;
-	if (pendingCommands.length > 0) {
-		const batch = pendingCommands.slice();
-		pendingCommands.length = 0;
-		tick(city, batch);
-	} else {
-		tick(city, EMPTY_COMMANDS);
+	tick(city, EMPTY_COMMANDS);
+	// A tick moves the city on from under the recorded history: growth lands on
+	// the edit's tiles, and the economy banks money a refund would hand back a
+	// second time. Undoing across that boundary would fight the sim instead of
+	// correcting a mistake, so the history dies with the tick — undo is for
+	// experimenting while time is stopped.
+	if (undoJournal !== null && undoJournal.count > 0) {
+		clearJournal(undoJournal);
+		postUndoDepth();
 	}
 }
 
-const EMPTY_COMMANDS: ReadonlyArray<Command> = [];
+const EMPTY_COMMANDS: ReadonlyArray<never> = [];
+
+function postUndoDepth(): void {
+	post({ type: "undo-depth", depth: undoJournal?.count ?? 0 });
+}
 
 function post(msg: FromWorkerMessage): void {
 	ctx.postMessage(msg);

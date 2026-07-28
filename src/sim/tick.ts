@@ -42,9 +42,10 @@ import { updateLandValue } from "./systems/land-value.ts";
 import { processMigration } from "./systems/migration.ts";
 import { updatePower } from "./systems/power.ts";
 import { updatePublicFinance } from "./systems/public-finance.ts";
-import { updateRciDemand } from "./systems/rci-demand.ts";
+import { updateRciDemand, updateSupplyTotals } from "./systems/rci-demand.ts";
 import { updateTraffic } from "./systems/traffic.ts";
 import { updateWater } from "./systems/water.ts";
+import { beginStep, commitStep, type UndoJournal, undoStep } from "./undo.ts";
 
 // Pre-compute system indices so we don't look them up every tick
 const IDX_COMMANDS = systemIndex("commands");
@@ -62,13 +63,87 @@ const IDX_FIRE = systemIndex("fire");
 const IDX_PUBLIC_FINANCE = systemIndex("publicFinance");
 const IDX_INVARIANTS = systemIndex("invariants");
 
+/**
+ * Apply a batch of player edits *without* advancing the simulation, then
+ * refresh the layers that are pure functions of the grid so the change reads
+ * correctly on screen straight away. This is what an edit does while the sim
+ * is paused: the road appears, its power and water coverage light up, land
+ * value re-capitalizes — but nothing grows, no taxes settle, and the calendar
+ * does not move. Returns how many commands actually changed the city.
+ *
+ * The whole batch is one undo step, so a drag is undone as the single gesture
+ * the player made rather than tile by tile. `journal` may be null where undo is
+ * not wanted (tests, headless replays).
+ *
+ * The systems called here are the ones that recompute their layer from scratch
+ * rather than accumulating, which is what makes running them off-tick safe.
+ * They are not the whole tick, though: land value in particular is normally
+ * computed after traffic, so between ticks it reads a traffic layer the edit
+ * has not refreshed. The next tick puts that right.
+ */
+export function applyEdits(
+	state: CityState,
+	commands: ReadonlyArray<Command>,
+	journal: UndoJournal | null = null,
+): number {
+	beginStep(journal);
+	const changed = processCommands(state, commands, journal);
+	void commitStep(journal);
+	if (changed > 0) {
+		refreshDerived(state);
+		bumpRevision(state);
+	}
+	return changed;
+}
+
+/**
+ * Roll back the most recent player edit and rebuild what depends on it.
+ * Returns false when there is nothing left to undo.
+ *
+ * The revision only ever moves forward — rewinding it would leave the render
+ * cache believing it was already current.
+ */
+export function undoEdit(state: CityState, journal: UndoJournal): boolean {
+	if (!undoStep(journal, state)) return false;
+	refreshDerived(state);
+	bumpRevision(state);
+	return true;
+}
+
+/**
+ * Mark the city's visible state as changed. The render shell rebakes when this
+ * moves, so anything that edits the city outside the tick loop — a paused
+ * build, an undo — has to call it or the change will not be drawn.
+ */
+export function bumpRevision(state: CityState): void {
+	state.aggregates[AGG.REVISION] = (state.aggregates[AGG.REVISION] ?? 0) + 1;
+}
+
+/**
+ * Recompute every layer that is a pure function of the current grid. Used by
+ * `applyEdits` and after an undo puts tiles back.
+ *
+ * `updateSupplyTotals` is in the list because bulldozing a block changes the
+ * population the HUD reports, and while the sim is paused no tick will come
+ * along to recount it. It is only the tally — the demand curves it normally
+ * feeds stay where the last tick left them, since an edit is not a month.
+ */
+export function refreshDerived(state: CityState): void {
+	updatePower(state);
+	updateWater(state);
+	updateCivicCoverage(state);
+	updateConnections(state);
+	updateLandValue(state);
+	updateSupplyTotals(state);
+}
+
 export function tick(state: CityState, commands: ReadonlyArray<Command>): void {
 	profilerTickStart();
 
 	let t: number;
 
 	t = profilerSystemStart();
-	processCommands(state, commands);
+	void processCommands(state, commands);
 	profilerSystemEnd(IDX_COMMANDS, t);
 
 	t = profilerSystemStart();
@@ -121,6 +196,7 @@ export function tick(state: CityState, commands: ReadonlyArray<Command>): void {
 
 	const currentTick = state.aggregates[AGG.TICK] ?? 0;
 	state.aggregates[AGG.TICK] = currentTick + 1;
+	bumpRevision(state);
 
 	// Postcondition checks (dev only — stripped in production)
 	t = profilerSystemStart();

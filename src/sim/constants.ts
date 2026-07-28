@@ -348,5 +348,12 @@ export const AGG = {
 	// Debug cheats (0 = off, 1 = on). Stored in shared state so the sim systems
 	// running in the worker can read them deterministically.
 	DEBUG_INFINITE_MONEY: 39,
-	COUNT: 40,
+	/**
+	 * Bumped every time the city's visible state changes — by a tick, by a
+	 * player edit applied while paused, or by an undo. The render shell keys its
+	 * cached world bake off this rather than off TICK, which stands still while
+	 * the sim is paused even as the player keeps building.
+	 */
+	REVISION: 40,
+	COUNT: 41,
 } as const;

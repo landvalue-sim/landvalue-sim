@@ -30,6 +30,11 @@ export interface InteractionStore {
 	setSpeed(speed: Speed): void;
 	setDragEnabled(enabled: boolean): void;
 	togglePause(): void;
+	/**
+	 * Roll back the most recent edit. A no-op when there is nothing to undo, and
+	 * while the sim is running — undo is a tool for the paused city.
+	 */
+	undo(): void;
 	/** Install global keyboard shortcuts; returns a teardown function. */
 	installKeyboard(): () => void;
 }
@@ -103,6 +108,14 @@ export function createStore(sim: SimClient): InteractionStore {
 		togglePause() {
 			setSpeed(snapshot.speed === 0 ? lastRunningSpeed : 0);
 		},
+		undo() {
+			// Undo history only outlives the edit while the sim is paused: the first
+			// tick clears it (see sim-worker.ts). Gating here rather than on the
+			// button alone holds Ctrl+Z to the same rule, so the shortcut cannot race
+			// the next tick for whichever edit happens to still be recorded.
+			if (snapshot.speed !== 0) return;
+			sim.undo();
+		},
 		installKeyboard() {
 			function onKeyDown(e: KeyboardEvent): void {
 				if (
@@ -111,6 +124,19 @@ export function createStore(sim: SimClient): InteractionStore {
 				) {
 					return;
 				}
+				if (e.ctrlKey || e.metaKey) {
+					// Plain Ctrl+Z only. Ctrl+Shift+Z is redo by convention, and until
+					// a redo exists it must do nothing — not quietly undo a second
+					// step, which is the opposite of what the player asked for.
+					if (!e.shiftKey && (e.key === "z" || e.key === "Z")) {
+						store.undo();
+						e.preventDefault();
+					}
+					// Every other chord belongs to the browser: the bare-letter tool
+					// shortcuts below must not swallow Ctrl+R, Ctrl+W and friends.
+					return;
+				}
+				if (e.altKey) return;
 				let handled = true;
 				switch (e.key) {
 					case "1":
@@ -155,6 +181,10 @@ export function createStore(sim: SimClient): InteractionStore {
 					case "w":
 					case "W":
 						store.toggleTool("water-pipe");
+						break;
+					case "l":
+					case "L":
+						store.toggleTool("level");
 						break;
 					case "x":
 					case "X":

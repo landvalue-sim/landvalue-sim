@@ -13,8 +13,9 @@
  * RenderTexture covering the view plus a BAKE_PAD_PX margin on every side.
  * The texture is pinned in world space, so panning slides it under the camera
  * for free; a rebake happens only when the view leaves the padded region or a
- * non-camera input changes — sim tick, overlay mode, zoom, or canvas size
- * (see `bakeDirty`). Zoom-only rebakes are additionally spaced at least
+ * non-camera input changes — the city's revision counter (bumped by a tick, by
+ * an edit applied while paused, and by an undo), overlay mode, zoom, or canvas
+ * size (see `bakeDirty`). Zoom-only rebakes are additionally spaced at least
  * ZOOM_REBAKE_MS apart (the cache scales correctly in between). Unchanged
  * frames render just that cached texture plus a small per-frame layer for
  * the hover cursor and drag preview.
@@ -23,7 +24,7 @@
  * current zoom, the bake covers the map itself rather than the view, so
  * panning can never leave the baked region (no pan rebakes at all); and below
  * LOD_ZOOM the bake draws far-LOD content — auto-downscaled sprite companions
- * and no sub-pixel detail — so the full-map bakes that remain (sim tick,
+ * and no sub-pixel detail — so the full-map bakes that remain (revision,
  * overlay, zoom) are several times cheaper.
  */
 
@@ -105,6 +106,10 @@ const COL_C_ZONE = 0x3b82f6;
 const COL_I_ZONE = 0xeab308;
 const COL_DEMOLISH = 0xef4444;
 const COL_CURSOR = 0xffffff;
+// Terrain-tool drag previews, matching the sidebar's Terrain accents.
+const COL_RAISE = 0xa16207;
+const COL_LOWER = 0x78350f;
+const COL_LEVEL = 0xd97706;
 const COL_CIVIC = 0x78350f;
 const COL_SOLAR = 0xfde047;
 const COL_WATER_PUMP = 0x38bdf8;
@@ -209,7 +214,7 @@ export class IsoScene extends Phaser.Scene {
 	private sprites!: SpritePool;
 	// Inputs of the last world bake (see bakeDirty). Initialized so that the
 	// very first update() always bakes.
-	private bakedTick = -1;
+	private bakedRevision = -1;
 	private bakedOverlay = "";
 	private bakedZoom = Number.NaN;
 	private bakedCanvasW = 0;
@@ -243,6 +248,10 @@ export class IsoScene extends Phaser.Scene {
 	// terraforming: near a corner edits that corner, near the center the tile.
 	private hoverFx = 0.5;
 	private hoverFy = 0.5;
+	// Height the level tool flattens to, sampled from the tile the drag started
+	// on. Captured at press time so the target cannot drift as the cursor moves
+	// across terrain of other heights.
+	private levelTarget = 0;
 	private panning = false;
 	private dragging = false;
 	private dragStartX = -1;
@@ -422,10 +431,20 @@ export class IsoScene extends Phaser.Scene {
 			return;
 		}
 
-		// Raise/lower edits one corner or tile per click (repeat to go higher).
+		// Terrain tools drag like the zoning tools: one edit applied to every
+		// tile in the rectangle, so shaping an area is one gesture rather than a
+		// click per tile. Levelling samples its target height here, from the
+		// tile the player pressed on.
 		if (isTerraformTool(snap.tool)) {
-			this.placeTerraform(x, y, snap.tool);
-			return;
+			this.levelTarget = tileSurfaceHeight(
+				this.city,
+				this.clampX(x),
+				this.clampY(y),
+			);
+			if (!snap.dragEnabled) {
+				this.placeTerraform(x, y, snap.tool);
+				return;
+			}
 		}
 
 		if (snap.dragEnabled) {
@@ -555,15 +574,45 @@ export class IsoScene extends Phaser.Scene {
 
 	private placeTerraform(x: number, y: number, tool: string): void {
 		if (!this.inBounds(x, y)) return;
-		this.sendCommands([
-			{
-				kind: "terraform",
-				x,
-				y,
-				corner: this.hoverCorner(),
-				dir: tool === "terraform-raise" ? 1 : -1,
-			},
-		]);
+		this.sendCommands([this.terraformCommand(tool, x, y, this.hoverCorner())]);
+	}
+
+	/** The edit one terrain tool makes to one tile. */
+	private terraformCommand(
+		tool: string,
+		x: number,
+		y: number,
+		corner: number,
+	): Command {
+		if (tool === "level") {
+			return { kind: "level-terrain", x, y, level: this.levelTarget };
+		}
+		return {
+			kind: "terraform",
+			x,
+			y,
+			corner,
+			dir: tool === "terraform-raise" ? 1 : -1,
+		};
+	}
+
+	/**
+	 * Commit a terrain drag: one edit per tile in the rectangle. A drag that
+	 * never left the tile it started on is just a click, so it keeps the
+	 * corner precision of the single-tile tool; anything larger moves whole
+	 * tiles, since neighbouring corner edits would only fight each other.
+	 */
+	private commitTerraformDrag(tool: string): void {
+		const single =
+			this.dragStartX === this.hoverX && this.dragStartY === this.hoverY;
+		const corner = single ? this.hoverCorner() : CORNER_ALL;
+
+		const cmds: Command[] = [];
+		for (const t of this.dragTiles(tool)) {
+			if (!this.inBounds(t.x, t.y)) continue;
+			cmds.push(this.terraformCommand(tool, t.x, t.y, corner));
+		}
+		if (cmds.length > 0) this.sendCommands(cmds);
 	}
 
 	/** Commit the current drag as one batch of commands (line or rectangle). */
@@ -571,6 +620,10 @@ export class IsoScene extends Phaser.Scene {
 		const snap = this.store.getSnapshot();
 		const tool = snap.tool;
 		if (tool === "none") return;
+		if (isTerraformTool(tool)) {
+			this.commitTerraformDrag(tool);
+			return;
+		}
 
 		const cmds: Command[] = [];
 		for (const t of this.dragTiles(tool)) {
@@ -613,10 +666,10 @@ export class IsoScene extends Phaser.Scene {
 	 *  baked region — the cache texture is world-pinned and pans for free. */
 	private bakeDirty(): boolean {
 		const cam = this.cameras.main;
-		const tick = this.city.aggregates[AGG.TICK] ?? 0;
+		const revision = this.city.aggregates[AGG.REVISION] ?? 0;
 		const overlay = this.store.getSnapshot().overlay;
 		if (
-			tick !== this.bakedTick ||
+			revision !== this.bakedRevision ||
 			overlay !== this.bakedOverlay ||
 			cam.zoom !== this.bakedZoom ||
 			this.scale.width !== this.bakedCanvasW ||
@@ -649,14 +702,14 @@ export class IsoScene extends Phaser.Scene {
 	/** Whether a pending rebake should wait because its only cause is a zoom
 	 *  change inside the ZOOM_REBAKE_MS window. Deferring is allowed only
 	 *  while the previous bake still covers the whole view — a bake that
-	 *  would fill newly revealed ground, or any other dirty input (tick,
+	 *  would fill newly revealed ground, or any other dirty input (revision,
 	 *  overlay, canvas), runs immediately. */
 	private zoomThrottled(time: number): boolean {
 		const cam = this.cameras.main;
 		if (cam.zoom === this.bakedZoom) return false;
-		const tick = this.city.aggregates[AGG.TICK] ?? 0;
+		const revision = this.city.aggregates[AGG.REVISION] ?? 0;
 		if (
-			tick !== this.bakedTick ||
+			revision !== this.bakedRevision ||
 			this.store.getSnapshot().overlay !== this.bakedOverlay ||
 			this.scale.width !== this.bakedCanvasW ||
 			this.scale.height !== this.bakedCanvasH ||
@@ -726,7 +779,7 @@ export class IsoScene extends Phaser.Scene {
 		this.rt.setPosition(x0, y0);
 		this.rt.setDisplaySize(regionW, regionH);
 
-		this.bakedTick = this.city.aggregates[AGG.TICK] ?? 0;
+		this.bakedRevision = this.city.aggregates[AGG.REVISION] ?? 0;
 		this.bakedOverlay = overlay;
 		this.bakedZoom = cam.zoom;
 		this.bakedCanvasW = canvasW;
@@ -811,7 +864,7 @@ export class IsoScene extends Phaser.Scene {
 		g.lineStyle(2, cursorCol, 0.9);
 		this.pathHoverFace(g, this.hoverX, this.hoverY, snap.overlay);
 		g.strokePath();
-		if (isTerraformTool(snap.tool)) this.drawCornerMarker();
+		if (isCornerTool(snap.tool)) this.drawCornerMarker();
 	}
 
 	/** Path the terrain surface under the cursor for selection highlighting. */
@@ -1758,8 +1811,15 @@ function isLineTool(tool: string): boolean {
 	);
 }
 
-/** Whether a tool raises/lowers terrain (single-click, corner-aware). */
+/** Whether a tool edits terrain heights (rectangle drag, no cost per corner). */
 function isTerraformTool(tool: string): boolean {
+	return (
+		tool === "terraform-raise" || tool === "terraform-lower" || tool === "level"
+	);
+}
+
+/** Whether a tool can target a single corner rather than the whole tile. */
+function isCornerTool(tool: string): boolean {
 	return tool === "terraform-raise" || tool === "terraform-lower";
 }
 
@@ -1836,6 +1896,12 @@ function previewColor(tool: string, overlay: string): number {
 			return COL_STADIUM_BLDG;
 		case "demolish":
 			return COL_DEMOLISH;
+		case "terraform-raise":
+			return COL_RAISE;
+		case "terraform-lower":
+			return COL_LOWER;
+		case "level":
+			return COL_LEVEL;
 		case "water":
 			return COL_WATER;
 		case "drain":

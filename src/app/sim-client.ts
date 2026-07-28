@@ -25,6 +25,7 @@ export interface SimStats {
 }
 
 export type StatsListener = (stats: SimStats) => void;
+export type UndoDepthListener = (depth: number) => void;
 
 export interface SimClient {
 	readonly city: CityState;
@@ -35,7 +36,11 @@ export interface SimClient {
 	loadTestCity(): void;
 	/** Toggle the infinite-money debug cheat (dev builds only). */
 	setInfiniteMoney(enabled: boolean): void;
+	/** Roll back the most recent edit. A no-op when nothing is undoable. */
+	undo(): void;
 	onStats(listener: StatsListener): () => void;
+	/** Subscribe to how many edits are currently undoable. */
+	onUndoDepth(listener: UndoDepthListener): () => void;
 	dispose(): void;
 }
 
@@ -68,6 +73,10 @@ export function createSimClient(opts: SimClientOptions): SimClient {
 	);
 
 	const statsListeners = new Set<StatsListener>();
+	const undoListeners = new Set<UndoDepthListener>();
+	// Last depth the worker reported, replayed to late subscribers so a listener
+	// mounting after an edit still sees the current value.
+	let undoDepth = 0;
 
 	worker.addEventListener(
 		"message",
@@ -80,6 +89,11 @@ export function createSimClient(opts: SimClientOptions): SimClient {
 				};
 				for (const listener of statsListeners) {
 					listener(stats);
+				}
+			} else if (msg.type === "undo-depth") {
+				undoDepth = msg.depth;
+				for (const listener of undoListeners) {
+					listener(undoDepth);
 				}
 			}
 		},
@@ -109,14 +123,25 @@ export function createSimClient(opts: SimClientOptions): SimClient {
 		setInfiniteMoney(enabled) {
 			send({ type: "set-infinite-money", enabled });
 		},
+		undo() {
+			send({ type: "undo" });
+		},
 		onStats(listener) {
 			statsListeners.add(listener);
 			return () => {
 				statsListeners.delete(listener);
 			};
 		},
+		onUndoDepth(listener) {
+			undoListeners.add(listener);
+			listener(undoDepth);
+			return () => {
+				undoListeners.delete(listener);
+			};
+		},
 		dispose() {
 			statsListeners.clear();
+			undoListeners.clear();
 			worker.terminate();
 		},
 	};

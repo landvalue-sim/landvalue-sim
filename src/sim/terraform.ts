@@ -4,9 +4,10 @@
  *
  * Raising a flat tile lifts all four corners by 1; raising a sloped tile
  * flattens it up to its highest corner (lowering mirrors both). A single
- * corner can be moved instead via CORNER_N/E/S/W. Every edit then propagates
- * outward so adjacent vertices never differ by more than 1 — raising a
- * plateau grows unit slopes around it, exactly like RCT's land tool.
+ * corner can be moved instead via CORNER_N/E/S/W. `levelTile` drives all four
+ * corners to one chosen height regardless of where they started. Every edit
+ * then propagates outward so adjacent vertices never differ by more than 1 —
+ * raising a plateau grows unit slopes around it, exactly like RCT's land tool.
  *
  * Water is per-tile: flooding stores a flat surface height in `waterLevel`;
  * raising submerged terrain above its surface reclaims the tile as land.
@@ -26,6 +27,7 @@ import {
 	TERRAIN_WATER,
 } from "./constants.ts";
 import { invariant } from "./invariant.ts";
+import { journalTile, journalVertex, type UndoJournal } from "./undo.ts";
 
 const MAX_VERTEX_SIDE = MAX_GRID_SIZE + 1;
 const MAX_VERTEX_COUNT = MAX_VERTEX_SIDE * MAX_VERTEX_SIDE;
@@ -44,12 +46,22 @@ const scratch = {
 	minVy: 0,
 	maxVx: 0,
 	maxVy: 0,
+	// The four corner vertices of the tile being levelled, and their heights
+	// before the edit — `levelTile` needs the originals after overwriting them
+	// to know which corners went up and which went down.
+	cornerV: new Int32Array(4),
+	cornerH: new Int32Array(4),
 };
 
 /**
  * Apply one raise/lower edit at tile (x, y). `corner` is CORNER_N/E/S/W for a
  * single corner or CORNER_ALL for the whole tile; `dir` is +1 (raise) or -1
  * (lower). Returns true if any height changed (the caller charges only then).
+ *
+ * `journal`, when present, receives every vertex height and derived tile layer
+ * this edit is about to overwrite, so it can be rolled back later (see undo.ts).
+ * Nothing is journaled on the paths that return false, because those write
+ * nothing.
  */
 export function terraformTile(
 	state: CityState,
@@ -57,6 +69,7 @@ export function terraformTile(
 	y: number,
 	corner: number,
 	dir: number,
+	journal: UndoJournal | null = null,
 ): boolean {
 	if (!inBounds(state.width, state.height, x, y)) return false;
 	if (dir !== 1 && dir !== -1) return false;
@@ -65,13 +78,86 @@ export function terraformTile(
 
 	const seeded =
 		corner === CORNER_ALL
-			? seedWholeTile(state, x, y, dir)
-			: seedCorner(state, x, y, corner, dir);
+			? seedWholeTile(state, x, y, dir, journal)
+			: seedCorner(state, x, y, corner, dir, journal);
 	if (seeded === 0) return false;
 
-	propagate(state, seeded, dir);
-	updateDerivedTiles(state);
+	propagate(state, seeded, dir, journal);
+	updateDerivedTiles(state, journal);
 	return true;
+}
+
+/**
+ * Flatten tile (x, y) to `level`: drive all four corners to that height and
+ * re-slope the terrain around it. Returns true if any height changed.
+ *
+ * Unlike raise/lower, one edit can move corners in both directions at once, so
+ * the plateau is written first and then propagated as two independent waves.
+ * They cannot fight: a vertex d steps out is pulled to at least `level - d` by
+ * the raise wave and capped at `level + d` by the lower wave, and since the
+ * raise wave never sets a vertex above `level - 1` while the lower wave never
+ * touches one below `level + 1`, neither can undo the other's work.
+ */
+export function levelTile(
+	state: CityState,
+	x: number,
+	y: number,
+	level: number,
+	journal: UndoJournal | null = null,
+): boolean {
+	if (!inBounds(state.width, state.height, x, y)) return false;
+	if (level < 0 || level > ELEVATION_MAX) return false;
+	if (tileOccupied(state, y * state.width + x)) return false;
+
+	const vw = state.width + 1;
+	const heights = state.vertexHeights;
+	const cornerV = scratch.cornerV;
+	const cornerH = scratch.cornerH;
+	cornerV[0] = y * vw + x;
+	cornerV[1] = y * vw + x + 1;
+	cornerV[2] = (y + 1) * vw + x + 1;
+	cornerV[3] = (y + 1) * vw + x;
+
+	let raised = 0;
+	let lowered = 0;
+	for (let i = 0; i < 4; i++) {
+		const h = heights[cornerV[i] ?? 0] ?? 0;
+		cornerH[i] = h;
+		if (h < level) raised++;
+		else if (h > level) lowered++;
+	}
+	if (raised === 0 && lowered === 0) return false;
+
+	resetChangedBounds(x, y);
+	for (let i = 0; i < 4; i++) {
+		const v = cornerV[i] ?? 0;
+		journalVertex(journal, state, v);
+		heights[v] = level;
+		expandChangedBounds(v % vw, Math.floor(v / vw));
+	}
+
+	if (raised > 0) propagate(state, seedLevelledCorners(level, 1), 1, journal);
+	if (lowered > 0)
+		propagate(state, seedLevelledCorners(level, -1), -1, journal);
+	updateDerivedTiles(state, journal);
+	return true;
+}
+
+/**
+ * Queue the levelled corners that moved in direction `dir`, ready for one
+ * propagation wave. Reads the pre-edit heights recorded by `levelTile`; the
+ * queue is drained by each wave, so the two calls can share it.
+ */
+function seedLevelledCorners(level: number, dir: number): number {
+	const queue = scratch.queue;
+	let tail = 0;
+	for (let i = 0; i < 4; i++) {
+		const h = scratch.cornerH[i] ?? 0;
+		if (dir > 0 ? h < level : h > level) {
+			queue[tail++] = scratch.cornerV[i] ?? 0;
+		}
+	}
+	return tail;
 }
 
 /**
@@ -83,12 +169,14 @@ export function setWaterTile(
 	x: number,
 	y: number,
 	place: boolean,
+	journal: UndoJournal | null = null,
 ): boolean {
 	if (!inBounds(state.width, state.height, x, y)) return false;
 	const idx = y * state.width + x;
 
 	if (!place) {
 		if (state.terrain[idx] !== TERRAIN_WATER) return false;
+		journalTile(journal, state, idx);
 		state.terrain[idx] = TERRAIN_LAND;
 		state.waterLevel[idx] = 0;
 		return true;
@@ -106,6 +194,7 @@ export function setWaterTile(
 		heights[(y + 1) * vw + x] ?? 0,
 	);
 
+	journalTile(journal, state, idx);
 	state.terrain[idx] = TERRAIN_WATER;
 	state.waterLevel[idx] = level;
 	// Flooded land loses its zoning and any underground infrastructure. Pipes
@@ -142,6 +231,7 @@ function seedWholeTile(
 	x: number,
 	y: number,
 	dir: number,
+	journal: UndoJournal | null,
 ): number {
 	const vw = state.width + 1;
 	const heights = state.vertexHeights;
@@ -170,6 +260,7 @@ function seedWholeTile(
 	if (dir > 0 ? hW < target : hW > target) corners[tail++] = vW;
 	for (let i = 0; i < tail; i++) {
 		const v = corners[i] ?? 0;
+		journalVertex(journal, state, v);
 		heights[v] = target;
 		expandChangedBounds(v % vw, Math.floor(v / vw));
 	}
@@ -183,6 +274,7 @@ function seedCorner(
 	y: number,
 	corner: number,
 	dir: number,
+	journal: UndoJournal | null,
 ): number {
 	const vw = state.width + 1;
 	let vx = x;
@@ -200,6 +292,7 @@ function seedCorner(
 	const target = (state.vertexHeights[v] ?? 0) + dir;
 	if (target < 0 || target > ELEVATION_MAX) return 0;
 
+	journalVertex(journal, state, v);
 	state.vertexHeights[v] = target;
 	scratch.queue[0] = v;
 	resetChangedBounds(vx, vy);
@@ -212,7 +305,12 @@ function seedCorner(
  * wave is monotone (each ring one step closer to its seeds' shared target),
  * so every vertex settles on first touch and MAX_VERTEX_COUNT bounds the loop.
  */
-function propagate(state: CityState, seedCount: number, dir: number): void {
+function propagate(
+	state: CityState,
+	seedCount: number,
+	dir: number,
+	journal: UndoJournal | null,
+): void {
 	const vw = state.width + 1;
 	const vh = state.height + 1;
 	const heights = state.vertexHeights;
@@ -228,29 +326,31 @@ function propagate(state: CityState, seedCount: number, dir: number): void {
 		const vx = v % vw;
 		const vy = Math.floor(v / vw);
 
-		if (vx > 0) tail = relax(heights, v - 1, limit, dir, queue, tail, vw);
-		if (vx < vw - 1) tail = relax(heights, v + 1, limit, dir, queue, tail, vw);
-		if (vy > 0) tail = relax(heights, v - vw, limit, dir, queue, tail, vw);
-		if (vy < vh - 1) tail = relax(heights, v + vw, limit, dir, queue, tail, vw);
+		if (vx > 0) tail = relax(state, v - 1, limit, dir, tail, journal);
+		if (vx < vw - 1) tail = relax(state, v + 1, limit, dir, tail, journal);
+		if (vy > 0) tail = relax(state, v - vw, limit, dir, tail, journal);
+		if (vy < vh - 1) tail = relax(state, v + vw, limit, dir, tail, journal);
 	}
 	invariant(head >= tail, "terraform propagation did not drain its queue");
 }
 
 /** Pull one neighbor within range of `limit`; queue it if it moved. */
 function relax(
-	heights: Uint8Array,
+	state: CityState,
 	v: number,
 	limit: number,
 	dir: number,
-	queue: Int32Array,
 	tail: number,
-	vw: number,
+	journal: UndoJournal | null,
 ): number {
+	const heights = state.vertexHeights;
 	const h = heights[v] ?? 0;
 	if (dir > 0 ? h >= limit : h <= limit) return tail;
 	invariant(tail < MAX_VERTEX_COUNT, "terraform queue overflow");
+	journalVertex(journal, state, v);
 	heights[v] = limit;
-	queue[tail] = v;
+	scratch.queue[tail] = v;
+	const vw = state.width + 1;
 	expandChangedBounds(v % vw, Math.floor(v / vw));
 	return tail + 1;
 }
@@ -273,8 +373,15 @@ function expandChangedBounds(vx: number, vy: number): void {
  * Refresh the derived per-tile layers for every tile touching a changed
  * vertex: `elevation` = min corner, and water tiles whose terrain now pokes
  * above their surface are reclaimed as land.
+ *
+ * Most tiles in the swept box come out unchanged, so the tile is journaled only
+ * when something is actually about to move — otherwise a one-corner nudge would
+ * spend a record on every tile around it.
  */
-function updateDerivedTiles(state: CityState): void {
+function updateDerivedTiles(
+	state: CityState,
+	journal: UndoJournal | null,
+): void {
 	const { width, height, terrain, elevation, vertexHeights, waterLevel } =
 		state;
 	const vw = width + 1;
@@ -291,11 +398,15 @@ function updateDerivedTiles(state: CityState): void {
 			const hw = vertexHeights[(y + 1) * vw + x] ?? 0;
 
 			const idx = y * width + x;
-			elevation[idx] = Math.min(hn, he, hs, hw);
-			if (
+			const newElevation = Math.min(hn, he, hs, hw);
+			const reclaimed =
 				terrain[idx] === TERRAIN_WATER &&
-				Math.max(hn, he, hs, hw) > (waterLevel[idx] ?? 0)
-			) {
+				Math.max(hn, he, hs, hw) > (waterLevel[idx] ?? 0);
+			if (elevation[idx] === newElevation && !reclaimed) continue;
+
+			journalTile(journal, state, idx);
+			elevation[idx] = newElevation;
+			if (reclaimed) {
 				terrain[idx] = TERRAIN_LAND;
 				waterLevel[idx] = 0;
 			}

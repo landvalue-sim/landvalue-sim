@@ -9,7 +9,7 @@ import {
 	ZONE_INDUSTRIAL,
 	ZONE_RESIDENTIAL,
 } from "./constants.ts";
-import { tick } from "./tick.ts";
+import { applyEdits, tick } from "./tick.ts";
 
 function smallCity() {
 	return createCity({ width: 16, height: 16, seed: 42 });
@@ -199,5 +199,87 @@ describe("tick", () => {
 		// whether increased revenue outweighs reduced growth)
 		const treasuryAfter = city.aggregates[AGG.TREASURY] ?? 0;
 		expect(treasuryAfter).not.toBe(treasuryBefore);
+	});
+});
+
+/**
+ * `applyEdits` is what a paused city runs. Building while paused must leave the
+ * simulation exactly where it was — no growth, no settlement, no calendar —
+ * while still showing the player the consequences of what they just placed.
+ */
+describe("applyEdits", () => {
+	function zonedBlock(): Command[] {
+		const cmds: Command[] = [
+			{ kind: "build-road", x: 8, y: 8 },
+			{ kind: "place-civic", x: 8, y: 9, civicType: CIVIC_COAL_PLANT },
+		];
+		for (let x = 5; x <= 7; x++) {
+			cmds.push({ kind: "zone", x, y: 8, zoneType: ZONE_RESIDENTIAL });
+		}
+		return cmds;
+	}
+
+	it("never advances the clock", () => {
+		const city = smallCity();
+		applyEdits(city, zonedBlock());
+		expect(city.aggregates[AGG.TICK]).toBe(0);
+	});
+
+	it("grows nothing on the land it zones", () => {
+		const city = smallCity();
+		// Enough repeats that a tick-driven grower would certainly have built.
+		for (let i = 0; i < 50; i++) {
+			applyEdits(city, zonedBlock());
+		}
+
+		for (let x = 5; x <= 7; x++) {
+			expect(city.building[8 * 16 + x]).toBe(BUILDING_EMPTY);
+		}
+		expect(city.aggregates[AGG.TOTAL_POP]).toBe(0);
+	});
+
+	it("settles no taxes and pays no maintenance", () => {
+		const city = smallCity();
+		applyEdits(city, zonedBlock());
+		const treasury = city.aggregates[AGG.TREASURY] ?? 0;
+
+		for (let i = 0; i < 50; i++) {
+			applyEdits(city, []);
+		}
+		expect(city.aggregates[AGG.TREASURY]).toBe(treasury);
+	});
+
+	it("still refreshes the layers the edit changed", () => {
+		const city = smallCity();
+		applyEdits(city, zonedBlock());
+
+		// The plant lights up the road and the zoned tiles it reaches.
+		expect(city.power[8 * 16 + 8]).toBe(1);
+		expect(city.power[8 * 16 + 7]).toBe(1);
+		// Land value capitalizes the new road access without a tick running.
+		expect(city.landValue[8 * 16 + 7]).toBeGreaterThan(0);
+	});
+
+	it("reports how many commands changed the city", () => {
+		const city = smallCity();
+		expect(applyEdits(city, [{ kind: "build-road", x: 2, y: 2 }])).toBe(1);
+		expect(applyEdits(city, [{ kind: "build-road", x: 2, y: 2 }])).toBe(0);
+	});
+
+	// The render shell rebakes when the revision moves. Paused edits leave TICK
+	// alone, so without this the road would be applied but never drawn.
+	it("bumps the revision when — and only when — something changed", () => {
+		const city = smallCity();
+		const start = city.aggregates[AGG.REVISION] ?? 0;
+
+		applyEdits(city, [{ kind: "build-road", x: 2, y: 2 }]);
+		const afterEdit = city.aggregates[AGG.REVISION] ?? 0;
+		expect(afterEdit).toBeGreaterThan(start);
+
+		applyEdits(city, [{ kind: "build-road", x: 2, y: 2 }]);
+		expect(city.aggregates[AGG.REVISION]).toBe(afterEdit);
+
+		tick(city, []);
+		expect(city.aggregates[AGG.REVISION]).toBeGreaterThan(afterEdit);
 	});
 });
