@@ -53,8 +53,13 @@ import {
 	ZONE_RESIDENTIAL,
 } from "../constants.ts";
 
-// Pre-allocated scratch buffer for diffusion passes.
+// Pre-allocated scratch buffers for diffusion passes. The 3x1 row sums of
+// masked values can reach 3 * 65535, so they need 32 bits.
 const scratch = new Uint16Array(MAX_GRID_SIZE * MAX_GRID_SIZE);
+const eligible = new Uint8Array(MAX_GRID_SIZE * MAX_GRID_SIZE);
+const maskedValue = new Uint16Array(MAX_GRID_SIZE * MAX_GRID_SIZE);
+const rowSum = new Uint32Array(MAX_GRID_SIZE * MAX_GRID_SIZE);
+const rowCount = new Uint8Array(MAX_GRID_SIZE * MAX_GRID_SIZE);
 
 // Per-tile fact flags, rebuilt once per update.
 const F_ROAD = 1;
@@ -71,199 +76,310 @@ const F_NOT_PARCEL = F_ROAD | F_RAIL | F_WATER | F_PLINE | F_CIVIC;
 const F_SUM_SKIP = F_ROAD | F_RAIL;
 
 const tileFlags = new Uint8Array(MAX_GRID_SIZE * MAX_GRID_SIZE);
-// Zoning of tiles that actually have a building; ZONE_NONE otherwise.
-const zoneBuilt = new Uint8Array(MAX_GRID_SIZE * MAX_GRID_SIZE);
 
 // Orthogonal + diagonal neighbor offsets
 const DX = [-1, 0, 1, -1, 1, -1, 0, 1] as const;
 const DY = [-1, -1, -1, 0, 0, 1, 1, 1] as const;
 const NEIGHBOR_COUNT = 8;
 
-// Flat neighbor offsets for the current width (interior fast path).
-const flatOffsets = new Int32Array(NEIGHBOR_COUNT);
+// Nibble-packed occupied-zone indicators (C at bit 0, R at bit 4, I at bit 8),
+// their row 3-sums, and row 3-aggregates of flags and traffic for pass 1.
+// A 3x3 count never exceeds 9, so the nibbles cannot carry into each other.
+const ZC_C = 1;
+const ZC_R = 1 << 4;
+const ZC_I = 1 << 8;
+const zoneCnt = new Uint16Array(MAX_GRID_SIZE * MAX_GRID_SIZE);
+const rowZoneCnt = new Uint16Array(MAX_GRID_SIZE * MAX_GRID_SIZE);
+const rowFlagOr = new Uint8Array(MAX_GRID_SIZE * MAX_GRID_SIZE);
+const rowTrafficMax = new Uint8Array(MAX_GRID_SIZE * MAX_GRID_SIZE);
+// Occupied-zone indicator per zoning value, applied when a building exists.
+const ZC_TABLE = new Uint16Array(4);
+ZC_TABLE[ZONE_COMMERCIAL] = ZC_C;
+ZC_TABLE[ZONE_RESIDENTIAL] = ZC_R;
+ZC_TABLE[ZONE_INDUSTRIAL] = ZC_I;
+
+// The neighbor-independent part of each parcel's raw value, and lookup tables
+// for every floor-multiply term so the hot loops stay branch- and float-free.
+// Each table entry precomputes the exact expression the direct code used.
+const selfValue = new Int16Array(MAX_GRID_SIZE * MAX_GRID_SIZE);
+const ELEV_BONUS = new Int16Array(256);
+const CRIME_PENALTY = new Int16Array(256);
+const TRAFFIC_PENALTY = new Int16Array(256);
+for (let v = 0; v < 256; v++) {
+	ELEV_BONUS[v] = Math.floor(v * LV_ELEVATION_FACTOR);
+	CRIME_PENALTY[v] = Math.floor(v * LV_CRIME_FACTOR);
+	TRAFFIC_PENALTY[v] = Math.floor(v * LV_TRAFFIC_FACTOR);
+}
+// Adjacency bonus for every combination of the five amenity flag bits.
+const FLAG_BONUS_MASK = F_ROAD | F_RAIL | F_WATER | F_PARK | F_STADIUM;
+const FLAG_BONUS = new Int16Array(FLAG_BONUS_MASK + 1);
+for (let bits = 0; bits <= FLAG_BONUS_MASK; bits++) {
+	let bonus = 0;
+	if ((bits & F_ROAD) !== 0) bonus += LV_ROAD_ADJ_BONUS;
+	if ((bits & F_RAIL) !== 0) bonus += LV_RAIL_ADJ_BONUS;
+	if ((bits & F_WATER) !== 0) bonus += LV_WATER_ADJ_BONUS;
+	if ((bits & F_PARK) !== 0) bonus += LV_PARK_BONUS;
+	if ((bits & F_STADIUM) !== 0) bonus += LV_STADIUM_BONUS;
+	FLAG_BONUS[bits] = bonus;
+}
 
 export function updateLandValue(state: CityState): void {
-	const { width, height } = state;
-
-	for (let n = 0; n < NEIGHBOR_COUNT; n++) {
-		flatOffsets[n] = (DY[n] ?? 0) * width + (DX[n] ?? 0);
-	}
+	const { width, height, traffic, landValue, zoning } = state;
+	// Hoisted imported constants: under Vite's dev/test module transform an
+	// imported binding is a namespace property read on every use, which is
+	// ruinous inside per-tile loops. Locals compile to registers everywhere.
+	const zoneR = ZONE_RESIDENTIAL;
+	const zoneC = ZONE_COMMERCIAL;
+	const zoneI = ZONE_INDUSTRIAL;
+	const commercialBonus = LV_COMMERCIAL_BONUS;
+	const populationBonus = LV_POPULATION_BONUS;
+	const industrialPenalty = LV_INDUSTRIAL_PENALTY;
 
 	buildTileIndex(state);
+	buildRowAggregates(state);
 
 	// --- Pass 1: compute raw values -----------------------------------------
+	// The 8-neighbor facts come from the row aggregates: a 3x3 OR of flags is
+	// the neighbor OR because a parcel's own flags are zero; the 3x3 count
+	// minus the center indicator is the neighbor count; and the neighbor
+	// traffic max is the up/down row maxes plus the two side tiles directly
+	// (traffic on the center tile itself must not participate).
 	for (let y = 0; y < height; y++) {
-		const interiorRow = y > 0 && y < height - 1;
+		const rowBase = y * width;
+		const up = y > 0 ? -width : 0;
+		const down = y < height - 1 ? width : 0;
 		for (let x = 0; x < width; x++) {
-			const i = y * width + x;
+			const i = rowBase + x;
 			if (((tileFlags[i] ?? 0) & F_NOT_PARCEL) !== 0) {
-				state.landValue[i] = 0;
+				landValue[i] = 0;
 				continue;
 			}
-			if (interiorRow && x > 0 && x < width - 1) {
-				state.landValue[i] = rawValueInterior(state, i);
-			} else {
-				state.landValue[i] = rawValueBorder(state, i, x, y);
+
+			let nearFlags = rowFlagOr[i] ?? 0;
+			let counts = (rowZoneCnt[i] ?? 0) - (zoneCnt[i] ?? 0);
+			let maxTraffic = x > 0 ? (traffic[i - 1] ?? 0) : 0;
+			const tRight = x < width - 1 ? (traffic[i + 1] ?? 0) : 0;
+			if (tRight > maxTraffic) maxTraffic = tRight;
+			if (up !== 0) {
+				nearFlags |= rowFlagOr[i + up] ?? 0;
+				counts += rowZoneCnt[i + up] ?? 0;
+				const t = rowTrafficMax[i + up] ?? 0;
+				if (t > maxTraffic) maxTraffic = t;
 			}
+			if (down !== 0) {
+				nearFlags |= rowFlagOr[i + down] ?? 0;
+				counts += rowZoneCnt[i + down] ?? 0;
+				const t = rowTrafficMax[i + down] ?? 0;
+				if (t > maxTraffic) maxTraffic = t;
+			}
+
+			let value =
+				(selfValue[i] ?? 0) +
+				(FLAG_BONUS[nearFlags & FLAG_BONUS_MASK] ?? 0) -
+				(TRAFFIC_PENALTY[maxTraffic] ?? 0);
+
+			// Nearby commercial boosts R land value; nearby population boosts C
+			const zone = zoning[i];
+			if (zone === zoneR) {
+				value += (counts & 15) * commercialBonus;
+			} else if (zone === zoneC) {
+				value += ((counts >> 4) & 15) * populationBonus;
+			}
+			// Industrial penalty
+			if (zone !== zoneI) {
+				value -= ((counts >> 8) & 15) * industrialPenalty;
+			}
+
+			landValue[i] = value > 0 ? value : 0;
 		}
 	}
 
 	// --- Pass 2: diffusion (bounded iterations) ------------------------------
 	for (let iter = 0; iter < LV_DIFFUSION_ITERATIONS; iter++) {
-		scratch.set(state.landValue);
+		scratch.set(landValue);
 		diffuseOnce(state);
 	}
 }
 
-/** Rebuild the per-tile fact flags and occupied-zoning index. */
+/** Row 3-window aggregates of flags, zone counts, and traffic for pass 1. */
+function buildRowAggregates(state: CityState): void {
+	const { width, height, traffic } = state;
+
+	for (let y = 0; y < height; y++) {
+		const first = y * width;
+		const last = first + width - 1;
+		if (width === 1) {
+			rowFlagOr[first] = tileFlags[first] ?? 0;
+			rowZoneCnt[first] = zoneCnt[first] ?? 0;
+			rowTrafficMax[first] = traffic[first] ?? 0;
+			continue;
+		}
+
+		rowFlagOr[first] = (tileFlags[first] ?? 0) | (tileFlags[first + 1] ?? 0);
+		rowZoneCnt[first] = (zoneCnt[first] ?? 0) + (zoneCnt[first + 1] ?? 0);
+		rowTrafficMax[first] = Math.max(
+			traffic[first] ?? 0,
+			traffic[first + 1] ?? 0,
+		);
+		for (let i = first + 1; i < last; i++) {
+			rowFlagOr[i] =
+				(tileFlags[i - 1] ?? 0) | (tileFlags[i] ?? 0) | (tileFlags[i + 1] ?? 0);
+			rowZoneCnt[i] =
+				(zoneCnt[i - 1] ?? 0) + (zoneCnt[i] ?? 0) + (zoneCnt[i + 1] ?? 0);
+			const a = traffic[i - 1] ?? 0;
+			const b = traffic[i] ?? 0;
+			const c = traffic[i + 1] ?? 0;
+			rowTrafficMax[i] = a > b ? (a > c ? a : c) : b > c ? b : c;
+		}
+		rowFlagOr[last] = (tileFlags[last - 1] ?? 0) | (tileFlags[last] ?? 0);
+		rowZoneCnt[last] = (zoneCnt[last - 1] ?? 0) + (zoneCnt[last] ?? 0);
+		rowTrafficMax[last] = Math.max(traffic[last - 1] ?? 0, traffic[last] ?? 0);
+	}
+}
+
+/**
+ * Rebuild the per-tile fact flags, the occupied-zoning index, and the
+ * neighbor-independent part of each tile's raw value. Road, rail, and
+ * power-line layers are 0/1, so their flag bits shift in branch-free.
+ */
 function buildTileIndex(state: CityState): void {
 	const { size, terrain, roads, rail, powerLines, civic, zoning, building } =
 		state;
+	const { elevation, pollution, crime, power, waterCoverage } = state;
+	// Hoisted imported constants — see updateLandValue.
+	const water = TERRAIN_WATER;
+	const park = CIVIC_PARK;
+	const stadium = CIVIC_STADIUM;
+	const empty = BUILDING_EMPTY;
+	const base = LV_BASE;
+	const pollutionFactor = LV_POLLUTION_FACTOR;
+	const noPowerPenalty = LV_NO_POWER_PENALTY;
+	const noWaterPenalty = LV_NO_WATER_PENALTY;
+
+	// Three separate sweeps, not one: the grid layers are equal-sized slices
+	// of one backing buffer, so they alias the same cache sets — streaming a
+	// dozen at once thrashes; a few at a time stays fast.
+	for (let i = 0; i < size; i++) {
+		const c = civic[i] ?? 0;
+		tileFlags[i] =
+			(roads[i] ?? 0) |
+			((rail[i] ?? 0) << 1) |
+			(terrain[i] === water ? F_WATER : 0) |
+			((powerLines[i] ?? 0) << 5) |
+			(c !== 0 ? F_CIVIC : 0) |
+			(c === park ? F_PARK : 0) |
+			(c === stadium ? F_STADIUM : 0);
+	}
 
 	for (let i = 0; i < size; i++) {
-		let flags = 0;
-		if (roads[i] === 1) flags |= F_ROAD;
-		if (rail[i] === 1) flags |= F_RAIL;
-		if (terrain[i] === TERRAIN_WATER) flags |= F_WATER;
-		if (powerLines[i] === 1) flags |= F_PLINE;
-		const c = civic[i] ?? 0;
-		if (c !== 0) flags |= F_CIVIC;
-		if (c === CIVIC_PARK) flags |= F_PARK;
-		if (c === CIVIC_STADIUM) flags |= F_STADIUM;
-		tileFlags[i] = flags;
-		zoneBuilt[i] = building[i] === BUILDING_EMPTY ? 0 : (zoning[i] ?? 0);
+		zoneCnt[i] = building[i] === empty ? 0 : (ZC_TABLE[zoning[i] ?? 0] ?? 0);
+	}
+
+	for (let i = 0; i < size; i++) {
+		selfValue[i] =
+			base +
+			(ELEV_BONUS[elevation[i] ?? 0] ?? 0) -
+			(pollution[i] ?? 0) * pollutionFactor -
+			(CRIME_PENALTY[crime[i] ?? 0] ?? 0) -
+			(power[i] !== 1 ? noPowerPenalty : 0) -
+			(waterCoverage[i] !== 1 ? noWaterPenalty : 0);
 	}
 }
 
-/** Raw value for an interior tile: neighbor indices need no bounds checks. */
-function rawValueInterior(state: CityState, i: number): number {
-	let nearFlags = 0;
-	let cCount = 0;
-	let rCount = 0;
-	let iCount = 0;
-	let maxTraffic = 0;
-
-	for (let n = 0; n < NEIGHBOR_COUNT; n++) {
-		const ni = i + (flatOffsets[n] ?? 0);
-		nearFlags |= tileFlags[ni] ?? 0;
-		const zb = zoneBuilt[ni];
-		if (zb === ZONE_COMMERCIAL) cCount++;
-		else if (zb === ZONE_RESIDENTIAL) rCount++;
-		else if (zb === ZONE_INDUSTRIAL) iCount++;
-		const t = state.traffic[ni] ?? 0;
-		if (t > maxTraffic) maxTraffic = t;
-	}
-
-	return finishValue(state, i, nearFlags, cCount, rCount, iCount, maxTraffic);
-}
-
-/** Raw value for a border tile: the same scan with bounds-checked neighbors. */
-function rawValueBorder(
-	state: CityState,
-	i: number,
-	x: number,
-	y: number,
-): number {
-	const { width, height } = state;
-	let nearFlags = 0;
-	let cCount = 0;
-	let rCount = 0;
-	let iCount = 0;
-	let maxTraffic = 0;
-
-	for (let n = 0; n < NEIGHBOR_COUNT; n++) {
-		const nx = x + (DX[n] ?? 0);
-		const ny = y + (DY[n] ?? 0);
-		if (!inBounds(width, height, nx, ny)) continue;
-		const ni = ny * width + nx;
-		nearFlags |= tileFlags[ni] ?? 0;
-		const zb = zoneBuilt[ni];
-		if (zb === ZONE_COMMERCIAL) cCount++;
-		else if (zb === ZONE_RESIDENTIAL) rCount++;
-		else if (zb === ZONE_INDUSTRIAL) iCount++;
-		const t = state.traffic[ni] ?? 0;
-		if (t > maxTraffic) maxTraffic = t;
-	}
-
-	return finishValue(state, i, nearFlags, cCount, rCount, iCount, maxTraffic);
-}
-
-/** Combine the neighbor-scan facts with the tile's own into a raw value. */
-function finishValue(
-	state: CityState,
-	i: number,
-	nearFlags: number,
-	cCount: number,
-	rCount: number,
-	iCount: number,
-	maxTraffic: number,
-): number {
-	let value = LV_BASE;
-
-	if ((nearFlags & F_ROAD) !== 0) value += LV_ROAD_ADJ_BONUS;
-	if ((nearFlags & F_RAIL) !== 0) value += LV_RAIL_ADJ_BONUS;
-	if ((nearFlags & F_WATER) !== 0) value += LV_WATER_ADJ_BONUS;
-	if ((nearFlags & F_PARK) !== 0) value += LV_PARK_BONUS;
-	if ((nearFlags & F_STADIUM) !== 0) value += LV_STADIUM_BONUS;
-
-	// Elevation bonus
-	const elev = state.elevation[i] ?? 0;
-	value += Math.floor(elev * LV_ELEVATION_FACTOR);
-
-	// Nearby commercial boosts R land value; nearby population boosts C
-	const zone = state.zoning[i];
-	if (zone === ZONE_RESIDENTIAL) value += cCount * LV_COMMERCIAL_BONUS;
-	if (zone === ZONE_COMMERCIAL) value += rCount * LV_POPULATION_BONUS;
-
-	// Industrial penalty
-	if (zone !== ZONE_INDUSTRIAL) value -= iCount * LV_INDUSTRIAL_PENALTY;
-
-	// Pollution penalty
-	value -= (state.pollution[i] ?? 0) * LV_POLLUTION_FACTOR;
-
-	// Crime penalty
-	value -= Math.floor((state.crime[i] ?? 0) * LV_CRIME_FACTOR);
-
-	// Traffic penalty (from adjacent road congestion)
-	value -= Math.floor(maxTraffic * LV_TRAFFIC_FACTOR);
-
-	// Power/water coverage penalties
-	if (state.power[i] !== 1) value -= LV_NO_POWER_PENALTY;
-	if (state.waterCoverage[i] !== 1) value -= LV_NO_WATER_PENALTY;
-
-	return Math.max(0, value);
-}
-
-/** One diffusion iteration: average each parcel toward its neighbors. */
+/**
+ * One diffusion iteration: average each parcel toward its neighbors.
+ *
+ * The 8-neighbor sum and eligible-neighbor count are separable box sums:
+ * a horizontal 3-wide pass followed by a vertical 3-tall combine, minus the
+ * center tile. Integer addition is order-independent, so the totals — and
+ * therefore the averages — are identical to visiting each neighbor.
+ * Road and rail neighbors are masked out; water and other zero-value tiles
+ * still count toward the average, exactly as the direct scan did.
+ */
 function diffuseOnce(state: CityState): void {
+	const { width, height, size, landValue } = state;
+	// Hoisted imported constant — see updateLandValue.
+	const rate = LV_DIFFUSION_RATE;
+
+	if (width < 2 || height < 2) {
+		diffuseOnceDirect(state);
+		return;
+	}
+
+	for (let i = 0; i < size; i++) {
+		const e = ((tileFlags[i] ?? 0) & F_SUM_SKIP) === 0 ? 1 : 0;
+		eligible[i] = e;
+		maskedValue[i] = e === 1 ? (scratch[i] ?? 0) : 0;
+	}
+
+	// Horizontal 3-sums, row-clamped at the first and last column.
+	for (let y = 0; y < height; y++) {
+		const rowBase = y * width;
+		const last = rowBase + width - 1;
+		rowSum[rowBase] =
+			(maskedValue[rowBase] ?? 0) + (maskedValue[rowBase + 1] ?? 0);
+		rowCount[rowBase] = (eligible[rowBase] ?? 0) + (eligible[rowBase + 1] ?? 0);
+		for (let i = rowBase + 1; i < last; i++) {
+			rowSum[i] =
+				(maskedValue[i - 1] ?? 0) +
+				(maskedValue[i] ?? 0) +
+				(maskedValue[i + 1] ?? 0);
+			rowCount[i] =
+				(eligible[i - 1] ?? 0) + (eligible[i] ?? 0) + (eligible[i + 1] ?? 0);
+		}
+		rowSum[last] = (maskedValue[last - 1] ?? 0) + (maskedValue[last] ?? 0);
+		rowCount[last] = (eligible[last - 1] ?? 0) + (eligible[last] ?? 0);
+	}
+
+	// Vertical combine and write, column-clamped at the first and last row.
+	for (let y = 0; y < height; y++) {
+		const rowBase = y * width;
+		const up = y > 0 ? -width : 0;
+		const down = y < height - 1 ? width : 0;
+		for (let x = 0; x < width; x++) {
+			const i = rowBase + x;
+			// Water, roads, rail, power lines are not part of the value field.
+			if (((tileFlags[i] ?? 0) & F_NOT_PARCEL) !== 0) continue;
+
+			let sum = (rowSum[i] ?? 0) - (maskedValue[i] ?? 0);
+			let count = (rowCount[i] ?? 0) - (eligible[i] ?? 0);
+			if (up !== 0) {
+				sum += rowSum[i + up] ?? 0;
+				count += rowCount[i + up] ?? 0;
+			}
+			if (down !== 0) {
+				sum += rowSum[i + down] ?? 0;
+				count += rowCount[i + down] ?? 0;
+			}
+
+			if (count > 0) {
+				const avg = sum / count;
+				const current = scratch[i] ?? 0;
+				landValue[i] = Math.round(current + (avg - current) * rate);
+			}
+		}
+	}
+}
+
+/** Direct 8-neighbor diffusion for degenerate 1-wide/1-tall maps. */
+function diffuseOnceDirect(state: CityState): void {
 	const { width, height, landValue } = state;
 
 	for (let y = 0; y < height; y++) {
-		const interiorRow = y > 0 && y < height - 1;
 		for (let x = 0; x < width; x++) {
 			const i = y * width + x;
-			// Water, roads, rail, power lines are not part of the value field.
 			if (((tileFlags[i] ?? 0) & F_NOT_PARCEL) !== 0) continue;
 
 			let sum = 0;
 			let count = 0;
-			if (interiorRow && x > 0 && x < width - 1) {
-				for (let n = 0; n < NEIGHBOR_COUNT; n++) {
-					const ni = i + (flatOffsets[n] ?? 0);
-					if (((tileFlags[ni] ?? 0) & F_SUM_SKIP) !== 0) continue;
-					sum += scratch[ni] ?? 0;
-					count++;
-				}
-			} else {
-				for (let n = 0; n < NEIGHBOR_COUNT; n++) {
-					const nx = x + (DX[n] ?? 0);
-					const ny = y + (DY[n] ?? 0);
-					if (!inBounds(width, height, nx, ny)) continue;
-					const ni = ny * width + nx;
-					if (((tileFlags[ni] ?? 0) & F_SUM_SKIP) !== 0) continue;
-					sum += scratch[ni] ?? 0;
-					count++;
-				}
+			for (let n = 0; n < NEIGHBOR_COUNT; n++) {
+				const nx = x + (DX[n] ?? 0);
+				const ny = y + (DY[n] ?? 0);
+				if (!inBounds(width, height, nx, ny)) continue;
+				const ni = ny * width + nx;
+				if (((tileFlags[ni] ?? 0) & F_SUM_SKIP) !== 0) continue;
+				sum += scratch[ni] ?? 0;
+				count++;
 			}
 
 			if (count > 0) {
