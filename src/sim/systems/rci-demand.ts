@@ -56,6 +56,16 @@ const supply = {
 export function updateSupplyTotals(state: CityState): void {
 	const { size, zoning, building, population, jobs, pollution, aggregates } =
 		state;
+	// Hoisted imported constants: under Vite's dev/test module transform an
+	// imported binding is a namespace property read on every use, which is
+	// ruinous inside per-tile loops. Locals compile to registers everywhere.
+	const zoneR = ZONE_RESIDENTIAL;
+	const zoneC = ZONE_COMMERCIAL;
+	const zoneI = ZONE_INDUSTRIAL;
+	const empty = BUILDING_EMPTY;
+	const popPerDensity = POP_PER_DENSITY;
+	const jobsCPerDensity = JOBS_C_PER_DENSITY;
+	const jobsIPerDensity = JOBS_I_PER_DENSITY;
 
 	let totalPop = 0;
 	let totalCJobs = 0;
@@ -69,29 +79,29 @@ export function updateSupplyTotals(state: CityState): void {
 		const zone = zoning[i];
 		const bld = building[i];
 
-		if (zone === ZONE_RESIDENTIAL) {
+		if (zone === zoneR) {
 			rTileCount++;
 			pollutionOnR += pollution[i] ?? 0;
-			if (bld !== undefined && bld !== BUILDING_EMPTY) {
-				const pop = POP_PER_DENSITY[bld];
+			if (bld !== undefined && bld !== empty) {
+				const pop = popPerDensity[bld];
 				if (pop !== undefined) {
 					totalPop += pop;
 					population[i] = pop;
 				}
 			}
-		} else if (zone === ZONE_COMMERCIAL) {
-			if (bld !== undefined && bld !== BUILDING_EMPTY) {
+		} else if (zone === zoneC) {
+			if (bld !== undefined && bld !== empty) {
 				occupiedC++;
-				const j = JOBS_C_PER_DENSITY[bld];
+				const j = jobsCPerDensity[bld];
 				if (j !== undefined) {
 					totalCJobs += j;
 					jobs[i] = j;
 				}
 			}
-		} else if (zone === ZONE_INDUSTRIAL) {
-			if (bld !== undefined && bld !== BUILDING_EMPTY) {
+		} else if (zone === zoneI) {
+			if (bld !== undefined && bld !== empty) {
 				occupiedI++;
-				const j = JOBS_I_PER_DENSITY[bld];
+				const j = jobsIPerDensity[bld];
 				if (j !== undefined) {
 					totalIJobs += j;
 					jobs[i] = j;

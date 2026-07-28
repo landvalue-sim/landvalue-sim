@@ -60,7 +60,12 @@ const jobFlags = new Uint8Array(MAX_GRID_SIZE * MAX_GRID_SIZE);
 const colPrefix = new Uint16Array(MAX_GRID_SIZE * (MAX_GRID_SIZE + 1));
 
 export function updateTraffic(state: CityState): void {
-	const { width, size, zoning, building, roads, rail, traffic } = state;
+	const { width, height, size, zoning, building, roads, rail, traffic } = state;
+	// Hoisted imported constants: under Vite's dev/test module transform an
+	// imported binding is a namespace property read on every use, which is
+	// ruinous inside per-tile loops. Locals compile to registers everywhere.
+	const zoneR = ZONE_RESIDENTIAL;
+	const empty = BUILDING_EMPTY;
 
 	// Reset traffic
 	traffic.fill(0);
@@ -77,16 +82,15 @@ export function updateTraffic(state: CityState): void {
 
 	// For each occupied R tile, add both legs of every trip it generates
 	for (let i = 0; i < size; i++) {
-		if (zoning[i] !== ZONE_RESIDENTIAL || building[i] === BUILDING_EMPTY)
-			continue;
+		if (zoning[i] !== zoneR || building[i] === empty) continue;
 
 		const rx = i % width;
 		const ry = (i - rx) / width;
 		const density = building[i] ?? 1;
 		const load = Math.max(1, Math.floor(density * (1 - railReduction)));
 
-		spreadHorizontal(state, rx, ry, load);
-		spreadVertical(state, rx, ry, load);
+		spreadHorizontal(width, height, roads, traffic, rx, ry, load);
+		spreadVertical(width, height, roads, traffic, rx, ry, load);
 	}
 
 	// Compute average congestion for AGG
@@ -106,6 +110,10 @@ export function updateTraffic(state: CityState): void {
 function buildJobIndex(state: CityState): void {
 	const { width, height, zoning, building } = state;
 	const stride = height + 1;
+	// Hoisted imported constants — see updateTraffic.
+	const zoneC = ZONE_COMMERCIAL;
+	const zoneI = ZONE_INDUSTRIAL;
+	const empty = BUILDING_EMPTY;
 
 	for (let x = 0; x < width; x++) {
 		const colBase = x * stride;
@@ -114,10 +122,7 @@ function buildJobIndex(state: CityState): void {
 			const i = y * width + x;
 			const z = zoning[i];
 			const isJob =
-				(z === ZONE_COMMERCIAL || z === ZONE_INDUSTRIAL) &&
-				building[i] !== BUILDING_EMPTY
-					? 1
-					: 0;
+				(z === zoneC || z === zoneI) && building[i] !== empty ? 1 : 0;
 			jobFlags[i] = isJob;
 			colPrefix[colBase + y + 1] = (colPrefix[colBase + y] ?? 0) + isJob;
 		}
@@ -130,14 +135,17 @@ function buildJobIndex(state: CityState): void {
  * side of the diamond, so sweep e downward accumulating a suffix count.
  */
 function spreadHorizontal(
-	state: CityState,
+	width: number,
+	height: number,
+	roads: Uint8Array,
+	traffic: Uint8Array,
 	rx: number,
 	ry: number,
 	load: number,
 ): void {
-	const { width, height, roads, traffic } = state;
 	const stride = height + 1;
 	const valBase = load * RADIUS;
+	const cap = MAX_TRAFFIC;
 
 	for (let dir = -1; dir <= 1; dir += 2) {
 		let trips = 0;
@@ -158,7 +166,7 @@ function spreadHorizontal(
 			if (roads[ti] === 1) {
 				const add = (STEP_VALUES[valBase + e - 1] ?? 1) * trips;
 				const next = (traffic[ti] ?? 0) + add;
-				traffic[ti] = next > MAX_TRAFFIC ? MAX_TRAFFIC : next;
+				traffic[ti] = next > cap ? cap : next;
 			}
 		}
 	}
@@ -171,13 +179,16 @@ function spreadHorizontal(
  * so sweep v downward accumulating the count of targets passed.
  */
 function spreadVertical(
-	state: CityState,
+	width: number,
+	height: number,
+	roads: Uint8Array,
+	traffic: Uint8Array,
 	rx: number,
 	ry: number,
 	load: number,
 ): void {
-	const { width, height, roads, traffic } = state;
 	const valBase = load * RADIUS;
+	const cap = MAX_TRAFFIC;
 
 	for (let e = -RADIUS; e <= RADIUS; e++) {
 		const cx = rx + e;
@@ -199,7 +210,7 @@ function spreadVertical(
 				if (roads[ti] === 1) {
 					const add = (STEP_VALUES[valBase + ae + v - 1] ?? 1) * trips;
 					const next = (traffic[ti] ?? 0) + add;
-					traffic[ti] = next > MAX_TRAFFIC ? MAX_TRAFFIC : next;
+					traffic[ti] = next > cap ? cap : next;
 				}
 			}
 		}

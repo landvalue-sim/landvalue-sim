@@ -72,6 +72,12 @@ function pumpIsActive(state: CityState, idx: number): boolean {
 
 export function updateWater(state: CityState): void {
 	const { size, civic, building, waterCoverage, aggregates } = state;
+	// Hoisted imported constants: under Vite's dev/test module transform an
+	// imported binding is a namespace property read on every use, which is
+	// ruinous inside per-tile loops. Locals compile to registers everywhere.
+	const pump = CIVIC_WATER_PUMP;
+	const empty = BUILDING_EMPTY;
+	const demandPerDensity = WATER_DEMAND_PER_DENSITY;
 
 	let activePumps = 0;
 	let totalDemand = 0;
@@ -79,14 +85,14 @@ export function updateWater(state: CityState): void {
 
 	// Tally demand and collect active pumps as flood-fill seeds.
 	for (let i = 0; i < size; i++) {
-		if (civic[i] === CIVIC_WATER_PUMP && pumpIsActive(state, i)) {
+		if (civic[i] === pump && pumpIsActive(state, i)) {
 			activePumps++;
 			pumpSeeds[seedCount] = i;
 			seedCount++;
 		}
 		const tier = building[i] ?? 0;
-		if (tier !== BUILDING_EMPTY) {
-			totalDemand += WATER_DEMAND_PER_DENSITY[tier] ?? 0;
+		if (tier !== empty) {
+			totalDemand += demandPerDensity[tier] ?? 0;
 		}
 	}
 
