@@ -93,6 +93,43 @@ function specForChar(c: string): ZoneSpec | null {
 	}
 }
 
+// Dense city: every 4th row/column is road; the 3x3 blocks between are fully
+// built out at high density, block columns alternating commercial/residential.
+const DENSE_STRIDE = 4;
+
+/**
+ * Replace the current city with a worst-case dense grid that fills the whole
+ * map: a 4-stride road lattice with every block built out at high density.
+ * This is the benchmark city for the per-tick budget (issue #11) — maximum
+ * occupied R tiles, maximum R-to-C commute pairs, no empty land. Fully
+ * deterministic and terrain-flat so timings measure the systems, not the map.
+ */
+export function buildDenseCity(state: CityState): void {
+	resetCity(state);
+
+	const cSpec: ZoneSpec = {
+		zone: ZONE_COMMERCIAL,
+		tier: BUILDING_HIGH,
+		density: DENSITY_HIGH,
+	};
+	const rSpec: ZoneSpec = {
+		zone: ZONE_RESIDENTIAL,
+		tier: BUILDING_HIGH,
+		density: DENSITY_HIGH,
+	};
+
+	for (let y = 0; y < state.height; y++) {
+		for (let x = 0; x < state.width; x++) {
+			if (x % DENSE_STRIDE === 0 || y % DENSE_STRIDE === 0) {
+				setRoad(state, x, y);
+				continue;
+			}
+			const commercial = Math.floor(x / DENSE_STRIDE) % 2 === 0;
+			fillTile(state, x, y, commercial ? cSpec : rSpec);
+		}
+	}
+}
+
 /** Replace the current city with a deterministic pre-built downtown. */
 export function buildTestCity(state: CityState): void {
 	resetCity(state);

@@ -9,7 +9,7 @@ import {
 	ZONE_NONE,
 	ZONE_RESIDENTIAL,
 } from "./constants.ts";
-import { buildTestCity } from "./scenarios.ts";
+import { buildDenseCity, buildTestCity } from "./scenarios.ts";
 import { clearViolations, getViolations } from "./sim-invariants.ts";
 import { tick } from "./tick.ts";
 
@@ -97,5 +97,52 @@ describe("buildTestCity", () => {
 		tick(city, []);
 		expect(getViolations()).toHaveLength(0);
 		expect(Number.isFinite(city.aggregates[AGG.TREASURY] ?? NaN)).toBe(true);
+	});
+});
+
+describe("buildDenseCity", () => {
+	it("fills every non-road tile with a built high-density R or C parcel", () => {
+		const city = createCity({ width: 64, height: 64, seed: 1 });
+		buildDenseCity(city);
+
+		let roads = 0;
+		let built = 0;
+		for (let t = 0; t < city.size; t++) {
+			if (city.roads[t] === 1) {
+				roads++;
+				expect(city.building[t]).toBe(BUILDING_EMPTY);
+			} else {
+				built++;
+				expect(city.building[t]).not.toBe(BUILDING_EMPTY);
+				const zone = city.zoning[t];
+				expect(zone === ZONE_RESIDENTIAL || zone === ZONE_COMMERCIAL).toBe(
+					true,
+				);
+			}
+		}
+		expect(roads + built).toBe(city.size);
+		expect(roads).toBeGreaterThan(0);
+		expect(built).toBeGreaterThan(0);
+	});
+
+	it("produces a city that ticks without invariant violations", () => {
+		const city = createCity({ width: 64, height: 64, seed: 1 });
+		clearViolations();
+
+		buildDenseCity(city);
+		tick(city, []);
+
+		expect(getViolations()).toHaveLength(0);
+	});
+
+	it("is deterministic — same layout every call", () => {
+		const a = createCity({ width: 64, height: 64, seed: 1 });
+		const b = createCity({ width: 64, height: 64, seed: 999 });
+		buildDenseCity(a);
+		buildDenseCity(b);
+
+		expect(Array.from(a.zoning)).toEqual(Array.from(b.zoning));
+		expect(Array.from(a.building)).toEqual(Array.from(b.building));
+		expect(Array.from(a.roads)).toEqual(Array.from(b.roads));
 	});
 });
