@@ -419,7 +419,9 @@ export class IsoScene extends Phaser.Scene {
 		this.panKeys(delta);
 		if (this.bakeDirty() && !this.zoomThrottled(time)) this.bakeWorld(time);
 		this.drawDynamic();
-		if (import.meta.env.DEV) frameProfilerEnd(performance.now());
+		if (import.meta.env.DEV) {
+			frameProfilerEnd(performance.now(), this.game.loop.actualFps);
+		}
 	}
 
 	// ---- Input ---------------------------------------------------------------

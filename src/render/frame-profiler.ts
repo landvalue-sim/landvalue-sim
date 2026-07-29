@@ -32,6 +32,9 @@ let sampleCount = 0;
 let frameStart = 0;
 let hasPrevFrame = false;
 
+/** Phaser's own rate, kept only as the latest reading (see `engineFps`). */
+let engineFps = 0;
+
 // ---- Public API -------------------------------------------------------------
 
 export interface FrameStats {
@@ -51,6 +54,15 @@ export interface FrameStats {
 	readonly avgWork: number;
 	/** Longest scene update duration in the window, ms. */
 	readonly maxWork: number;
+	/**
+	 * Phaser's own `loop.actualFps`, shown alongside `fps` as a cross-check.
+	 * It is not the same measurement: Phaser counts frames into one-second
+	 * buckets and runs an EMA over them (`0.25 * thisSecond + 0.75 * previous`),
+	 * so it lags a few seconds behind a change and cannot represent a single
+	 * long frame at all. Expect it to track `fps` in the steady state and to
+	 * disagree during and just after a stall — that divergence is the point.
+	 */
+	readonly engineFps: number;
 	readonly sampleCount: number;
 }
 
@@ -63,6 +75,7 @@ const EMPTY_STATS: FrameStats = {
 	lastWork: 0,
 	avgWork: 0,
 	maxWork: 0,
+	engineFps: 0,
 	sampleCount: 0,
 };
 
@@ -80,11 +93,14 @@ export function frameProfilerBegin(time: number): void {
 }
 
 /**
- * Call at the end of the scene's `update()` with the current clock reading.
- * Commits this frame's sample and advances the ring buffer.
+ * Call at the end of the scene's `update()` with the current clock reading and
+ * Phaser's `game.loop.actualFps`. Commits this frame's sample and advances the
+ * ring buffer. Phaser's rate is already smoothed over its own history, so it is
+ * stored as-is rather than windowed again.
  */
-export function frameProfilerEnd(time: number): void {
+export function frameProfilerEnd(time: number, phaserFps: number): void {
 	work[cursor] = time - frameStart;
+	engineFps = phaserFps;
 	cursor = (cursor + 1) % WINDOW_SIZE;
 	if (sampleCount < WINDOW_SIZE) sampleCount++;
 }
@@ -97,6 +113,7 @@ export function frameProfilerReset(): void {
 	sampleCount = 0;
 	frameStart = 0;
 	hasPrevFrame = false;
+	engineFps = 0;
 }
 
 /**
@@ -138,6 +155,7 @@ export function getFrameStats(): FrameStats {
 		lastWork: work[lastIdx] ?? 0,
 		avgWork: sampleCount > 0 ? workSum / sampleCount : 0,
 		maxWork,
+		engineFps,
 		sampleCount,
 	};
 }

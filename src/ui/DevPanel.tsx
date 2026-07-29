@@ -65,6 +65,10 @@ export function DevPanel({
 							<span className="dev-fps-min">
 								min {Math.round(frame.minFps)}
 							</span>
+							{/* Phaser's smoothed rate, for comparison only — see FrameStats. */}
+							<span className="dev-fps-min">
+								phaser {Math.round(frame.engineFps)}
+							</span>
 						</div>
 						<div className="dev-table">
 							<div className="dev-row dev-header">

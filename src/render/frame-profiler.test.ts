@@ -6,17 +6,22 @@ import {
 	getFrameStats,
 } from "./frame-profiler.ts";
 
-/** Record `count` frames of `period` ms each, doing `work` ms in every one. */
+/**
+ * Record `count` frames of `period` ms each, doing `work` ms in every one.
+ * `phaserFps` stands in for Phaser's own smoothed rate; it is passed through
+ * untouched, so the tests can use whatever value distinguishes it from ours.
+ */
 function runFrames(
 	startTime: number,
 	count: number,
 	period: number,
 	work: number,
+	phaserFps = 0,
 ): number {
 	let t = startTime;
 	for (let i = 0; i < count; i++) {
 		frameProfilerBegin(t);
-		frameProfilerEnd(t + work);
+		frameProfilerEnd(t + work, phaserFps);
 		t += period;
 	}
 	return t;
@@ -36,7 +41,7 @@ describe("frame profiler", () => {
 
 	it("reports work but no rate from a single seed frame", () => {
 		frameProfilerBegin(1000);
-		frameProfilerEnd(1002);
+		frameProfilerEnd(1002, 60);
 
 		const s = getFrameStats();
 		expect(s.sampleCount).toBe(1);
@@ -72,7 +77,7 @@ describe("frame profiler", () => {
 		let t = runFrames(0, 20, 10, 1);
 		// One 100ms hitch (a bake), then back to smooth frames.
 		frameProfilerBegin(t);
-		frameProfilerEnd(t + 90);
+		frameProfilerEnd(t + 90, 0);
 		t += 100;
 		runFrames(t, 20, 10, 1);
 
@@ -100,13 +105,25 @@ describe("frame profiler", () => {
 		expect(s.fps).toBeCloseTo(50, 6);
 	});
 
+	it("passes Phaser's own rate through without windowing it", () => {
+		// Phaser's EMA is still reporting 60 while the frames it is being
+		// handed are 50ms apart. Ours reflects the frames; its value survives
+		// untouched so the two can be compared.
+		runFrames(0, 30, 50, 3, 60);
+
+		const s = getFrameStats();
+		expect(s.fps).toBeCloseTo(20, 6);
+		expect(s.engineFps).toBe(60);
+	});
+
 	it("clears the window on reset", () => {
-		runFrames(0, 10, 10, 1);
+		runFrames(0, 10, 10, 1, 60);
 		frameProfilerReset();
 
 		const s = getFrameStats();
 		expect(s.sampleCount).toBe(0);
 		expect(s.fps).toBe(0);
 		expect(s.maxPeriod).toBe(0);
+		expect(s.engineFps).toBe(0);
 	});
 });
