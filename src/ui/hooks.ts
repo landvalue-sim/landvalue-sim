@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { SimClient, SimStats } from "../app/sim-client.ts";
 import type { InteractionSnapshot, InteractionStore } from "../app/store.ts";
+import { type FrameStats, getFrameStats } from "../render/frame-profiler.ts";
 import {
 	AGG,
 	type CityState,
@@ -112,6 +113,37 @@ export function useLiveStats(city: CityState): LiveStats {
 		raf = requestAnimationFrame(loop);
 		return () => cancelAnimationFrame(raf);
 	}, [city]);
+
+	return stats;
+}
+
+const RENDER_STATS_REFRESH_MS = 250;
+
+/**
+ * Poll the render loop's frame timings. Separate from `useSimStats` because
+ * the renderer runs on this thread — there is no message to subscribe to, just
+ * a module-level window the scene fills in as it draws. When `enabled` is
+ * false the poll loop is not installed at all, so a hidden readout costs
+ * nothing (and, more to the point, stops re-rendering the panel four times a
+ * second while you are trying to profile something else).
+ */
+export function useRenderStats(enabled: boolean): FrameStats {
+	const [stats, setStats] = useState<FrameStats>(getFrameStats);
+	const lastRef = useRef(0);
+
+	useEffect(() => {
+		if (!enabled) return;
+		let raf = 0;
+		const loop = (t: number): void => {
+			if (t - lastRef.current >= RENDER_STATS_REFRESH_MS) {
+				lastRef.current = t;
+				setStats(getFrameStats());
+			}
+			raf = requestAnimationFrame(loop);
+		};
+		raf = requestAnimationFrame(loop);
+		return () => cancelAnimationFrame(raf);
+	}, [enabled]);
 
 	return stats;
 }

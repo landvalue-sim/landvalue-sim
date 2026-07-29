@@ -541,6 +541,24 @@ body {
 	color: #bbf7d0;
 }
 
+.dev-fps {
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+	margin-bottom: 4px;
+}
+
+.dev-fps-value {
+	font-size: 15px;
+	font-weight: 600;
+	color: #e5e7eb;
+}
+
+.dev-fps-min {
+	font-size: 10px;
+	color: #6b7280;
+}
+
 .dev-violations {
 	max-height: 120px;
 	overflow-y: auto;

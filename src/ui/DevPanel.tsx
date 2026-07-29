@@ -9,7 +9,7 @@ import { useState } from "react";
 import { Button, Disclosure, DisclosurePanel } from "react-aria-components";
 import type { SimClient } from "../app/sim-client.ts";
 import { SYSTEM_NAMES } from "../sim/index.ts";
-import { useSimStats } from "./hooks.ts";
+import { useRenderStats, useSimStats } from "./hooks.ts";
 
 const MAX_SHOWN_VIOLATIONS = 20;
 
@@ -20,6 +20,8 @@ export function DevPanel({
 }): React.ReactElement | null {
 	const stats = useSimStats(sim);
 	const [infiniteMoney, setInfiniteMoney] = useState(false);
+	const [showFps, setShowFps] = useState(true);
+	const frame = useRenderStats(showFps);
 	if (!import.meta.env.DEV) return null;
 
 	const profile = stats?.profile ?? null;
@@ -48,6 +50,48 @@ export function DevPanel({
 				>
 					Infinite Money: {infiniteMoney ? "ON" : "OFF"}
 				</Button>
+				<Button
+					className={`dev-action-btn${showFps ? " is-active" : ""}`}
+					onPress={() => setShowFps(!showFps)}
+				>
+					Renderer FPS: {showFps ? "ON" : "OFF"}
+				</Button>
+
+				{showFps && (
+					<>
+						<div className="dev-section-title">Renderer</div>
+						<div className="dev-fps">
+							<span className="dev-fps-value">{Math.round(frame.fps)} fps</span>
+							<span className="dev-fps-min">
+								min {Math.round(frame.minFps)}
+							</span>
+							{/* Phaser's smoothed rate, for comparison only — see FrameStats. */}
+							<span className="dev-fps-min">
+								phaser {Math.round(frame.engineFps)}
+							</span>
+						</div>
+						<div className="dev-table">
+							<div className="dev-row dev-header">
+								<span>Frame (ms)</span>
+								<span>Last</span>
+								<span>Avg</span>
+								<span>Max</span>
+							</div>
+							<div className="dev-row">
+								<span className="dev-name">period</span>
+								<span>{fmt(frame.lastPeriod)}</span>
+								<span>{fmt(frame.avgPeriod)}</span>
+								<span>{fmt(frame.maxPeriod)}</span>
+							</div>
+							<div className="dev-row">
+								<span className="dev-name">update</span>
+								<span>{fmt(frame.lastWork)}</span>
+								<span>{fmt(frame.avgWork)}</span>
+								<span>{fmt(frame.maxWork)}</span>
+							</div>
+						</div>
+					</>
+				)}
 
 				<div className="dev-section-title">Tick Profiler (ms)</div>
 				<div className="dev-table">

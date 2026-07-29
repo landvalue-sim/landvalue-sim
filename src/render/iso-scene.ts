@@ -41,6 +41,11 @@ import {
 	ZONE_RESIDENTIAL,
 } from "../sim/index.ts";
 import { type Point, rectTiles, roadLineTiles } from "./drag.ts";
+import {
+	frameProfilerBegin,
+	frameProfilerEnd,
+	frameProfilerReset,
+} from "./frame-profiler.ts";
 import { ELEV_HEIGHT, HALF_H, HALF_W, TIER_HEIGHT } from "./iso.ts";
 import { pickTile, tileSurfaceHeight } from "./picking.ts";
 import { CIVIC_MANIFEST, SPRITE_MANIFEST } from "./sprite-manifest.ts";
@@ -197,6 +202,9 @@ export class IsoScene extends Phaser.Scene {
 	}
 
 	create(): void {
+		// A fresh scene starts a fresh timing window — otherwise the gap across
+		// a reload reads as one enormous frame for the next couple of seconds.
+		if (import.meta.env.DEV) frameProfilerReset();
 		this.g = this.add.graphics();
 		this.g.setDepth(-1);
 		this.gOverlay = this.add.graphics();
@@ -289,9 +297,14 @@ export class IsoScene extends Phaser.Scene {
 		this.input.on(Phaser.Input.Events.POINTER_WHEEL, this.onWheel, this);
 	}
 
-	update(_time: number, delta: number): void {
+	update(time: number, delta: number): void {
+		// Frame timing is dev-only; the guards let Vite strip it from prod.
+		if (import.meta.env.DEV) frameProfilerBegin(time);
 		this.panKeys(delta);
 		this.draw();
+		if (import.meta.env.DEV) {
+			frameProfilerEnd(performance.now(), this.game.loop.actualFps);
+		}
 	}
 
 	// ---- Input ---------------------------------------------------------------
