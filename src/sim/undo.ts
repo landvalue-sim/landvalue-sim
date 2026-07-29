@@ -318,6 +318,11 @@ function dropLappedSteps(journal: UndoJournal): void {
  * and the write order in `restoreTile` are the record's format — they must stay
  * in step, and adding a player-writable layer means adding it to both and
  * bumping TILE_U8_COUNT.
+ *
+ * Nothing in the types enforces that, so `undo.test.ts` does: the "undo tile
+ * record format" block round-trips every layer and fails if the two functions
+ * or the count drift apart, or if a layer is added to `CityState` without being
+ * classified as recorded or derived.
  */
 function captureTile(
 	journal: UndoJournal,

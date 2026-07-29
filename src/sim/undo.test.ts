@@ -8,6 +8,9 @@ import {
 	COST_ROAD,
 	DENSITY_LOW,
 	ELEVATION_MAX,
+	INFINITE_TREASURY,
+	MAX_GRID_SIZE,
+	MAX_TERRAFORM_DRAG_SIDE,
 	ZONE_RESIDENTIAL,
 } from "./constants.ts";
 import { processCommands } from "./systems/command-processor.ts";
@@ -469,5 +472,184 @@ describe("undoEdit", () => {
 			applyEdits(city, [{ kind: "level-terrain", x: 2, y: 2, level }], journal),
 		).toBe(0);
 		expect(journal.count).toBe(0);
+	});
+});
+
+/**
+ * The per-tile layers a record carries, in `captureTile`'s write order.
+ *
+ * `captureTile`, `restoreTile` and `TILE_U8_COUNT` are three hand-maintained
+ * things that have to agree, and nothing in the types ties them together. The
+ * round-trip below drives this one list through both halves, so a layer added
+ * to one function and not the other, a stale `TILE_U8_COUNT`, or an ordering
+ * mismatch between the two all surface as a wrong value rather than as undo
+ * quietly restoring garbage.
+ */
+const RECORDED_U8 = [
+	"terrain",
+	"zoning",
+	"building",
+	"roads",
+	"rail",
+	"powerLines",
+	"civic",
+	"waterPipes",
+	"densityCap",
+	"waterLevel",
+	"elevation",
+] as const;
+
+/**
+ * Every other u8 layer. These are pure functions of the grid that
+ * `refreshDerived` rebuilds after an undo, so recording them would reinstate a
+ * reading the simulation had already moved past. Spelled out rather than
+ * inferred so that adding a layer to `CityState` fails this file until someone
+ * has decided which of the two lists it belongs on.
+ */
+const DERIVED_U8 = [
+	"pollution",
+	"traffic",
+	"power",
+	"waterCoverage",
+	"crime",
+	"policeCoverage",
+	"fireCoverage",
+	"fire",
+	"educationCoverage",
+	"healthCoverage",
+] as const;
+
+describe("undo tile record format", () => {
+	it("round-trips every recorded layer of every journaled tile", () => {
+		const city = makeCity();
+		const journal = createUndoJournal();
+		const idxA = 2 * W + 2;
+		const idxB = 2 * W + 3;
+
+		// Distinct per layer so an ordering mismatch shows, and distinct per tile
+		// so a wrong TILE_U8_COUNT — which shears every record after the first —
+		// shows too.
+		for (let i = 0; i < RECORDED_U8.length; i++) {
+			const layer = RECORDED_U8[i] ?? "terrain";
+			city[layer][idxA] = i + 1;
+			city[layer][idxB] = i + 101;
+		}
+		city.population[idxA] = 1234;
+		city.jobs[idxA] = 4321;
+		city.population[idxB] = 5678;
+		city.jobs[idxB] = 8765;
+
+		beginStep(journal);
+		journalTile(journal, city, idxA);
+		journalTile(journal, city, idxB);
+		expect(commitStep(journal)).toBe(true);
+
+		for (const layer of RECORDED_U8) {
+			city[layer][idxA] = 255;
+			city[layer][idxB] = 254;
+		}
+		city.population[idxA] = 0;
+		city.jobs[idxA] = 0;
+		city.population[idxB] = 0;
+		city.jobs[idxB] = 0;
+
+		expect(undoStep(journal, city)).toBe(true);
+
+		for (let i = 0; i < RECORDED_U8.length; i++) {
+			const layer = RECORDED_U8[i] ?? "terrain";
+			expect(city[layer][idxA], layer).toBe(i + 1);
+			expect(city[layer][idxB], layer).toBe(i + 101);
+		}
+		expect(city.population[idxA]).toBe(1234);
+		expect(city.jobs[idxA]).toBe(4321);
+		expect(city.population[idxB]).toBe(5678);
+		expect(city.jobs[idxB]).toBe(8765);
+	});
+
+	it("leaves derived layers to refreshDerived rather than restoring them", () => {
+		const city = makeCity();
+		const journal = createUndoJournal();
+		const idx = 4 * W + 4;
+
+		beginStep(journal);
+		journalTile(journal, city, idx);
+		expect(commitStep(journal)).toBe(true);
+
+		// A tick's worth of derived readings, written after the record was taken.
+		for (const layer of DERIVED_U8) city[layer][idx] = 77;
+
+		expect(undoStep(journal, city)).toBe(true);
+		for (const layer of DERIVED_U8) expect(city[layer][idx], layer).toBe(77);
+	});
+
+	it("accounts for every per-tile u8 layer on CityState", () => {
+		const city = makeCity();
+		const classified = new Set<string>([...RECORDED_U8, ...DERIVED_U8]);
+
+		const perTile: string[] = [];
+		for (const [name, value] of Object.entries(city)) {
+			// vertexHeights is the corner grid, not a tile layer — it is a
+			// different length and gets its own record type.
+			if (value instanceof Uint8Array && value.length === city.size) {
+				perTile.push(name);
+			}
+		}
+
+		expect(perTile.length).toBeGreaterThan(0);
+		for (const name of perTile) {
+			expect(
+				classified.has(name),
+				`${name} is neither recorded nor derived`,
+			).toBe(true);
+		}
+		expect(perTile.length).toBe(classified.size);
+	});
+});
+
+/**
+ * The terraform drag cap exists to keep one gesture inside the undo arenas.
+ * That is a relationship between two constants in different modules with a
+ * terrain-dependent ripple in between, so it is measured rather than argued:
+ * raise MAX_TERRAFORM_DRAG_SIDE, or shrink an arena, and this fails.
+ */
+describe("terraform drag cap", () => {
+	it("keeps its undo step at the worst case the cap allows", () => {
+		const city = createCity({
+			width: MAX_GRID_SIZE,
+			height: MAX_GRID_SIZE,
+			seed: 1,
+		});
+		// The most expensive ground there is: flat at sea level, so every tile in
+		// the drag ripples the full ELEVATION_MAX rings to reach the target.
+		city.vertexHeights.fill(0);
+		city.aggregates[AGG.DEBUG_INFINITE_MONEY] = 1;
+		city.aggregates[AGG.TREASURY] = INFINITE_TREASURY;
+
+		// Centred, so no map edge clips the ripple and shortens the record count.
+		const side = MAX_TERRAFORM_DRAG_SIDE;
+		const off = Math.floor((MAX_GRID_SIZE - side) / 2);
+		const cmds: Command[] = [];
+		for (let y = off; y < off + side; y++) {
+			for (let x = off; x < off + side; x++) {
+				cmds.push({ kind: "level-terrain", x, y, level: ELEVATION_MAX });
+			}
+		}
+
+		const journal = createUndoJournal();
+		expect(applyEdits(city, cmds, journal)).toBe(side * side);
+
+		// The point of the cap: the largest terraform gesture the player can make
+		// is still undoable. Before it, this drag lapped both arenas and took the
+		// whole history with it.
+		expect(journal.overflowed).toBe(false);
+		expect(journal.count).toBe(1);
+		expect(journal.vertWritten).toBeLessThan(VERTEX_CAPACITY);
+		expect(journal.tileWritten).toBeLessThan(TILE_CAPACITY);
+
+		expect(undoEdit(city, journal)).toBe(true);
+		expect(journal.count).toBe(0);
+		for (let i = 0; i < city.vertexHeights.length; i++) {
+			expect(city.vertexHeights[i]).toBe(0);
+		}
 	});
 });

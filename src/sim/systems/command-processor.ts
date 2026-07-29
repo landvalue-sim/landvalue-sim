@@ -387,11 +387,16 @@ function clearTile(state: CityState, idx: number): void {
 }
 
 /**
- * Take out a bond. Reported as a change so the finance readout refreshes, but
- * nothing is journaled, so it is not undoable: the sim starts amortizing the
- * debt on the next weekly settlement, and an undo arriving after that would
- * have to unpick payments the city has already made. Bonds are retired by
- * paying them off, not by taking them back.
+ * Take out a bond. Nothing is journaled, so it is not undoable: the sim starts
+ * amortizing the debt on the next weekly settlement, and an undo arriving after
+ * that would have to unpick payments the city has already made. Bonds are
+ * retired by paying them off, not by taking them back.
+ *
+ * Like a tax-rate change, this touches only aggregates — no tile moves — so it
+ * reports no change. The finance readout does not depend on that: it reads the
+ * aggregates straight out of the shared buffer. Reporting a change would make
+ * `applyEdits` re-run every full-grid system and bump the revision, rebaking the
+ * whole world texture for a number that was already on screen.
  */
 function applyIssueBond(state: CityState): boolean {
 	const agg = state.aggregates;
@@ -403,7 +408,7 @@ function applyIssueBond(state: CityState): boolean {
 			agg[AGG.TREASURY] = (agg[AGG.TREASURY] ?? 0) + BOND_AMOUNT;
 			agg[AGG.BOND_PAYMENT] =
 				(agg[AGG.BOND_PAYMENT] ?? 0) + BOND_MONTHLY_PAYMENT;
-			return true;
+			return false;
 		}
 	}
 	// All slots full — silently reject

@@ -285,6 +285,27 @@ export const SEA_LEVEL = Math.floor(WATER_THRESHOLD * ELEVATION_MAX);
 // terraform up to ELEVATION_MAX by hand.
 export const GEN_LAND_RELIEF = 5;
 
+/**
+ * Longest side, in tiles, that one terraform drag may cover.
+ *
+ * Terraforming is not one write per tile. Levelling a tile re-slopes the ground
+ * up to ELEVATION_MAX rings around it, and every tile in the rectangle ripples
+ * its own neighbourhood again, so both the work and the undo records grow with
+ * the area. Uncapped, a full-map level drag blocks the worker for many seconds
+ * and writes several times more records than an undo arena holds — which drops
+ * the entire history, including the very edit the player would most want back.
+ *
+ * 64 is the largest square whose worst case still fits. That worst case is flat
+ * sea-level ground levelled to ELEVATION_MAX, far enough from any map edge that
+ * nothing clips the ripple: 102,414 of the 131,072 vertex records and 88,306 of
+ * the tile records. Both roughly quadruple when the side doubles, so 80 already
+ * overruns the vertex arena. `undo.test.ts` pins this against the arena sizes.
+ *
+ * Every other tool writes one record per tile and needs no cap: a full-map
+ * rectangle on the largest supported map is 65,536 records, half an arena.
+ */
+export const MAX_TERRAFORM_DRAG_SIDE = 64;
+
 // ---------------------------------------------------------------------------
 // Calendar
 // ---------------------------------------------------------------------------

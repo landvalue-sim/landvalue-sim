@@ -196,10 +196,14 @@ function stepOnce(): void {
 	if (city === null) return;
 	tick(city, EMPTY_COMMANDS);
 	// A tick moves the city on from under the recorded history: growth lands on
-	// the edit's tiles, and the economy banks money a refund would hand back a
-	// second time. Undoing across that boundary would fight the sim instead of
-	// correcting a mistake, so the history dies with the tick — undo is for
-	// experimenting while time is stopped.
+	// the edit's tiles, so restoring them would demolish buildings the player
+	// never placed and never asked to remove. The refund is not the problem —
+	// a charge is recorded as a delta, not as a treasury balance, so tax taken
+	// after the edit survives an undo intact (see undo.test.ts, "keeps what the
+	// simulation changed elsewhere after the edit"). It is the tiles. Undoing
+	// across that boundary would fight the sim instead of correcting a mistake,
+	// so the history dies with the tick — undo is for experimenting while time
+	// is stopped.
 	if (undoJournal !== null && undoJournal.count > 0) {
 		clearJournal(undoJournal);
 		postUndoDepth();

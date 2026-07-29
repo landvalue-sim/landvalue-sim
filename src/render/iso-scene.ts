@@ -53,13 +53,14 @@ import {
 	DENSITY_HIGH,
 	DENSITY_LOW,
 	DENSITY_MED,
+	MAX_TERRAFORM_DRAG_SIDE,
 	TERRAIN_WATER,
 	ZONE_COMMERCIAL,
 	ZONE_INDUSTRIAL,
 	ZONE_NONE,
 	ZONE_RESIDENTIAL,
 } from "../sim/index.ts";
-import { type Point, rectTiles, roadLineTiles } from "./drag.ts";
+import { clampRectSpan, type Point, rectTiles, roadLineTiles } from "./drag.ts";
 import {
 	frameProfilerBegin,
 	frameProfilerEnd,
@@ -657,7 +658,15 @@ export class IsoScene extends Phaser.Scene {
 			// "v" runs the column first; "h"/"none" run the row first.
 			return roadLineTiles(ax, ay, bx, by, this.dragAxis !== "v");
 		}
-		return rectTiles(ax, ay, bx, by);
+		// A terraform rectangle is capped: each of its tiles re-slopes the ground
+		// around it, so an uncapped one freezes the worker and outruns the undo
+		// arena (see MAX_TERRAFORM_DRAG_SIDE). Capping here rather than at the
+		// commit is what makes the limit visible — `drawDragPreview` reads this
+		// same list, so the footprint the player sees is the batch that gets sent.
+		const far = isTerraformTool(tool)
+			? clampRectSpan(ax, ay, bx, by, MAX_TERRAFORM_DRAG_SIDE)
+			: { x: bx, y: by };
+		return rectTiles(ax, ay, far.x, far.y);
 	}
 
 	private inBounds(x: number, y: number): boolean {
