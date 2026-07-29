@@ -61,6 +61,11 @@ import {
 } from "../sim/index.ts";
 import { type Point, rectTiles, roadLineTiles } from "./drag.ts";
 import {
+	frameProfilerBegin,
+	frameProfilerEnd,
+	frameProfilerReset,
+} from "./frame-profiler.ts";
+import {
 	ELEV_HEIGHT,
 	fitZoom,
 	HALF_H,
@@ -288,6 +293,9 @@ export class IsoScene extends Phaser.Scene {
 	}
 
 	create(): void {
+		// A fresh scene starts a fresh timing window — otherwise the gap across
+		// a reload reads as one enormous frame for the next couple of seconds.
+		if (import.meta.env.DEV) frameProfilerReset();
 		// Bake scratch layers stay off the display list (`make`, not `add`);
 		// only the cache texture and the dynamic layer are scene children.
 		this.g = this.make.graphics({}, false);
@@ -406,9 +414,14 @@ export class IsoScene extends Phaser.Scene {
 	}
 
 	update(time: number, delta: number): void {
+		// Frame timing is dev-only; the guards let Vite strip it from prod.
+		if (import.meta.env.DEV) frameProfilerBegin(time);
 		this.panKeys(delta);
 		if (this.bakeDirty() && !this.zoomThrottled(time)) this.bakeWorld(time);
 		this.drawDynamic();
+		if (import.meta.env.DEV) {
+			frameProfilerEnd(performance.now(), this.game.loop.actualFps);
+		}
 	}
 
 	// ---- Input ---------------------------------------------------------------
