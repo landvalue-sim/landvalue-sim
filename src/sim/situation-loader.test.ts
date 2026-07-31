@@ -86,6 +86,7 @@ describe("loadSituations — accepts", () => {
 
 	it("defaults an omitted startProgress rather than failing", () => {
 		const raw = entry();
+		// biome-ignore lint/complexity/useLiteralKeys: noPropertyAccessFromIndexSignature requires bracket access on an index signature.
 		delete raw["startProgress"];
 		expect(loadSituations(template(raw))[0]?.startProgress).toBeGreaterThan(0);
 	});

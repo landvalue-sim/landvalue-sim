@@ -1,3 +1,8 @@
+// biome-ignore-all lint/complexity/useLiteralKeys: this file reads unvalidated
+// JSON as Record<string, unknown>, and tsconfig's noPropertyAccessFromIndexSignature
+// requires bracket access on an index signature. Taking the rule's autofix here
+// would replace every `entry["key"]` with `entry.key` and break the typecheck.
+
 /**
  * Compile `situations.json` into the runtime definitions the sim reads.
  *
