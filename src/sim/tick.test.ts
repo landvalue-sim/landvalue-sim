@@ -5,10 +5,17 @@ import {
 	AGG,
 	BUILDING_EMPTY,
 	CIVIC_COAL_PLANT,
+	DAYS_PER_WEEK,
+	INFLUENCE_BASE_PER_WEEK,
+	MOD,
 	ZONE_COMMERCIAL,
 	ZONE_INDUSTRIAL,
 	ZONE_RESIDENTIAL,
 } from "./constants.ts";
+import {
+	POLICY_AUSTERITY_BUDGET,
+	POLICY_UPZONING_MANDATE,
+} from "./policy-defs.ts";
 import { applyEdits, tick } from "./tick.ts";
 
 function smallCity() {
@@ -281,5 +288,84 @@ describe("applyEdits", () => {
 
 		tick(city, []);
 		expect(city.aggregates[AGG.REVISION]).toBeGreaterThan(afterEdit);
+	});
+
+	// Enacting a policy moves no tile, so it must not report a change and must
+	// not rebake — but the modifier bus still has to see it, or a policy enacted
+	// while the sim is paused would sit inert until a tick that may never come.
+	it("rebuilds the modifier bus for a governance command without a rebake", () => {
+		const city = smallCity();
+		const revision = city.aggregates[AGG.REVISION] ?? 0;
+
+		const changed = applyEdits(city, [
+			{ kind: "enact-policy", policyId: POLICY_UPZONING_MANDATE },
+		]);
+
+		expect(changed).toBe(0);
+		expect(city.aggregates[AGG.REVISION]).toBe(revision);
+		expect(city.policies[POLICY_UPZONING_MANDATE]).not.toBe(0);
+		expect(city.modifiers[MOD.R_DEMAND_ADD]).toBe(60);
+	});
+});
+
+/**
+ * The governance systems are only worth anything if the sim reads them. These
+ * are the end-to-end checks that a policy enacted through a command reaches the
+ * systems that consume its channels.
+ */
+describe("governance wiring", () => {
+	it("shifts RCI demand toward the enacted policy's target", () => {
+		const plain = smallCity();
+		const upzoned = smallCity();
+		void applyEdits(upzoned, [
+			{ kind: "enact-policy", policyId: POLICY_UPZONING_MANDATE },
+		]);
+
+		// Long enough for the demand lerp to close most of the gap.
+		for (let i = 0; i < 60; i++) {
+			tick(plain, []);
+			tick(upzoned, []);
+		}
+
+		const gap =
+			(upzoned.aggregates[AGG.R_DEMAND] ?? 0) -
+			(plain.aggregates[AGG.R_DEMAND] ?? 0);
+		// Settles at the declared +60, not at 60/DEMAND_SMOOTHING — the shift
+		// joins the target, so it cannot feed back into its own input.
+		expect(gap).toBeGreaterThan(50);
+		expect(gap).toBeLessThanOrEqual(60);
+	});
+
+	it("scales maintenance by the modifier bus", () => {
+		const plain = smallCity();
+		const austere = smallCity();
+		void applyEdits(austere, [
+			{ kind: "enact-policy", policyId: POLICY_AUSTERITY_BUDGET },
+		]);
+
+		const roads: Command[] = [];
+		for (let x = 0; x < 16; x++) roads.push({ kind: "build-road", x, y: 4 });
+		void applyEdits(plain, roads);
+		void applyEdits(austere, roads);
+
+		tick(plain, []);
+		tick(austere, []);
+
+		expect(austere.aggregates[AGG.ROAD_COST]).toBeCloseTo(
+			(plain.aggregates[AGG.ROAD_COST] ?? 0) * 0.85,
+			10,
+		);
+	});
+
+	it("accrues influence weekly once the sim is running", () => {
+		const city = smallCity();
+		const start = city.aggregates[AGG.INFLUENCE] ?? 0;
+
+		for (let i = 0; i < DAYS_PER_WEEK * 2; i++) tick(city, []);
+
+		// Two settlements at the flat base, with no services and no commitments.
+		expect(city.aggregates[AGG.INFLUENCE]).toBe(
+			start + INFLUENCE_BASE_PER_WEEK * 2,
+		);
 	});
 });

@@ -3,19 +3,28 @@
  *
  * Runs all systems in a deterministic order each tick:
  *   1. Command processor (apply player input)
- *   2. Power coverage (BFS from plants)
- *   3. Water coverage (BFS from pumps)
- *   4. Civic coverage (police, fire, education, health)
- *   5. Connections (edge detection)
- *   6. Traffic (commute congestion)
- *   7. RCI demand (economic feedback)
- *   8. Land value (amenity capitalization)
- *   9. Migration (buildings appear / upgrade / abandon)
- *  10. Externalities (pollution + traffic emissions)
- *  11. Crime (density, police, unemployment)
- *  12. Fire (ignition, spread, containment)
- *  13. Public finance (taxes, maintenance, bonds)
- *  14. Postcondition invariants (dev only)
+ *   2. Modifiers (rebuild the governance bus)
+ *   3. Power coverage (BFS from plants)
+ *   4. Water coverage (BFS from pumps)
+ *   5. Civic coverage (police, fire, education, health)
+ *   6. Connections (edge detection)
+ *   7. Traffic (commute congestion)
+ *   8. RCI demand (economic feedback)
+ *   9. Land value (amenity capitalization)
+ *  10. Migration (buildings appear / upgrade / abandon)
+ *  11. Externalities (pollution + traffic emissions)
+ *  12. Crime (density, police, unemployment)
+ *  13. Fire (ignition, spread, containment)
+ *  14. Public finance (taxes, maintenance, bonds)
+ *  15. Influence (weekly accrual and standing upkeep)
+ *  16. Situations (monthly triggers, progress, stages)
+ *  17. Postcondition invariants (dev only)
+ *
+ * The two governance systems bracket the pipeline for a reason. Modifiers are
+ * rebuilt at the top so a policy enacted by a command this tick is live for the
+ * rest of it; situations run at the bottom so their triggers read this tick's
+ * aggregates rather than last tick's. See
+ * design_docs/INFLUENCE-AND-SITUATIONS.md.
  *
  * The simulation is fully deterministic: same seed + same commands =
  * same state. Never uses Math.random() or Date.now().
@@ -31,15 +40,21 @@ import {
 	profilerTickStart,
 	systemIndex,
 } from "./profiler.ts";
-import { checkAggregates, checkGridIntegrity } from "./sim-invariants.ts";
+import {
+	checkAggregates,
+	checkGridIntegrity,
+	checkSituations,
+} from "./sim-invariants.ts";
 import { updateCivicCoverage } from "./systems/civic-coverage.ts";
 import { processCommands } from "./systems/command-processor.ts";
 import { updateConnections } from "./systems/connections.ts";
 import { updateCrime } from "./systems/crime.ts";
 import { updateExternalities } from "./systems/externalities.ts";
 import { updateFire } from "./systems/fire.ts";
+import { updateInfluence } from "./systems/influence.ts";
 import { updateLandValue } from "./systems/land-value.ts";
 import { processMigration } from "./systems/migration.ts";
+import { updateModifiers } from "./systems/modifiers.ts";
 import { updatePower } from "./systems/power.ts";
 import { updatePublicFinance } from "./systems/public-finance.ts";
 import {
@@ -47,12 +62,14 @@ import {
 	updateRciDemand,
 	updateSupplyTotals,
 } from "./systems/rci-demand.ts";
+import { updateSituations } from "./systems/situations.ts";
 import { updateTraffic } from "./systems/traffic.ts";
 import { updateWater } from "./systems/water.ts";
 import { beginStep, commitStep, type UndoJournal, undoStep } from "./undo.ts";
 
 // Pre-compute system indices so we don't look them up every tick
 const IDX_COMMANDS = systemIndex("commands");
+const IDX_MODIFIERS = systemIndex("modifiers");
 const IDX_POWER = systemIndex("power");
 const IDX_WATER = systemIndex("water");
 const IDX_CIVIC_COVERAGE = systemIndex("civicCoverage");
@@ -65,6 +82,8 @@ const IDX_EXTERNALITIES = systemIndex("externalities");
 const IDX_CRIME = systemIndex("crime");
 const IDX_FIRE = systemIndex("fire");
 const IDX_PUBLIC_FINANCE = systemIndex("publicFinance");
+const IDX_INFLUENCE = systemIndex("influence");
+const IDX_SITUATIONS = systemIndex("situations");
 const IDX_INVARIANTS = systemIndex("invariants");
 
 /**
@@ -93,6 +112,12 @@ export function applyEdits(
 	beginStep(journal);
 	const changed = processCommands(state, commands, journal);
 	void commitStep(journal);
+	// Unconditionally, and outside the `changed` branch. A governance command
+	// moves no tile, so it reports no change and must not trigger a rebake — but
+	// the bus still has to see it, or a policy enacted while the sim is paused
+	// would sit inert until a tick that may never come. The rebuild is a few
+	// dozen operations; running it on every batch costs nothing.
+	updateModifiers(state);
 	if (changed > 0) {
 		refreshDerived(state);
 		bumpRevision(state);
@@ -158,6 +183,10 @@ export function tick(state: CityState, commands: ReadonlyArray<Command>): void {
 	profilerSystemEnd(IDX_COMMANDS, t);
 
 	t = profilerSystemStart();
+	updateModifiers(state);
+	profilerSystemEnd(IDX_MODIFIERS, t);
+
+	t = profilerSystemStart();
 	updatePower(state);
 	profilerSystemEnd(IDX_POWER, t);
 
@@ -205,6 +234,14 @@ export function tick(state: CityState, commands: ReadonlyArray<Command>): void {
 	updatePublicFinance(state);
 	profilerSystemEnd(IDX_PUBLIC_FINANCE, t);
 
+	t = profilerSystemStart();
+	updateInfluence(state);
+	profilerSystemEnd(IDX_INFLUENCE, t);
+
+	t = profilerSystemStart();
+	updateSituations(state);
+	profilerSystemEnd(IDX_SITUATIONS, t);
+
 	const currentTick = state.aggregates[AGG.TICK] ?? 0;
 	state.aggregates[AGG.TICK] = currentTick + 1;
 	bumpRevision(state);
@@ -214,6 +251,7 @@ export function tick(state: CityState, commands: ReadonlyArray<Command>): void {
 	if (import.meta.env.DEV) {
 		checkAggregates(state);
 		checkGridIntegrity(state);
+		checkSituations(state);
 	}
 	profilerSystemEnd(IDX_INVARIANTS, t);
 

@@ -23,6 +23,7 @@ import {
 	DAYS_PER_WEEK,
 	INFINITE_TREASURY,
 	MAX_BONDS,
+	MOD,
 	PIPE_MAINTENANCE_COST,
 	RAIL_MAINTENANCE_COST,
 	ROAD_MAINTENANCE_COST,
@@ -84,11 +85,21 @@ export function updatePublicFinance(state: CityState): void {
 	}
 
 	// --- Scale the per-day rates up to a full week's settlement ---
-	const revenueWk = revenue * DAYS_PER_WEEK;
-	const roadCostWk = roadCount * ROAD_MAINTENANCE_COST * DAYS_PER_WEEK;
-	const railCostWk = railCount * RAIL_MAINTENANCE_COST * DAYS_PER_WEEK;
-	const pipeCostWk = pipeCount * PIPE_MAINTENANCE_COST * DAYS_PER_WEEK;
-	const civicCostWk = civicCost * DAYS_PER_WEEK;
+	// Policies and situations scale revenue and upkeep through the modifier bus.
+	// Debt service is deliberately outside the maintenance multiplier: an
+	// austerity programme can cut what the city spends on itself, not what it
+	// owes its creditors.
+	const mods = state.modifiers;
+	const maintenanceMult = mods[MOD.MAINTENANCE_MULT] ?? 1;
+
+	const revenueWk = revenue * DAYS_PER_WEEK * (mods[MOD.TAX_REVENUE_MULT] ?? 1);
+	const roadCostWk =
+		roadCount * ROAD_MAINTENANCE_COST * DAYS_PER_WEEK * maintenanceMult;
+	const railCostWk =
+		railCount * RAIL_MAINTENANCE_COST * DAYS_PER_WEEK * maintenanceMult;
+	const pipeCostWk =
+		pipeCount * PIPE_MAINTENANCE_COST * DAYS_PER_WEEK * maintenanceMult;
+	const civicCostWk = civicCost * DAYS_PER_WEEK * maintenanceMult;
 
 	// --- Bond repayments: each active bond owes up to a week of payments ---
 	let bondPaymentWk = 0;

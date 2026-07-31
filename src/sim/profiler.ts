@@ -9,6 +9,7 @@
 
 export const SYSTEM_NAMES = [
 	"commands",
+	"modifiers",
 	"power",
 	"water",
 	"civicCoverage",
@@ -21,6 +22,8 @@ export const SYSTEM_NAMES = [
 	"crime",
 	"fire",
 	"publicFinance",
+	"influence",
+	"situations",
 	"invariants",
 ] as const;
 

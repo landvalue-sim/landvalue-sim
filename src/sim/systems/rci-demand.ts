@@ -25,6 +25,7 @@ import {
 	JOBS_C_PER_DENSITY,
 	JOBS_I_PER_DENSITY,
 	MAX_DEMAND,
+	MOD,
 	POP_PER_DENSITY,
 	RESIDENTS_PER_JOB,
 	TAX_DEMAND_PENALTY,
@@ -182,10 +183,23 @@ export function updateRciDemand(state: CityState): void {
 	const prevC = aggregates[AGG.C_DEMAND] ?? 0;
 	const prevI = aggregates[AGG.I_DEMAND] ?? 0;
 
+	// --- Governance ----------------------------------------------------------
+	// Policies and situations shift demand through the modifier bus. They join
+	// the *target*, not the smoothed output: the aggregate the lerp reads back
+	// each tick is the modified one, so adding the shift afterwards would feed
+	// it into its own input and inflate it by 1/DEMAND_SMOOTHING at equilibrium.
+	// On the target it settles at exactly the declared amount, phased in over
+	// the same handful of days as any other change in conditions.
+	const mods = state.modifiers;
+
 	// Raw target demand
-	const rawR = rGap * 2.0 - rTaxPenalty - rPollutionPenalty;
-	const rawC = cGap * 15.0 - cTaxPenalty;
-	const rawI = iGap * 8.0 - iTaxPenalty;
+	const rawR =
+		rGap * 2.0 -
+		rTaxPenalty -
+		rPollutionPenalty +
+		(mods[MOD.R_DEMAND_ADD] ?? 0);
+	const rawC = cGap * 15.0 - cTaxPenalty + (mods[MOD.C_DEMAND_ADD] ?? 0);
+	const rawI = iGap * 8.0 - iTaxPenalty + (mods[MOD.I_DEMAND_ADD] ?? 0);
 
 	// Lerp toward target
 	const newR = prevR + (rawR - prevR) * DEMAND_SMOOTHING;
