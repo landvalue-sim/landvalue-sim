@@ -107,6 +107,18 @@ lit, which is both readable on the overlay and proportional to how short you are
 gap between demand and served load is reported per utility so the finances panel can
 show how much of the city is stranded past that frontier.
 
+### Governance
+
+Money is not the only thing a government spends. **Influence** — political capital — is a
+second, capped resource that pays for standing ordinances and for responding to
+**situations**: Stellaris-style ongoing conditions with a progress bar, escalating stages,
+and a player-chosen approach. Both reach the sim through one narrow **modifier bus**, an
+array of named channels rebuilt from scratch every tick, which systems read and never
+write.
+
+The separation is the point: money buys concrete, influence buys permission. Full design
+in `INFLUENCE-AND-SITUATIONS.md`.
+
 ## Urbanist levers (make the YIMBY argument playable)
 
 The sharpest pedagogical value is where the classic SimCity model diverges from how cities
