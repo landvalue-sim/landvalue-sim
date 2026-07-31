@@ -22,6 +22,7 @@ import type { OverlayMode, Speed, Tool } from "../app/types.ts";
 import { MAX_DEMAND } from "../sim/index.ts";
 import { DevPanel } from "./DevPanel.tsx";
 import { FinancesDialog } from "./FinancesDialog.tsx";
+import { GovernanceDialog } from "./GovernanceDialog.tsx";
 import {
 	formatDate,
 	useInteraction,
@@ -289,7 +290,14 @@ export function Sidebar({ store, sim }: SidebarProps): React.ReactElement {
 				<StatRow label="Population" value={fmtInt(stats.pop)} />
 				<StatRow label="Jobs" value={fmtInt(stats.jobs)} />
 				<StatRow label="Treasury" value={fmtMoney(stats.treasury)} />
+				<StatRow
+					label="Influence"
+					value={`${Math.floor(stats.influence)} (${fmtSigned(
+						stats.influenceIncome - stats.influenceUpkeep,
+					)}/wk)`}
+				/>
 				<FinancesDialog sim={sim} />
+				<GovernanceDialog sim={sim} />
 			</section>
 
 			<section>
@@ -425,4 +433,9 @@ function fmtInt(n: number): string {
 function fmtMoney(n: number): string {
 	const v = Math.floor(n);
 	return `${v < 0 ? "\u2212" : ""}$${Math.abs(v).toLocaleString()}`;
+}
+
+/** A rate with its sign always shown, so a flat week reads as "+0.0". */
+function fmtSigned(n: number): string {
+	return `${n < 0 ? "\u2212" : "+"}${Math.abs(n).toFixed(1)}`;
 }

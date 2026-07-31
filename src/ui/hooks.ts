@@ -11,8 +11,12 @@ import { type FrameStats, getFrameStats } from "../render/frame-profiler.ts";
 import {
 	AGG,
 	type CityState,
+	createSituationSlotView,
 	DAYS_PER_MONTH,
 	DAYS_PER_YEAR,
+	MAX_SITUATIONS,
+	readSituationSlot,
+	SITUATION_NONE,
 	START_YEAR,
 } from "../sim/index.ts";
 
@@ -49,6 +53,10 @@ export interface LiveStats {
 	readonly trafficCongestion: number;
 	readonly educationLevel: number;
 	readonly healthLevel: number;
+	readonly influence: number;
+	readonly influenceIncome: number;
+	readonly influenceUpkeep: number;
+	readonly situationCount: number;
 	readonly day: number;
 	readonly month: number;
 	readonly year: number;
@@ -87,6 +95,10 @@ function readStats(city: CityState): LiveStats {
 		trafficCongestion: a[AGG.TRAFFIC_CONGESTION] ?? 0,
 		educationLevel: a[AGG.EDUCATION_LEVEL] ?? 0,
 		healthLevel: a[AGG.HEALTH_LEVEL] ?? 0,
+		influence: a[AGG.INFLUENCE] ?? 0,
+		influenceIncome: a[AGG.INFLUENCE_INCOME] ?? 0,
+		influenceUpkeep: a[AGG.INFLUENCE_UPKEEP] ?? 0,
+		situationCount: a[AGG.SITUATION_COUNT] ?? 0,
 		// One tick = one day, on a fixed 30-day / 360-day calendar.
 		day: (days % DAYS_PER_MONTH) + 1,
 		month: (Math.floor(days / DAYS_PER_MONTH) % 12) + 1,
@@ -115,6 +127,67 @@ export function useLiveStats(city: CityState): LiveStats {
 	}, [city]);
 
 	return stats;
+}
+
+/** One open situation, flattened for rendering. */
+export interface LiveSituation {
+	readonly slot: number;
+	readonly defId: number;
+	readonly progress: number;
+	readonly stage: number;
+	readonly approach: number;
+	readonly lastDelta: number;
+}
+
+const SITUATIONS_REFRESH_MS = 250;
+
+/**
+ * Poll the situation pool for the open slots.
+ *
+ * Unlike the aggregates this is a list, so a fresh array every poll would
+ * re-render the whole panel seven times a second for state that changes once a
+ * month. The poll therefore builds a signature first and only publishes a new
+ * array when something actually moved.
+ */
+export function useSituations(city: CityState): ReadonlyArray<LiveSituation> {
+	const [open, setOpen] = useState<ReadonlyArray<LiveSituation>>([]);
+	const signatureRef = useRef("");
+
+	useEffect(() => {
+		let raf = 0;
+		let last = 0;
+		const view = createSituationSlotView();
+
+		const loop = (t: number): void => {
+			if (t - last >= SITUATIONS_REFRESH_MS) {
+				last = t;
+				const next: LiveSituation[] = [];
+				let signature = "";
+				for (let slot = 0; slot < MAX_SITUATIONS; slot++) {
+					readSituationSlot(city, slot, view);
+					if (view.defId === SITUATION_NONE) continue;
+					next.push({
+						slot,
+						defId: view.defId,
+						progress: view.progress,
+						stage: view.stage,
+						approach: view.approach,
+						lastDelta: view.lastDelta,
+					});
+					signature += `${slot}:${view.defId}:${view.progress}:${view.stage}:${view.approach}|`;
+				}
+				if (signature !== signatureRef.current) {
+					signatureRef.current = signature;
+					setOpen(next);
+				}
+			}
+			raf = requestAnimationFrame(loop);
+		};
+		raf = requestAnimationFrame(loop);
+		return () => cancelAnimationFrame(raf);
+	}, [city]);
+
+	return open;
 }
 
 const RENDER_STATS_REFRESH_MS = 250;
