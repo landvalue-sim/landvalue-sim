@@ -1,0 +1,235 @@
+{
+	"version": 1,
+	"situations": [
+		{
+			"key": "housing-crunch",
+			"name": "Housing Crunch",
+			"description": "Demand for homes has outrun the supply of them. Rents climb, then households leave, then the people who staff the city cannot afford to live in it.",
+			"trigger": {
+				"aggregate": "R_DEMAND",
+				"op": "above",
+				"value": 700,
+				"chancePerMonth": 0.3
+			},
+			"startProgress": 20,
+			"baseProgressPerMonth": 12,
+			"atZero": {
+				"kind": "resolve",
+				"name": "Shortage Eased",
+				"influence": 15,
+				"treasury": 0,
+				"opens": null
+			},
+			"atMax": {
+				"kind": "resolve",
+				"name": "Housing Collapse",
+				"influence": -10,
+				"treasury": -2500,
+				"opens": "housing-collapse"
+			},
+			"stages": [
+				{
+					"at": 0,
+					"name": "Rising Rents",
+					"effects": [{ "channel": "R_DEMAND_ADD", "op": "add", "value": -20 }]
+				},
+				{
+					"at": 30,
+					"name": "Displacement",
+					"effects": [{ "channel": "R_DEMAND_ADD", "op": "add", "value": -60 }]
+				},
+				{
+					"at": 70,
+					"name": "Housing Emergency",
+					"effects": [
+						{ "channel": "R_DEMAND_ADD", "op": "add", "value": -140 },
+						{ "channel": "TAX_REVENUE_MULT", "op": "multiply", "value": 0.95 }
+					]
+				}
+			],
+			"approaches": [
+				{
+					"name": "Emergency Permitting",
+					"description": "Suspend the review process and let the housing get built. Expensive in political capital, and it works.",
+					"influenceCost": 80,
+					"influenceUpkeep": 4,
+					"progressPerMonth": -30,
+					"effects": [{ "channel": "R_DEMAND_ADD", "op": "add", "value": 40 }]
+				},
+				{
+					"name": "Rent Stabilisation",
+					"description": "Cap what landlords may charge. Cheap, popular, and it treats the symptom rather than the shortage.",
+					"influenceCost": 30,
+					"influenceUpkeep": 1,
+					"progressPerMonth": -14,
+					"effects": [
+						{ "channel": "MAINTENANCE_MULT", "op": "multiply", "value": 1.05 }
+					]
+				}
+			]
+		},
+		{
+			"key": "housing-collapse",
+			"name": "Housing Collapse",
+			"description": "The shortage broke rather than eased. Blocks stand half-empty, the households that could leave have left, and nothing about that reverses on its own.",
+			"trigger": null,
+			"startProgress": 100,
+			"baseProgressPerMonth": 0,
+			"atZero": {
+				"kind": "resolve",
+				"name": "Neighbourhoods Rebuilt",
+				"influence": 10,
+				"treasury": 0,
+				"opens": null
+			},
+			"atMax": { "kind": "pin" },
+			"stages": [
+				{
+					"at": 0,
+					"name": "Vacancy and Blight",
+					"effects": [
+						{ "channel": "R_DEMAND_ADD", "op": "add", "value": -120 },
+						{ "channel": "TAX_REVENUE_MULT", "op": "multiply", "value": 0.9 }
+					]
+				}
+			],
+			"approaches": [
+				{
+					"name": "Reconstruction Programme",
+					"description": "Buy the empty blocks back, one at a time, and put people in them. There is no cheap version of this.",
+					"influenceCost": 100,
+					"influenceUpkeep": 6,
+					"progressPerMonth": -20,
+					"effects": [{ "channel": "R_DEMAND_ADD", "op": "add", "value": 30 }]
+				}
+			]
+		},
+		{
+			"key": "fiscal-emergency",
+			"name": "Fiscal Emergency",
+			"description": "The city is spending money it does not have. Creditors notice before residents do, and they charge for the privilege.",
+			"trigger": {
+				"aggregate": "TREASURY",
+				"op": "below",
+				"value": 0,
+				"chancePerMonth": 0.5
+			},
+			"startProgress": 20,
+			"baseProgressPerMonth": 15,
+			"atZero": {
+				"kind": "resolve",
+				"name": "Books Balanced",
+				"influence": 10,
+				"treasury": 0,
+				"opens": null
+			},
+			"atMax": { "kind": "pin" },
+			"stages": [
+				{
+					"at": 0,
+					"name": "Deficit Warning",
+					"effects": [
+						{ "channel": "MAINTENANCE_MULT", "op": "multiply", "value": 1.05 }
+					]
+				},
+				{
+					"at": 40,
+					"name": "Credit Downgrade",
+					"effects": [
+						{ "channel": "MAINTENANCE_MULT", "op": "multiply", "value": 1.15 },
+						{ "channel": "INFLUENCE_INCOME_ADD", "op": "add", "value": -2 }
+					]
+				},
+				{
+					"at": 80,
+					"name": "Insolvency",
+					"effects": [
+						{ "channel": "MAINTENANCE_MULT", "op": "multiply", "value": 1.3 },
+						{ "channel": "INFLUENCE_INCOME_ADD", "op": "add", "value": -4 },
+						{ "channel": "TAX_REVENUE_MULT", "op": "multiply", "value": 0.9 }
+					]
+				}
+			],
+			"approaches": [
+				{
+					"name": "Service Cuts",
+					"description": "Stop paying for things. The books recover; the residents who relied on those services do not.",
+					"influenceCost": 25,
+					"influenceUpkeep": 0,
+					"progressPerMonth": -25,
+					"effects": [
+						{ "channel": "MAINTENANCE_MULT", "op": "multiply", "value": 0.8 },
+						{ "channel": "R_DEMAND_ADD", "op": "add", "value": -40 }
+					]
+				},
+				{
+					"name": "Emergency Levy",
+					"description": "Take the money from the businesses that can pay it, and accept that some of them will leave.",
+					"influenceCost": 70,
+					"influenceUpkeep": 2,
+					"progressPerMonth": -30,
+					"effects": [
+						{ "channel": "TAX_REVENUE_MULT", "op": "multiply", "value": 1.25 },
+						{ "channel": "C_DEMAND_ADD", "op": "add", "value": -50 },
+						{ "channel": "I_DEMAND_ADD", "op": "add", "value": -50 }
+					]
+				}
+			]
+		},
+		{
+			"key": "construction-boom",
+			"name": "Construction Boom",
+			"description": "Cranes everywhere. Money is cheap, confidence is high, and everyone wants to be here. None of that lasts by itself.",
+			"trigger": {
+				"aggregate": "TOTAL_POP",
+				"op": "above",
+				"value": 2000,
+				"chancePerMonth": 0.15
+			},
+			"startProgress": 100,
+			"baseProgressPerMonth": -10,
+			"atZero": {
+				"kind": "resolve",
+				"name": "Boom Subsides",
+				"influence": 0,
+				"treasury": 0,
+				"opens": null
+			},
+			"atMax": { "kind": "pin" },
+			"stages": [
+				{
+					"at": 0,
+					"name": "Cooling",
+					"effects": [{ "channel": "C_DEMAND_ADD", "op": "add", "value": 20 }]
+				},
+				{
+					"at": 40,
+					"name": "Steady Growth",
+					"effects": [
+						{ "channel": "C_DEMAND_ADD", "op": "add", "value": 40 },
+						{ "channel": "R_DEMAND_ADD", "op": "add", "value": 20 }
+					]
+				},
+				{
+					"at": 75,
+					"name": "Building Frenzy",
+					"effects": [
+						{ "channel": "C_DEMAND_ADD", "op": "add", "value": 80 },
+						{ "channel": "R_DEMAND_ADD", "op": "add", "value": 50 },
+						{ "channel": "TAX_REVENUE_MULT", "op": "multiply", "value": 1.1 }
+					]
+				}
+			],
+			"approaches": [
+				{
+					"name": "Sustain the Momentum",
+					"description": "Spend standing to keep the permits flowing and the confidence up. It slows the fall; it does not stop it.",
+					"influenceCost": 45,
+					"influenceUpkeep": 3,
+					"progressPerMonth": 6,
+					"effects": []
+				}
+			]
+		}
+	]
+}

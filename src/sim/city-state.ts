@@ -15,10 +15,16 @@ import {
 	DEFAULT_TAX_RATE,
 	DEFAULT_WIDTH,
 	MAX_GRID_SIZE,
+	MAX_SITUATIONS,
+	MOD,
+	MOD_BASE,
+	SIT,
+	STARTING_INFLUENCE,
 	STARTING_TREASURY,
 	TERRAIN_LAND,
 } from "./constants.ts";
 import { invariant } from "./invariant.ts";
+import { POLICY_COUNT } from "./policy-defs.ts";
 import { type PrngState, seedPrng } from "./prng.ts";
 
 // ---------------------------------------------------------------------------
@@ -72,6 +78,26 @@ export interface CityState {
 	// Aggregate scalars (indexed by AGG.*)
 	readonly aggregates: Float64Array;
 
+	/**
+	 * Modifier channels (indexed by MOD.*) — the one route through which
+	 * policies and situations reach the sim. Derived, not authoritative: rebuilt
+	 * from scratch every tick by `updateModifiers`. It lives in the buffer only
+	 * so the UI can read it without a message round-trip.
+	 */
+	readonly modifiers: Float64Array;
+
+	/**
+	 * The situation pool: MAX_SITUATIONS slots of SIT.STRIDE fields each,
+	 * indexed `slot * SIT.STRIDE + SIT.FIELD`. A slot with SIT.DEF of 0 is free.
+	 */
+	readonly situations: Int32Array;
+
+	/**
+	 * Enacted policies, one byte per policy id. The byte is a rank, not a flag:
+	 * 0 = not enacted, 1..n = enactment order (see policy-defs.ts).
+	 */
+	readonly policies: Uint8Array;
+
 	// Deterministic PRNG (state is a view into the buffer)
 	readonly rng: PrngState;
 }
@@ -97,15 +123,18 @@ function alignUp(offset: number, align: number): number {
 interface Layout {
 	readonly byteLength: number;
 	readonly aggregates: number;
+	readonly modifiers: number;
 	readonly rng: number;
+	readonly situations: number;
 	readonly u16: number; // start of the u16 layers
 	readonly u8: number; // start of the u8 layers
 	readonly vertex: number; // start of the vertex-height grid
+	readonly policies: number;
 }
 
 /**
  * Compute byte offsets for every section. Sections are ordered by decreasing
- * alignment requirement (f64 → u32 → u16 → u8) so each starts naturally
+ * alignment requirement (f64 → u32/i32 → u16 → u8) so each starts naturally
  * aligned regardless of grid size.
  */
 function computeLayout(width: number, height: number): Layout {
@@ -116,8 +145,15 @@ function computeLayout(width: number, height: number): Layout {
 	const aggregates = offset;
 	offset += AGG.COUNT * Float64Array.BYTES_PER_ELEMENT;
 
+	const modifiers = offset;
+	offset += MOD.COUNT * Float64Array.BYTES_PER_ELEMENT;
+
 	const rng = alignUp(offset, Uint32Array.BYTES_PER_ELEMENT);
 	offset = rng + PRNG_WORDS * Uint32Array.BYTES_PER_ELEMENT;
+
+	const situations = alignUp(offset, Int32Array.BYTES_PER_ELEMENT);
+	offset =
+		situations + MAX_SITUATIONS * SIT.STRIDE * Int32Array.BYTES_PER_ELEMENT;
 
 	const u16 = alignUp(offset, Uint16Array.BYTES_PER_ELEMENT);
 	offset = u16 + U16_LAYER_COUNT * size * Uint16Array.BYTES_PER_ELEMENT;
@@ -128,7 +164,20 @@ function computeLayout(width: number, height: number): Layout {
 	const vertex = offset; // u8-aligned, but (width+1)*(height+1) long
 	offset = vertex + vertexCount * Uint8Array.BYTES_PER_ELEMENT;
 
-	return { byteLength: offset, aggregates, rng, u16, u8, vertex };
+	const policies = offset;
+	offset += POLICY_COUNT * Uint8Array.BYTES_PER_ELEMENT;
+
+	return {
+		byteLength: offset,
+		aggregates,
+		modifiers,
+		rng,
+		situations,
+		u16,
+		u8,
+		vertex,
+		policies,
+	};
 }
 
 /** Total bytes a backing buffer must hold for a `width * height` grid. */
@@ -163,6 +212,13 @@ function viewLayout(
 		size,
 		buffer,
 		aggregates: new Float64Array(buffer, layout.aggregates, AGG.COUNT),
+		modifiers: new Float64Array(buffer, layout.modifiers, MOD.COUNT),
+		situations: new Int32Array(
+			buffer,
+			layout.situations,
+			MAX_SITUATIONS * SIT.STRIDE,
+		),
+		policies: new Uint8Array(buffer, layout.policies, POLICY_COUNT),
 		rng: { s: new Uint32Array(buffer, layout.rng, PRNG_WORDS) },
 		landValue: new Uint16Array(buffer, u16, size),
 		population: new Uint16Array(buffer, u16 + u16Stride, size),
@@ -259,11 +315,21 @@ export function createCity(opts?: CreateCityOptions): CityState {
 	state.waterPipes.fill(0);
 	state.vertexHeights.fill(0);
 	state.aggregates.fill(0);
+	state.situations.fill(0);
+	state.policies.fill(0);
 
 	state.aggregates[AGG.TREASURY] = STARTING_TREASURY;
 	state.aggregates[AGG.TAX_RATE_R] = DEFAULT_TAX_RATE;
 	state.aggregates[AGG.TAX_RATE_C] = DEFAULT_TAX_RATE;
 	state.aggregates[AGG.TAX_RATE_I] = DEFAULT_TAX_RATE;
+	state.aggregates[AGG.INFLUENCE] = STARTING_INFLUENCE;
+
+	// The bus is rebuilt every tick, but a paused fresh city runs no tick, so
+	// seed it with the identity values rather than leaving zeroed multipliers
+	// that would silently null out revenue and maintenance.
+	for (let i = 0; i < MOD.COUNT; i++) {
+		state.modifiers[i] = MOD_BASE[i] ?? 0;
+	}
 
 	seedPrng(state.rng, opts?.seed ?? 42);
 

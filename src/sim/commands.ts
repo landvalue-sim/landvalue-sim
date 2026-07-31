@@ -97,6 +97,28 @@ export interface IssueBondCommand {
 	readonly kind: "issue-bond";
 }
 
+/** Enact a standing ordinance, paying its up-front influence cost. */
+export interface EnactPolicyCommand {
+	readonly kind: "enact-policy";
+	/** A POLICY_* id (see policy-defs.ts). */
+	readonly policyId: number;
+}
+
+/** Withdraw a standing ordinance. The up-front cost is not refunded. */
+export interface RepealPolicyCommand {
+	readonly kind: "repeal-policy";
+	readonly policyId: number;
+}
+
+/** Choose the standing response to an open situation. */
+export interface SetSituationApproachCommand {
+	readonly kind: "set-situation-approach";
+	/** Slot index into the situation pool, 0..MAX_SITUATIONS-1. */
+	readonly slot: number;
+	/** 1-based index into the situation's approaches; 0 abandons the current one. */
+	readonly approach: number;
+}
+
 export type Command =
 	| ZoneCommand
 	| BuildRoadCommand
@@ -110,4 +132,7 @@ export type Command =
 	| LevelTerrainCommand
 	| SetWaterCommand
 	| SetTaxRateCommand
-	| IssueBondCommand;
+	| IssueBondCommand
+	| EnactPolicyCommand
+	| RepealPolicyCommand
+	| SetSituationApproachCommand;

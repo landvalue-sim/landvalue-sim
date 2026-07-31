@@ -13,9 +13,15 @@ import {
 	BUILDING_HIGH,
 	DENSITY_HIGH,
 	MAX_DEMAND,
+	MAX_INFLUENCE,
 	MAX_POLLUTION,
+	MAX_SITUATIONS,
+	SIT,
+	SITUATION_PROGRESS_MAX,
 	ZONE_NONE,
 } from "./constants.ts";
+import { situationDef } from "./situation-defs.ts";
+import { BOUNDARY_PIN, SITUATION_NONE } from "./situation-types.ts";
 
 // ---- Violation log ----------------------------------------------------------
 
@@ -93,6 +99,83 @@ export function checkAggregates(state: CityState): void {
 	const treasury = agg[AGG.TREASURY] ?? 0;
 	if (Number.isNaN(treasury)) {
 		addViolation("publicFinance", "TREASURY is NaN", tick);
+	}
+
+	// Influence is a stock, not a balance: unlike the treasury it may never go
+	// negative, because insolvency drops commitments instead of borrowing.
+	const influence = agg[AGG.INFLUENCE] ?? 0;
+	if (influence < 0 || influence > MAX_INFLUENCE) {
+		addViolation("influence", `INFLUENCE out of bounds: ${influence}`, tick);
+	}
+
+	const upkeep = agg[AGG.INFLUENCE_UPKEEP] ?? 0;
+	if (upkeep < 0) {
+		addViolation("influence", `INFLUENCE_UPKEEP is negative: ${upkeep}`, tick);
+	}
+}
+
+export function checkSituations(state: CityState): void {
+	if (!import.meta.env.DEV) return;
+
+	const { situations } = state;
+	const tick = Math.floor(state.aggregates[AGG.TICK] ?? 0);
+	let open = 0;
+
+	for (let slot = 0; slot < MAX_SITUATIONS; slot++) {
+		const base = slot * SIT.STRIDE;
+		const defId = situations[base + SIT.DEF] ?? SITUATION_NONE;
+		if (defId === SITUATION_NONE) continue;
+		open++;
+
+		const def = situationDef(defId);
+		if (def === undefined) {
+			addViolation("situations", `slot ${slot}: unknown def ${defId}`, tick);
+			continue;
+		}
+
+		const progress = situations[base + SIT.PROGRESS] ?? 0;
+		if (progress < 0 || progress > SITUATION_PROGRESS_MAX) {
+			addViolation(
+				"situations",
+				`slot ${slot}: progress ${progress} out of range`,
+				tick,
+			);
+		}
+		// An end that resolves is an exit, so a slot sitting on one should have
+		// been freed by the pass that took it there. Only a pinned end may rest
+		// against the boundary.
+		if (progress === 0 && def.atZero.kind !== BOUNDARY_PIN) {
+			addViolation("situations", `slot ${slot}: rests at 0 unresolved`, tick);
+		}
+		if (
+			progress === SITUATION_PROGRESS_MAX &&
+			def.atMax.kind !== BOUNDARY_PIN
+		) {
+			addViolation("situations", `slot ${slot}: rests at max unresolved`, tick);
+		}
+
+		const stage = situations[base + SIT.STAGE] ?? 0;
+		if (stage < 0 || stage >= def.stages.length) {
+			addViolation("situations", `slot ${slot}: stage ${stage} invalid`, tick);
+		}
+
+		const approach = situations[base + SIT.APPROACH] ?? 0;
+		if (approach < 0 || approach > def.approaches.length) {
+			addViolation(
+				"situations",
+				`slot ${slot}: approach ${approach} invalid`,
+				tick,
+			);
+		}
+	}
+
+	const reported = state.aggregates[AGG.SITUATION_COUNT] ?? 0;
+	if (reported !== open) {
+		addViolation(
+			"situations",
+			`SITUATION_COUNT is ${reported} but ${open} slots are occupied`,
+			tick,
+		);
 	}
 }
 

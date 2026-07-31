@@ -12,9 +12,14 @@ import {
 	AGG,
 	DEFAULT_HEIGHT,
 	DEFAULT_WIDTH,
+	MAX_SITUATIONS,
+	MOD,
+	SIT,
+	STARTING_INFLUENCE,
 	STARTING_TREASURY,
 	TERRAIN_WATER,
 } from "./constants.ts";
+import { POLICY_COUNT } from "./policy-defs.ts";
 
 describe("CityState", () => {
 	it("creates a city with default dimensions", () => {
@@ -81,14 +86,18 @@ describe("CityState shared buffer backing", () => {
 		const size = w * h;
 		const bytes = cityByteLength(w, h);
 		const vertexCount = (w + 1) * (h + 1);
-		// f64 aggregates + u32 rng + u16 layers + u8 layers + the vertex-height
-		// grid, plus whatever alignment padding the layout inserts.
+		// f64 aggregates + f64 modifier channels + u32 rng + i32 situation pool
+		// + u16 layers + u8 layers + the vertex-height grid + the policy ranks,
+		// plus whatever alignment padding the layout inserts.
 		const minimum =
 			AGG.COUNT * 8 +
+			MOD.COUNT * 8 +
 			4 * 4 +
+			MAX_SITUATIONS * SIT.STRIDE * 4 +
 			U16_LAYER_COUNT * size * 2 +
 			U8_LAYER_COUNT * size * 1 +
-			vertexCount;
+			vertexCount +
+			POLICY_COUNT;
 		expect(bytes).toBeGreaterThanOrEqual(minimum);
 	});
 
@@ -98,6 +107,22 @@ describe("CityState shared buffer backing", () => {
 
 		expect(city.buffer).toBe(buffer);
 		expect(city.aggregates[AGG.TREASURY]).toBe(STARTING_TREASURY);
+	});
+
+	it("starts governance state empty, with the modifier bus at its bases", () => {
+		const city = createCity({ width: 8, height: 8 });
+
+		expect(city.aggregates[AGG.INFLUENCE]).toBe(STARTING_INFLUENCE);
+		expect(city.policies.length).toBe(POLICY_COUNT);
+		expect(Array.from(city.policies).every((rank) => rank === 0)).toBe(true);
+		expect(city.situations.length).toBe(MAX_SITUATIONS * SIT.STRIDE);
+		expect(Array.from(city.situations).every((v) => v === 0)).toBe(true);
+
+		// A fresh, never-ticked city must already carry identity multipliers —
+		// zeroed ones would silently null out revenue and maintenance.
+		expect(city.modifiers[MOD.TAX_REVENUE_MULT]).toBe(1);
+		expect(city.modifiers[MOD.MAINTENANCE_MULT]).toBe(1);
+		expect(city.modifiers[MOD.R_DEMAND_ADD]).toBe(0);
 	});
 
 	it("shares writes between two views over the same buffer", () => {

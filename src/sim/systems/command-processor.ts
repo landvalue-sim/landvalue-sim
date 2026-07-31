@@ -46,6 +46,8 @@ import {
 import { invariant } from "../invariant.ts";
 import { levelTile, setWaterTile, terraformTile } from "../terraform.ts";
 import { journalCharge, journalTile, type UndoJournal } from "../undo.ts";
+import { enactPolicy, repealPolicy } from "./influence.ts";
+import { setSituationApproach } from "./situations.ts";
 
 // A single rectangle drag can zone an entire grid at once, so the cap is the
 // whole-grid tile count (still a fixed, provable upper bound — NASA rule 2).
@@ -124,7 +126,29 @@ function applyCommand(
 			return applySetTaxRate(state, cmd.sector, cmd.rate);
 		case "issue-bond":
 			return applyIssueBond(state);
+		case "enact-policy":
+			return applyGovernance(enactPolicy(state, cmd.policyId));
+		case "repeal-policy":
+			return applyGovernance(repealPolicy(state, cmd.policyId));
+		case "set-situation-approach":
+			return applyGovernance(
+				setSituationApproach(state, cmd.slot, cmd.approach),
+			);
 	}
+}
+
+/**
+ * Governance commands move influence and flags, never a tile.
+ *
+ * Like a tax-rate change they journal nothing — standing policy is not a map
+ * edit and must survive an undo — and they report no change, so a policy toggle
+ * does not rebake the whole world texture for something that was never drawn.
+ * The success flag is taken and discarded here deliberately: the governance
+ * helpers report it for their own callers and tests, and this is the one place
+ * that decides it is not what "changed the city" means.
+ */
+function applyGovernance(_applied: boolean): boolean {
+	return false;
 }
 
 function applyZone(

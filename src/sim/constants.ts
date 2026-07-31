@@ -307,6 +307,101 @@ export const GEN_LAND_RELIEF = 5;
 export const MAX_TERRAFORM_DRAG_SIDE = 64;
 
 // ---------------------------------------------------------------------------
+// Influence — political capital, the currency of government action
+//
+// Money buys concrete; influence buys permission. The cap is low on purpose:
+// the resource is about choosing between government actions, not hoarding.
+// See design_docs/INFLUENCE-AND-SITUATIONS.md.
+// ---------------------------------------------------------------------------
+export const MAX_INFLUENCE = 1000;
+export const STARTING_INFLUENCE = 100;
+// Accrual is deliberately O(1) — every term is an aggregate an earlier system
+// already published, so influence buys no extra grid pass.
+export const INFLUENCE_BASE_PER_WEEK = 5;
+export const INFLUENCE_EDUCATION_BONUS = 3;
+export const INFLUENCE_HEALTH_BONUS = 2;
+export const INFLUENCE_CRIME_PENALTY = 4;
+/**
+ * Crime points per resident at which the crime penalty is fully applied.
+ * Normalising per head means a large, well-policed city is not automatically
+ * less governable than a small one with the same crime *rate*.
+ *
+ * A placeholder value — it wants tuning against a real city once situations
+ * are generating pressure.
+ */
+export const INFLUENCE_CRIME_SATURATION = 4;
+
+// ---------------------------------------------------------------------------
+// Modifier bus — the one channel through which policies and situations reach
+// the sim. Recomputed from scratch every tick (see systems/modifiers.ts).
+//
+// Every channel here is read O(1): at the top of a system, or once per weekly
+// settlement. Per-tile channels are affordable too but cost a multiply across
+// the whole grid every tick whether or not anything is modifying them, so they
+// get added one at a time with a profile behind each.
+// ---------------------------------------------------------------------------
+export const MOD = {
+	R_DEMAND_ADD: 0,
+	C_DEMAND_ADD: 1,
+	I_DEMAND_ADD: 2,
+	TAX_REVENUE_MULT: 3,
+	MAINTENANCE_MULT: 4,
+	INFLUENCE_INCOME_ADD: 5,
+	COUNT: 6,
+} as const;
+
+/**
+ * Value each channel resets to before policies and situations accumulate onto
+ * it. Additive channels start at 0, multiplicative ones at 1. Indices line up
+ * with MOD.* — `modifiers.test.ts` pins the length against MOD.COUNT.
+ */
+export const MOD_BASE = [0, 0, 0, 1, 1, 0] as const;
+
+// ---------------------------------------------------------------------------
+// Situations — Stellaris-style ongoing conditions with a progress bar
+// ---------------------------------------------------------------------------
+export const MAX_SITUATIONS = 8;
+
+/** Field offsets within one situation slot (see the `situations` Int32Array). */
+export const SIT = {
+	/** Definition id; 0 (SITUATION_NONE) marks the slot empty. */
+	DEF: 0,
+	/** Fixed-point milli-percent, 0..SITUATION_PROGRESS_MAX. */
+	PROGRESS: 1,
+	STAGE: 2,
+	/** 0 = no approach chosen, else 1-based index into the def's approaches. */
+	APPROACH: 3,
+	START_TICK: 4,
+	/** Last month's progress change, milli-percent. Readout only. */
+	LAST_DELTA: 5,
+	STRIDE: 6,
+} as const;
+
+/**
+ * Progress is an integer in thousandths of a percent rather than a float 0..1.
+ * Repeatedly adding a float delta to a float bar drifts, and a bar that stops a
+ * ten-thousandth short of its threshold is a bug that only surfaces after an
+ * hour of play. Integers make the comparison exact.
+ */
+export const SITUATION_PROGRESS_MAX = 100_000;
+
+/**
+ * Progress a situation opens at when its template does not say. Non-zero on
+ * purpose: a situation that opened at zero could be defused by the first
+ * approach the player picked, in the first month, before it ever mattered.
+ */
+export const SITUATION_START_PROGRESS = 20_000;
+
+/**
+ * Caps on authored content, so every loop over a definition has a bound that
+ * does not depend on what a template happens to contain. The loader rejects
+ * anything past them rather than letting it through to be silently truncated.
+ */
+export const MAX_SITUATION_DEFS = 64;
+export const MAX_SITUATION_STAGES = 8;
+export const MAX_SITUATION_APPROACHES = 6;
+
+// ---------------------------------------------------------------------------
 // Calendar
 // ---------------------------------------------------------------------------
 export const START_YEAR = 1900;
@@ -376,5 +471,12 @@ export const AGG = {
 	 * the sim is paused even as the player keeps building.
 	 */
 	REVISION: 40,
-	COUNT: 41,
+	// Governance. Influence is the stock; income and upkeep are the last weekly
+	// settlement's flows, kept for the readout. SITUATION_COUNT mirrors the
+	// occupied slots in the situation pool so the HUD never scans it.
+	INFLUENCE: 41,
+	INFLUENCE_INCOME: 42,
+	INFLUENCE_UPKEEP: 43,
+	SITUATION_COUNT: 44,
+	COUNT: 45,
 } as const;
