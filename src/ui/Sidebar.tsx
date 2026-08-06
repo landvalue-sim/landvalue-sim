@@ -232,7 +232,7 @@ export function Sidebar({ store, sim }: SidebarProps): React.ReactElement {
           overlays={OVERLAYS}
           activeOverlay={overlay}
           onSelect={(overlay) => {
-            if (overlay !== null) store.setOverlay(overlay as OverlayMode);
+            store.setOverlay(overlay as OverlayMode);
           }}
         />
 			</section>
@@ -299,7 +299,7 @@ function OverlayFlyout({
 	activeOverlay: OverlayMode;
 	onSelect: (overlay: OverlayMode) => void;
   }): React.ReactElement {
-	const isActive = activeOverlay != "none";
+	const isActive = activeOverlay !== "none";
 	return (
 		<MenuTrigger>
 			<Button className={`category-btn${isActive ? " is-active" : ""}`}>
@@ -308,7 +308,7 @@ function OverlayFlyout({
 			<Popover className="tool-flyout" placement="right top" offset={4}>
 				<Menu
 					className="tool-flyout-menu"
-					aria-label={activeOverlay}
+					aria-label={overlays[activeOverlay]}
 					onAction={(key) => onSelect(key as OverlayMode)}
 				>
 					{Object.entries(overlays).map(([id,label]) => (
@@ -316,7 +316,6 @@ function OverlayFlyout({
 							key={id}
 							id={id}
 							className={`flyout-item${id === activeOverlay ? " is-active" : ""}`}
-							style={{ borderLeftColor: "#00000" }}
 						>
 							{label}
 						</MenuItem>
