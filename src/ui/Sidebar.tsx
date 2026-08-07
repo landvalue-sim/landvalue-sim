@@ -118,18 +118,18 @@ const TOOL_CATEGORIES: ReadonlyArray<ToolCategory> = [
 ];
 
 const OVERLAYS: Record<OverlayMode, string> = {
-	"none": "None",
+	none: "None",
 	"land-value": "Land Value",
-	"pollution": "Pollution",
-	"power": "Power",
-	"water": "Water",
-	"underground": "Underground",
-	"crime": "Crime",
-	"traffic": "Traffic",
-	"police": "Police",
-	"fire": "Fire",
-	"education": "Education",
-	"health": "Health",
+	pollution: "Pollution",
+	power: "Power",
+	water: "Water",
+	underground: "Underground",
+	crime: "Crime",
+	traffic: "Traffic",
+	police: "Police",
+	fire: "Fire",
+	education: "Education",
+	health: "Health",
 };
 
 // Pause plus seven ascending tiers (Cities: Skylines / Stellaris style). The
@@ -228,13 +228,13 @@ export function Sidebar({ store, sim }: SidebarProps): React.ReactElement {
 
 			<section>
 				<div className="section-title">Overlays</div>
-        <OverlayFlyout
-          overlays={OVERLAYS}
-          activeOverlay={overlay}
-          onSelect={(overlay) => {
-            store.setOverlay(overlay as OverlayMode);
-          }}
-        />
+				<OverlayFlyout
+					overlays={OVERLAYS}
+					activeOverlay={overlay}
+					onSelect={(overlay) => {
+						store.setOverlay(overlay as OverlayMode);
+					}}
+				/>
 			</section>
 
 			<section>
@@ -286,19 +286,19 @@ export function Sidebar({ store, sim }: SidebarProps): React.ReactElement {
 			</section>
 
 			<DevPanel sim={sim} />
-    </aside>
+		</aside>
 	);
 }
 
 function OverlayFlyout({
-  overlays,
-  activeOverlay,
-  onSelect,
+	overlays,
+	activeOverlay,
+	onSelect,
 }: {
 	overlays: Record<OverlayMode, string>;
 	activeOverlay: OverlayMode;
 	onSelect: (overlay: OverlayMode) => void;
-  }): React.ReactElement {
+}): React.ReactElement {
 	const isActive = activeOverlay !== "none";
 	return (
 		<MenuTrigger>
@@ -317,7 +317,7 @@ function OverlayFlyout({
 					selectedKeys={[activeOverlay]}
 					onAction={(key) => onSelect(key as OverlayMode)}
 				>
-					{Object.entries(overlays).map(([id,label]) => (
+					{Object.entries(overlays).map(([id, label]) => (
 						<MenuItem
 							key={id}
 							id={id}
