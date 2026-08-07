@@ -302,13 +302,19 @@ function OverlayFlyout({
 	const isActive = activeOverlay !== "none";
 	return (
 		<MenuTrigger>
-			<Button className={`category-btn${isActive ? " is-active" : ""}`}>
+			<Button
+				className={`category-btn${isActive ? " is-active" : ""}`}
+				aria-label={`Overlay: ${overlays[activeOverlay]}`}
+			>
 				<span className="category-label">{overlays[activeOverlay]}</span>
 			</Button>
 			<Popover className="tool-flyout" placement="right top" offset={4}>
 				<Menu
 					className="tool-flyout-menu"
-					aria-label={overlays[activeOverlay]}
+					aria-label="Overlays"
+					selectionMode="single"
+					disallowEmptySelection
+					selectedKeys={[activeOverlay]}
 					onAction={(key) => onSelect(key as OverlayMode)}
 				>
 					{Object.entries(overlays).map(([id,label]) => (
