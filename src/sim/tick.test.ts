@@ -9,6 +9,7 @@ import {
 	ZONE_INDUSTRIAL,
 	ZONE_RESIDENTIAL,
 } from "./constants.ts";
+import { clearViolations, getViolations } from "./sim-invariants.ts";
 import { applyEdits, tick } from "./tick.ts";
 
 function smallCity() {
@@ -281,5 +282,14 @@ describe("applyEdits", () => {
 
 		tick(city, []);
 		expect(city.aggregates[AGG.REVISION]).toBeGreaterThan(afterEdit);
+	});
+
+	// Paused cities never tick, so applyEdits must run the same dev-only
+	// postcondition checks that tick does — otherwise a bad edit sits silent.
+	it("runs sim invariants after the edit (dev builds)", () => {
+		const city = smallCity();
+		clearViolations();
+		applyEdits(city, zonedBlock());
+		expect(getViolations()).toHaveLength(0);
 	});
 });

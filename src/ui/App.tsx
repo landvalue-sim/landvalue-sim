@@ -23,7 +23,9 @@ export function App({ sim, store }: AppProps): React.ReactElement {
 		const parent = viewportRef.current;
 		if (parent === null) return;
 
-		const game = createGame(parent, {
+		// Nullable so HMR / StrictMode cleanup never calls destroy on a game
+		// that failed to construct or was already torn down.
+		let game: ReturnType<typeof createGame> | null = createGame(parent, {
 			city: sim.city,
 			store,
 			sendCommands: (cmds) => sim.sendCommands(cmds),
@@ -32,7 +34,11 @@ export function App({ sim, store }: AppProps): React.ReactElement {
 
 		return () => {
 			removeKeys();
-			game.destroy(true);
+			const instance = game;
+			game = null;
+			if (instance != null) {
+				instance.destroy(true);
+			}
 		};
 	}, [sim, store]);
 

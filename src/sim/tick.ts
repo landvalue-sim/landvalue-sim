@@ -97,6 +97,13 @@ export function applyEdits(
 		refreshDerived(state);
 		bumpRevision(state);
 	}
+	// Postcondition checks (dev only — stripped in production). An invariant
+	// violation introduced while paused would otherwise sit silent until the
+	// next tick, which for a paused city may be never.
+	if (import.meta.env.DEV) {
+		checkAggregates(state);
+		checkGridIntegrity(state);
+	}
 	return changed;
 }
 
