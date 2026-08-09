@@ -52,6 +52,10 @@ import {
 	undoEdit,
 	viewCity,
 } from "../sim/index.ts";
+import {
+	profilerEditEnd,
+	profilerEditStart,
+} from "../sim/profiler.ts";
 
 // Milliseconds per sim tick at each speed level (index = speed). 0 = paused.
 // Index 4 (Normal) keeps the historical 250 ms cadence; 7 (Fastest) runs the
@@ -120,7 +124,11 @@ function handleInit(msg: InitMessage): void {
  */
 function handleCommands(msg: CommandsMessage): void {
 	if (city === null) return;
+	// Edits run off-tick; profile the full applyEdits → refreshDerived path so
+	// the dev panel shows real gesture cost instead of the empty IDX_COMMANDS slot.
+	const t = profilerEditStart();
 	void applyEdits(city, msg.commands, undoJournal);
+	profilerEditEnd(t);
 	postUndoDepth();
 }
 
