@@ -112,6 +112,24 @@ export function DevPanel({
 							</div>
 						);
 					})}
+					<div className="dev-row">
+						<span className="dev-name">edits</span>
+						<span>
+							{profile && profile.editSampleCount > 0
+								? fmt(profile.edits.last)
+								: "—"}
+						</span>
+						<span>
+							{profile && profile.editSampleCount > 0
+								? fmt(profile.edits.avg)
+								: "—"}
+						</span>
+						<span>
+							{profile && profile.editSampleCount > 0
+								? fmt(profile.edits.max)
+								: "—"}
+						</span>
+					</div>
 					<div className="dev-row dev-total">
 						<span className="dev-name">total</span>
 						<span>{profile ? fmt(profile.totalTick.last) : "—"}</span>

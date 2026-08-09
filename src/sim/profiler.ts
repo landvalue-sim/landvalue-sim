@@ -1,6 +1,11 @@
 /**
  * Tick profiler — measures per-system execution time over a rolling window.
  *
+ * Edits (`applyEdits` → `refreshDerived`) run off the tick loop, so they have
+ * their own rolling buffer and appear on the snapshot as `edits`. The tick
+ * `commands` slot only measures whatever the tick still processes (empty after
+ * the edit path moved off-tick).
+ *
  * All timing is gated behind `import.meta.env.DEV` so production builds
  * see zero overhead (Vite dead-code-eliminates the branches).
  */
@@ -48,6 +53,12 @@ let sampleCount = 0;
 const currentTimings = new Float64Array(SYSTEM_COUNT);
 let tickStart = 0;
 
+// Off-tick edit path (applyEdits → refreshDerived). Independent of tick samples
+// so a pause-and-build session still accumulates meaningful edit timings.
+const editBuffer = new Float64Array(WINDOW_SIZE);
+let editCursor = 0;
+let editSampleCount = 0;
+
 // ---- Public API -------------------------------------------------------------
 
 export interface SystemStats {
@@ -60,7 +71,10 @@ export interface SystemStats {
 export interface ProfileSnapshot {
 	readonly systems: ReadonlyMap<SystemName, SystemStats>;
 	readonly totalTick: SystemStats;
+	/** Rolling stats for the off-tick edit path (`applyEdits`). */
+	readonly edits: SystemStats;
 	readonly sampleCount: number;
+	readonly editSampleCount: number;
 }
 
 /** Call at the start of a tick. */
@@ -109,6 +123,25 @@ export function profilerTickEnd(): void {
 	}
 }
 
+/** Call before an off-tick edit batch. Returns a token for profilerEditEnd. */
+export function profilerEditStart(): number {
+	if (import.meta.env.DEV) {
+		return performance.now();
+	}
+	return 0;
+}
+
+/** Call after an off-tick edit batch to commit its wall time. */
+export function profilerEditEnd(startTime: number): void {
+	if (import.meta.env.DEV) {
+		editBuffer[editCursor] = performance.now() - startTime;
+		editCursor = (editCursor + 1) % WINDOW_SIZE;
+		if (editSampleCount < WINDOW_SIZE) {
+			editSampleCount++;
+		}
+	}
+}
+
 /**
  * Discard all recorded samples. Lets a benchmark exclude warmup ticks so a
  * snapshot's averages cover exactly the ticks it means to measure.
@@ -122,6 +155,9 @@ export function profilerReset(): void {
 		tickBuffer.fill(0);
 		cursor = 0;
 		sampleCount = 0;
+		editBuffer.fill(0);
+		editCursor = 0;
+		editSampleCount = 0;
 	}
 }
 
@@ -133,14 +169,16 @@ export function getProfileSnapshot(): ProfileSnapshot {
 		const name = SYSTEM_NAMES[i];
 		const buf = buffers[i];
 		if (name !== undefined && buf !== undefined) {
-			systems.set(name, computeStats(buf, sampleCount));
+			systems.set(name, computeStats(buf, sampleCount, cursor));
 		}
 	}
 
 	return {
 		systems,
-		totalTick: computeStats(tickBuffer, sampleCount),
+		totalTick: computeStats(tickBuffer, sampleCount, cursor),
+		edits: computeStats(editBuffer, editSampleCount, editCursor),
 		sampleCount,
+		editSampleCount,
 	};
 }
 
@@ -154,12 +192,16 @@ export function systemIndex(name: SystemName): number {
 
 // ---- Helpers ----------------------------------------------------------------
 
-function computeStats(buf: Float64Array, count: number): SystemStats {
+function computeStats(
+	buf: Float64Array,
+	count: number,
+	cur: number,
+): SystemStats {
 	if (count === 0) {
 		return { last: 0, avg: 0, min: 0, max: 0 };
 	}
 
-	const lastIdx = (cursor - 1 + WINDOW_SIZE) % WINDOW_SIZE;
+	const lastIdx = (cur - 1 + WINDOW_SIZE) % WINDOW_SIZE;
 	const last = buf[lastIdx] ?? 0;
 
 	let sum = 0;
