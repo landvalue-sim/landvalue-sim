@@ -32,7 +32,15 @@ export function App({ sim, store }: AppProps): React.ReactElement {
 
 		return () => {
 			removeKeys();
-			game.destroy(true);
+			// Vite HMR can re-run this effect before Phaser finishes booting (or
+			// after a previous teardown). destroy() then throws reading a nested
+			// `.destroy` on undefined and freezes the game loop until a hard
+			// refresh. Best-effort teardown keeps the next mount usable.
+			try {
+				game.destroy(true);
+			} catch {
+				// Ignore teardown races during hot reload.
+			}
 		};
 	}, [sim, store]);
 
