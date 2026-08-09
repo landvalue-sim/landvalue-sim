@@ -4,11 +4,13 @@ import type { Command } from "./commands.ts";
 import {
 	AGG,
 	BUILDING_EMPTY,
+	BUILDING_LOW,
 	CIVIC_COAL_PLANT,
 	ZONE_COMMERCIAL,
 	ZONE_INDUSTRIAL,
 	ZONE_RESIDENTIAL,
 } from "./constants.ts";
+import { clearViolations, getViolations } from "./sim-invariants.ts";
 import { applyEdits, tick } from "./tick.ts";
 
 function smallCity() {
@@ -281,5 +283,19 @@ describe("applyEdits", () => {
 
 		tick(city, []);
 		expect(city.aggregates[AGG.REVISION]).toBeGreaterThan(afterEdit);
+	});
+
+	// Paused cities may never tick again; invariant breaches from edits must
+	// surface on the edit itself (dev builds), not only on the next tick.
+	it("runs postcondition checks after a successful edit", () => {
+		const city = smallCity();
+		clearViolations();
+		// Leave a building on unzoned land (no road/civic) — grid integrity breach.
+		city.building[0] = BUILDING_LOW;
+		const changed = applyEdits(city, [{ kind: "build-road", x: 3, y: 3 }]);
+		expect(changed).toBe(1);
+		expect(
+			getViolations().some((v) => v.message.includes("on unzoned land")),
+		).toBe(true);
 	});
 });

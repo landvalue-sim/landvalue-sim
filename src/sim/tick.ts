@@ -96,6 +96,12 @@ export function applyEdits(
 	if (changed > 0) {
 		refreshDerived(state);
 		bumpRevision(state);
+		// Same postconditions as tick: a paused city may never tick again, so
+		// an edit-introduced invariant breach must surface here (dev only).
+		if (import.meta.env.DEV) {
+			checkAggregates(state);
+			checkGridIntegrity(state);
+		}
 	}
 	return changed;
 }
