@@ -29,7 +29,7 @@ export function DevPanel({
 	const shown = violations.slice(0, MAX_SHOWN_VIOLATIONS);
 
 	return (
-		<Disclosure id="dev-panel" defaultExpanded>
+		<Disclosure id="dev-panel">
 			<h3 className="dev-panel-title">
 				<Button slot="trigger" className="dev-panel-trigger">
 					Dev Stats
