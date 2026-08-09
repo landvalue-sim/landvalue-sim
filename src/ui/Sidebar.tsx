@@ -228,12 +228,7 @@ export function Sidebar({ store, sim }: SidebarProps): React.ReactElement {
 
 			<section>
 				<div className="section-title">Overlays</div>
-				<OverlayFlyout
-					activeOverlay={overlay}
-					onSelect={(overlay) => {
-						store.setOverlay(overlay);
-					}}
-				/>
+				<OverlayFlyout activeOverlay={overlay} onSelect={store.setOverlay} />
 			</section>
 
 			<section>
