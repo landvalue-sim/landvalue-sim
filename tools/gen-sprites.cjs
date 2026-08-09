@@ -17,9 +17,9 @@
  *
  * Usage: node tools/gen-sprites.cjs
  */
-const zlib = require("zlib");
-const fs = require("fs");
-const path = require("path");
+const zlib = require("node:zlib");
+const fs = require("node:fs");
+const path = require("node:path");
 
 // ---- Drawing engine ---------------------------------------------------------
 
