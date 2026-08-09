@@ -229,10 +229,9 @@ export function Sidebar({ store, sim }: SidebarProps): React.ReactElement {
 			<section>
 				<div className="section-title">Overlays</div>
 				<OverlayFlyout
-					overlays={OVERLAYS}
 					activeOverlay={overlay}
 					onSelect={(overlay) => {
-						store.setOverlay(overlay as OverlayMode);
+						store.setOverlay(overlay);
 					}}
 				/>
 			</section>
@@ -291,11 +290,9 @@ export function Sidebar({ store, sim }: SidebarProps): React.ReactElement {
 }
 
 function OverlayFlyout({
-	overlays,
 	activeOverlay,
 	onSelect,
 }: {
-	overlays: Record<OverlayMode, string>;
 	activeOverlay: OverlayMode;
 	onSelect: (overlay: OverlayMode) => void;
 }): React.ReactElement {
@@ -304,9 +301,12 @@ function OverlayFlyout({
 		<MenuTrigger>
 			<Button
 				className={`category-btn${isActive ? " is-active" : ""}`}
-				aria-label={`Overlay: ${overlays[activeOverlay]}`}
+				aria-label={`Overlay: ${OVERLAYS[activeOverlay]}`}
 			>
-				<span className="category-label">{overlays[activeOverlay]}</span>
+				<span className="category-label">{OVERLAYS[activeOverlay]}</span>
+				<span className="category-caret" aria-hidden="true">
+					▸
+				</span>
 			</Button>
 			<Popover className="tool-flyout" placement="right top" offset={4}>
 				<Menu
@@ -317,7 +317,7 @@ function OverlayFlyout({
 					selectedKeys={[activeOverlay]}
 					onAction={(key) => onSelect(key as OverlayMode)}
 				>
-					{Object.entries(overlays).map(([id, label]) => (
+					{Object.entries(OVERLAYS).map(([id, label]) => (
 						<MenuItem
 							key={id}
 							id={id}
