@@ -17,9 +17,9 @@
  *
  * Usage: node tools/gen-sprites.cjs
  */
-const zlib = require("zlib");
-const fs = require("fs");
-const path = require("path");
+const zlib = require("node:zlib");
+const fs = require("node:fs");
+const path = require("node:path");
 
 // ---- Drawing engine ---------------------------------------------------------
 
@@ -1849,8 +1849,6 @@ function drawCivicLibrary(c, iso) {
 
 /** Park: green open space with trees and paths. */
 function drawCivicPark(c, iso) {
-	const OL = [40, 70, 35];
-
 	// Grass ground (full tile)
 	fillPoly(c, [iso(0, 0), iso(1, 0), iso(1, 1), iso(0, 1)], 90, 190, 95);
 	drawLine(c, ...iso(0, 0), ...iso(1, 0), 65, 150, 68);
@@ -2052,7 +2050,7 @@ for (const spec of SOLO_SPECS) {
 	const c = createCanvas(w, h);
 	const iso = makeIso(w, h, 1, 1);
 	spec.draw(c, iso);
-	writePng(c, path.join(OUTDIR, spec.file + ".png"));
+	writePng(c, path.join(OUTDIR, `${spec.file}.png`));
 }
 
 const CLUSTER_SPECS = [
@@ -2069,7 +2067,7 @@ for (const spec of CLUSTER_SPECS) {
 	const c = createCanvas(w, h);
 	const iso = makeIso(w, h, spec.tileSize, spec.tileSize);
 	drawGenericBuilding(c, iso, spec.zone, spec.tileSize, spec.wh);
-	writePng(c, path.join(OUTDIR, spec.file + ".png"));
+	writePng(c, path.join(OUTDIR, `${spec.file}.png`));
 }
 
 const CIVIC_SPECS = [
@@ -2092,7 +2090,7 @@ for (const spec of CIVIC_SPECS) {
 	const c = createCanvas(w, h);
 	const iso = makeIso(w, h, 1, 1);
 	spec.draw(c, iso);
-	writePng(c, path.join(OUTDIR, spec.file + ".png"));
+	writePng(c, path.join(OUTDIR, `${spec.file}.png`));
 }
 
 console.log("\nDone! Generated all building + civic sprites.");

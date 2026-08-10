@@ -5,8 +5,8 @@
  *
  * Usage: node tools/gen-house.cjs [output-path]
  */
-const zlib = require("zlib");
-const fs = require("fs");
+const zlib = require("node:zlib");
+const fs = require("node:fs");
 
 const W = 64;
 const H = 80;
