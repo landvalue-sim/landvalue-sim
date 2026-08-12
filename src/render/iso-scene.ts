@@ -1033,7 +1033,9 @@ export class IsoScene extends Phaser.Scene {
 		if (overlay === "land-value" || overlay === "population-density") {
 			if (isWater) return ground;
 			const lv = city.landValue[idx] ?? 0;
-			return ground + Math.min(lv, OVERLAY_HEIGHT_CLAMP) * OVERLAY_HEIGHT_PER_UNIT;
+			return (
+				ground + Math.min(lv, OVERLAY_HEIGHT_CLAMP) * OVERLAY_HEIGHT_PER_UNIT
+			);
 		}
 
 		if (isRoad || isWater) return ground;
@@ -1119,10 +1121,10 @@ export class IsoScene extends Phaser.Scene {
 			return;
 		}
 
-    if(overlay === "population-density"){
-      this.drawPopulationDensityTile(x,y,lod);
-      return;
-    }
+		if (overlay === "population-density") {
+			this.drawPopulationDensityTile(x, y, lod);
+			return;
+		}
 
 		const g = this.g;
 		const city = this.city;
@@ -1424,12 +1426,12 @@ export class IsoScene extends Phaser.Scene {
 		}
 	}
 
-	/**
-	 * Land-value view: each tile is a solid column whose height encodes its land
-	 * value, colored by what occupies the plot — zoning (R/C/I), road, or bare
-	 * land. Water stays flat for orientation.
-	 */
-	private drawLandValueTile(x: number, y: number, lod: boolean): void {
+	private drawValueColumnTile(
+		field: Uint16Array,
+		x: number,
+		y: number,
+		lod: boolean,
+	): void {
 		const g = this.g;
 		const city = this.city;
 		const idx = y * city.width + x;
@@ -1458,7 +1460,7 @@ export class IsoScene extends Phaser.Scene {
 		const lw = hw * ELEV_HEIGHT;
 		const ground = Math.max(ln, le, ls, lw);
 
-		const lv = city.landValue[idx] ?? 0;
+		const lv = field[idx] ?? 0;
 		const valueH = Math.min(lv, OVERLAY_HEIGHT_CLAMP) * OVERLAY_HEIGHT_PER_UNIT;
 		const col = isRoad ? COL_ROAD : builtColor(city.zoning[idx] ?? 0);
 
@@ -1484,61 +1486,19 @@ export class IsoScene extends Phaser.Scene {
 		g.fillStyle(col, 1);
 		fillDiamond(g, cx, cy, ground + valueH);
 	}
-
-  private drawPopulationDensityTile(x: number, y: number, lod: boolean): void {
-		const g = this.g;
+	/**
+	 * Land-value view: each tile is a solid column whose height encodes its land
+	 * value, colored by what occupies the plot — zoning (R/C/I), road, or bare
+	 * land. Water stays flat for orientation.
+	 */
+	private drawLandValueTile(x: number, y: number, lod: boolean): void {
 		const city = this.city;
-		const idx = y * city.width + x;
-		const cx = (x - y) * HALF_W;
-		const cy = (x + y) * HALF_H;
+		this.drawValueColumnTile(city.landValue, x, y, lod);
+	}
 
-		const isRoad = city.roads[idx] === 1;
-		const isWater = !isRoad && city.terrain[idx] === TERRAIN_WATER;
-		if (isWater) {
-			const wl = (city.waterLevel[idx] ?? 0) * ELEV_HEIGHT;
-			if (!lod) skirts(g, cx, cy, wl, wl, wl, COL_WATER, true, true);
-			g.fillStyle(COL_WATER, 1);
-			fillDiamond(g, cx, cy, wl);
-			return;
-		}
-
-		const vw = city.width + 1;
-		const heights = city.vertexHeights;
-		const hn = heights[y * vw + x] ?? 0;
-		const he = heights[y * vw + x + 1] ?? 0;
-		const hs = heights[(y + 1) * vw + x + 1] ?? 0;
-		const hw = heights[(y + 1) * vw + x] ?? 0;
-		const ln = hn * ELEV_HEIGHT;
-		const le = he * ELEV_HEIGHT;
-		const ls = hs * ELEV_HEIGHT;
-		const lw = hw * ELEV_HEIGHT;
-		const ground = Math.max(ln, le, ls, lw);
-
-		const pd = city.population[idx] ?? 0;
-		const populationH = Math.min(pd, OVERLAY_HEIGHT_CLAMP) * OVERLAY_HEIGHT_PER_UNIT;
-		const col = isRoad ? COL_ROAD : builtColor(city.zoning[idx] ?? 0);
-
-		// Sloped terrain in earth tones, then the land-value column rising from
-		// the tile's highest corner. Skirts are sub-pixel at far LOD.
-		if (!lod) {
-			skirts(
-				g,
-				cx,
-				cy,
-				le,
-				ls,
-				lw,
-				COL_EARTH,
-				this.skirtFaceVisible(x, y + 1),
-				this.skirtFaceVisible(x + 1, y),
-			);
-		}
-		g.fillStyle(shade(COL_EARTH, slopeShade(hn, he, hs, hw)), 1);
-		fillSurface(g, cx, cy, ln, le, ls, lw);
-
-		if (populationH > 0) extrudeColumn(g, cx, cy, ground, ground + populationH, col);
-		g.fillStyle(col, 1);
-		fillDiamond(g, cx, cy, ground + populationH);
+	private drawPopulationDensityTile(x: number, y: number, lod: boolean): void {
+		const city = this.city;
+		this.drawValueColumnTile(city.population, x, y, lod);
 	}
 }
 

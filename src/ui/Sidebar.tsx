@@ -130,7 +130,7 @@ const OVERLAYS: Record<OverlayMode, string> = {
 	fire: "Fire",
 	education: "Education",
 	health: "Health",
-  "population-density": "Population Density",
+	"population-density": "Population Density",
 };
 
 // Pause plus seven ascending tiers (Cities: Skylines / Stellaris style). The

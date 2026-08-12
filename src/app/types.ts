@@ -46,7 +46,7 @@ export type OverlayMode =
 	| "fire"
 	| "education"
 	| "health"
-  | "population-density";
+	| "population-density";
 
 // Sim speed: 0 = paused, then seven ascending tiers (slowest … fastest),
 // mirroring the Cities: Skylines / Stellaris speed ladder.
