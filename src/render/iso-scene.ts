@@ -130,8 +130,8 @@ const COL_STADIUM_BLDG = 0x9ca3af;
 
 // Land-value overlay renders value as column height, colored by zoning (or
 // road), so you read both what's there and how valuable it is.
-const LV_HEIGHT_PER_UNIT = 0.4; // world px per land-value unit
-const LV_HEIGHT_CLAMP = 160; // cap so the tallest columns stay readable
+const OVERLAY_HEIGHT_PER_UNIT = 0.4; // world px per land-value unit
+const OVERLAY_HEIGHT_CLAMP = 160; // cap so the tallest columns stay readable
 const COL_POLLUTION = 0xa832a8;
 const COL_POWERED = 0x22c55e;
 const COL_UNPOWERED = 0xef4444;
@@ -1030,10 +1030,10 @@ export class IsoScene extends Phaser.Scene {
 		const isRoad = city.roads[idx] === 1;
 		const isWater = !isRoad && city.terrain[idx] === TERRAIN_WATER;
 
-		if (overlay === "land-value") {
+		if (overlay === "land-value" || overlay === "population-density") {
 			if (isWater) return ground;
 			const lv = city.landValue[idx] ?? 0;
-			return ground + Math.min(lv, LV_HEIGHT_CLAMP) * LV_HEIGHT_PER_UNIT;
+			return ground + Math.min(lv, OVERLAY_HEIGHT_CLAMP) * OVERLAY_HEIGHT_PER_UNIT;
 		}
 
 		if (isRoad || isWater) return ground;
@@ -1118,6 +1118,11 @@ export class IsoScene extends Phaser.Scene {
 			this.drawLandValueTile(x, y, lod);
 			return;
 		}
+
+    if(overlay === "population-density"){
+      this.drawPopulationDensityTile(x,y,lod);
+      return;
+    }
 
 		const g = this.g;
 		const city = this.city;
@@ -1454,7 +1459,7 @@ export class IsoScene extends Phaser.Scene {
 		const ground = Math.max(ln, le, ls, lw);
 
 		const lv = city.landValue[idx] ?? 0;
-		const valueH = Math.min(lv, LV_HEIGHT_CLAMP) * LV_HEIGHT_PER_UNIT;
+		const valueH = Math.min(lv, OVERLAY_HEIGHT_CLAMP) * OVERLAY_HEIGHT_PER_UNIT;
 		const col = isRoad ? COL_ROAD : builtColor(city.zoning[idx] ?? 0);
 
 		// Sloped terrain in earth tones, then the land-value column rising from
@@ -1478,6 +1483,62 @@ export class IsoScene extends Phaser.Scene {
 		if (valueH > 0) extrudeColumn(g, cx, cy, ground, ground + valueH, col);
 		g.fillStyle(col, 1);
 		fillDiamond(g, cx, cy, ground + valueH);
+	}
+
+  private drawPopulationDensityTile(x: number, y: number, lod: boolean): void {
+		const g = this.g;
+		const city = this.city;
+		const idx = y * city.width + x;
+		const cx = (x - y) * HALF_W;
+		const cy = (x + y) * HALF_H;
+
+		const isRoad = city.roads[idx] === 1;
+		const isWater = !isRoad && city.terrain[idx] === TERRAIN_WATER;
+		if (isWater) {
+			const wl = (city.waterLevel[idx] ?? 0) * ELEV_HEIGHT;
+			if (!lod) skirts(g, cx, cy, wl, wl, wl, COL_WATER, true, true);
+			g.fillStyle(COL_WATER, 1);
+			fillDiamond(g, cx, cy, wl);
+			return;
+		}
+
+		const vw = city.width + 1;
+		const heights = city.vertexHeights;
+		const hn = heights[y * vw + x] ?? 0;
+		const he = heights[y * vw + x + 1] ?? 0;
+		const hs = heights[(y + 1) * vw + x + 1] ?? 0;
+		const hw = heights[(y + 1) * vw + x] ?? 0;
+		const ln = hn * ELEV_HEIGHT;
+		const le = he * ELEV_HEIGHT;
+		const ls = hs * ELEV_HEIGHT;
+		const lw = hw * ELEV_HEIGHT;
+		const ground = Math.max(ln, le, ls, lw);
+
+		const pd = city.population[idx] ?? 0;
+		const populationH = Math.min(pd, OVERLAY_HEIGHT_CLAMP) * OVERLAY_HEIGHT_PER_UNIT;
+		const col = isRoad ? COL_ROAD : builtColor(city.zoning[idx] ?? 0);
+
+		// Sloped terrain in earth tones, then the land-value column rising from
+		// the tile's highest corner. Skirts are sub-pixel at far LOD.
+		if (!lod) {
+			skirts(
+				g,
+				cx,
+				cy,
+				le,
+				ls,
+				lw,
+				COL_EARTH,
+				this.skirtFaceVisible(x, y + 1),
+				this.skirtFaceVisible(x + 1, y),
+			);
+		}
+		g.fillStyle(shade(COL_EARTH, slopeShade(hn, he, hs, hw)), 1);
+		fillSurface(g, cx, cy, ln, le, ls, lw);
+
+		if (populationH > 0) extrudeColumn(g, cx, cy, ground, ground + populationH, col);
+		g.fillStyle(col, 1);
+		fillDiamond(g, cx, cy, ground + populationH);
 	}
 }
 
