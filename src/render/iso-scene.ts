@@ -1113,16 +1113,18 @@ export class IsoScene extends Phaser.Scene {
 		return true;
 	}
 
+	private columnField(overlay: string): Uint16Array | null {
+		if (overlay === "land-value") return this.city.landValue;
+		if (overlay === "population-density") return this.city.population;
+		return null;
+	}
+
 	private drawTile(x: number, y: number, overlay: string, lod: boolean): void {
 		// Land value gets its own representation: buildings are hidden and each
 		// tile is extruded by its land value instead.
-		if (overlay === "land-value") {
-			this.drawLandValueTile(x, y, lod);
-			return;
-		}
-
-		if (overlay === "population-density") {
-			this.drawPopulationDensityTile(x, y, lod);
+		const columnFieldArray = this.columnField(overlay);
+		if (columnFieldArray !== null) {
+			this.drawValueColumnTile(columnFieldArray, x, y, lod);
 			return;
 		}
 
@@ -1485,20 +1487,6 @@ export class IsoScene extends Phaser.Scene {
 		if (valueH > 0) extrudeColumn(g, cx, cy, ground, ground + valueH, col);
 		g.fillStyle(col, 1);
 		fillDiamond(g, cx, cy, ground + valueH);
-	}
-	/**
-	 * Land-value view: each tile is a solid column whose height encodes its land
-	 * value, colored by what occupies the plot — zoning (R/C/I), road, or bare
-	 * land. Water stays flat for orientation.
-	 */
-	private drawLandValueTile(x: number, y: number, lod: boolean): void {
-		const city = this.city;
-		this.drawValueColumnTile(city.landValue, x, y, lod);
-	}
-
-	private drawPopulationDensityTile(x: number, y: number, lod: boolean): void {
-		const city = this.city;
-		this.drawValueColumnTile(city.population, x, y, lod);
 	}
 }
 
