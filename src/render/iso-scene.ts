@@ -140,9 +140,13 @@ const COL_STADIUM_BLDG = 0x9ca3af;
 
 // Column overlays (land value, population density) render a per-tile field as
 // column height, colored by zoning (or road), so you read both what's there
-// and how large the value is.
-const OVERLAY_HEIGHT_PER_UNIT = 0.4; // world px per field unit
-const OVERLAY_HEIGHT_CLAMP = 160; // cap so the tallest columns stay readable
+// and how large the value is. Each field gets its own scale — land value and
+// population range over very different magnitudes — tuned so a tile at that
+// field's practical max reaches roughly the same cap.
+const LAND_VALUE_HEIGHT_PER_UNIT = 0.4; // world px per land-value unit
+const LAND_VALUE_HEIGHT_CLAMP = 160; // cap so the tallest columns stay readable
+const POPULATION_HEIGHT_PER_UNIT = 2; // world px per population unit
+const POPULATION_HEIGHT_CLAMP = 160; // cap so the tallest columns stay readable
 const COL_POLLUTION = 0xa832a8;
 const COL_POWERED = 0x22c55e;
 const COL_UNPOWERED = 0xef4444;
@@ -1117,20 +1121,30 @@ export class IsoScene extends Phaser.Scene {
 		return true;
 	}
 
-	/** The per-tile field a column overlay extrudes, or null for overlays that
-	 *  tint the normally rendered world instead. */
-	private columnField(overlay: string): Uint16Array | null {
-		if (overlay === "land-value") return this.city.landValue;
-		if (overlay === "population-density") return this.city.population;
-		return null;
-	}
-
 	private drawTile(x: number, y: number, overlay: string, lod: boolean): void {
 		// Column overlays get their own representation: buildings are hidden
-		// and each tile is extruded by its field value instead.
-		const columnFieldArray = this.columnField(overlay);
-		if (columnFieldArray !== null) {
-			this.drawValueColumnTile(columnFieldArray, x, y, lod);
+		// and each tile is extruded by its field value instead. Each field
+		// carries its own height scale (see the constants above).
+		if (overlay === "land-value") {
+			this.drawValueColumnTile(
+				this.city.landValue,
+				LAND_VALUE_HEIGHT_PER_UNIT,
+				LAND_VALUE_HEIGHT_CLAMP,
+				x,
+				y,
+				lod,
+			);
+			return;
+		}
+		if (overlay === "population-density") {
+			this.drawValueColumnTile(
+				this.city.population,
+				POPULATION_HEIGHT_PER_UNIT,
+				POPULATION_HEIGHT_CLAMP,
+				x,
+				y,
+				lod,
+			);
 			return;
 		}
 
@@ -1446,6 +1460,8 @@ export class IsoScene extends Phaser.Scene {
 	 */
 	private drawValueColumnTile(
 		field: Uint16Array,
+		heightPerUnit: number,
+		clamp: number,
 		x: number,
 		y: number,
 		lod: boolean,
@@ -1480,8 +1496,7 @@ export class IsoScene extends Phaser.Scene {
 		const ground = Math.max(ln, le, ls, lw);
 
 		const value = field[idx] ?? 0;
-		const valueH =
-			Math.min(value, OVERLAY_HEIGHT_CLAMP) * OVERLAY_HEIGHT_PER_UNIT;
+		const valueH = Math.min(value, clamp) * heightPerUnit;
 		const col = isRoad ? COL_ROAD : builtColor(city.zoning[idx] ?? 0);
 
 		// Sloped terrain in earth tones, then the value column rising from
