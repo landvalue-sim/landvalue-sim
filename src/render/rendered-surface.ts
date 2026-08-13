@@ -30,6 +30,9 @@ export interface RenderedSurface {
 	/** Current bake generation. Tile i is valid iff stamps[i] === generation.
 	 *  0 means "no bake yet" — nothing is valid until the first begin. */
 	generation: number;
+	/** Largest corner lift recorded this generation (world px). Gives
+	 *  surface-aware picking a tight upper bound for its top-down march. */
+	maxLift: number;
 }
 
 // Stamps are Uint32; past this the next increment would alias generation 0
@@ -50,6 +53,7 @@ export function createRenderedSurface(
 		corners: new Float32Array(width * height * 4),
 		stamps: new Uint32Array(width * height),
 		generation: 0,
+		maxLift: 0,
 	};
 }
 
@@ -60,6 +64,7 @@ export function beginSurfaceBake(surface: RenderedSurface): void {
 		surface.generation = 0;
 	}
 	surface.generation += 1;
+	surface.maxLift = 0;
 }
 
 /** Record the on-screen top face of tile `idx` for the current generation. */
@@ -81,6 +86,10 @@ export function recordTileFace(
 	surface.corners[base + 2] = liftS;
 	surface.corners[base + 3] = liftW;
 	surface.stamps[idx] = surface.generation;
+	if (liftN > surface.maxLift) surface.maxLift = liftN;
+	if (liftE > surface.maxLift) surface.maxLift = liftE;
+	if (liftS > surface.maxLift) surface.maxLift = liftS;
+	if (liftW > surface.maxLift) surface.maxLift = liftW;
 }
 
 /**

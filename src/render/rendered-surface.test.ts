@@ -53,6 +53,18 @@ describe("rendered-surface", () => {
 		expect(Array.from(out)).toEqual([9, 9, 9, 9]);
 	});
 
+	it("tracks the tallest recorded lift, resetting each bake", () => {
+		const s = createRenderedSurface(2, 2);
+		expect(s.maxLift).toBe(0);
+		beginSurfaceBake(s);
+		recordTileFace(s, 0, 3, 10, 4, 5);
+		expect(s.maxLift).toBe(10);
+		recordTileFace(s, 1, 2, 2, 2, 2);
+		expect(s.maxLift).toBe(10);
+		beginSurfaceBake(s);
+		expect(s.maxLift).toBe(0);
+	});
+
 	it("survives generation wrap-around without stale reads", () => {
 		const s = createRenderedSurface(2, 2);
 		beginSurfaceBake(s);

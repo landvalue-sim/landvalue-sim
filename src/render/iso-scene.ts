@@ -571,12 +571,19 @@ export class IsoScene extends Phaser.Scene {
 	}
 
 	/**
-	 * Elevation-aware picking: front-most surface under the cursor (see
-	 * `pickTile`). Also records the fractional in-tile position for
-	 * corner-precision terraforming.
+	 * Surface-aware picking: front-most *rendered* face under the cursor (see
+	 * `pickTile`), so in a column overlay the pointer selects the column top
+	 * it visually touches, not the ground tile its screen point projects to.
+	 * Also records the fractional in-tile position for corner-precision
+	 * terraforming.
 	 */
 	private pointerTile(pointer: Phaser.Input.Pointer): { x: number; y: number } {
-		const pick = pickTile(this.city, pointer.worldX, pointer.worldY);
+		const pick = pickTile(
+			this.city,
+			this.surface,
+			pointer.worldX,
+			pointer.worldY,
+		);
 		this.hoverFx = pick.fx;
 		this.hoverFy = pick.fy;
 		return { x: pick.x, y: pick.y };
