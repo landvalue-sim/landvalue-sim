@@ -18,7 +18,10 @@
  * size (see `bakeDirty`). Zoom-only rebakes are additionally spaced at least
  * ZOOM_REBAKE_MS apart (the cache scales correctly in between). Unchanged
  * frames render just that cached texture plus a small per-frame layer for
- * the hover cursor and drag preview.
+ * the hover cursor and drag preview. The bake also records each tile's
+ * rendered top face (see rendered-surface.ts); the per-frame layer reads
+ * that record, so its geometry always matches the pixels on screen without
+ * re-deriving any overlay-specific shape.
  *
  * Far zoom gets two extra tiers: once the whole map fits the texture at the
  * current zoom, the bake covers the map itself rather than the view, so
@@ -75,6 +78,13 @@ import {
 	TIER_HEIGHT,
 } from "./iso.ts";
 import { pickTile, tileSurfaceHeight } from "./picking.ts";
+import {
+	beginSurfaceBake,
+	createRenderedSurface,
+	type RenderedSurface,
+	readTileFace,
+	recordTileFace,
+} from "./rendered-surface.ts";
 import { CIVIC_MANIFEST, SPRITE_MANIFEST } from "./sprite-manifest.ts";
 import { SpritePool } from "./sprite-pool.ts";
 import {
@@ -128,9 +138,10 @@ const COL_LIBRARY = 0xea580c;
 const COL_PARK_BLDG = 0x4ade80;
 const COL_STADIUM_BLDG = 0x9ca3af;
 
-// Land-value overlay renders value as column height, colored by zoning (or
-// road), so you read both what's there and how valuable it is.
-const OVERLAY_HEIGHT_PER_UNIT = 0.4; // world px per land-value unit
+// Column overlays (land value, population density) render a per-tile field as
+// column height, colored by zoning (or road), so you read both what's there
+// and how large the value is.
+const OVERLAY_HEIGHT_PER_UNIT = 0.4; // world px per field unit
 const OVERLAY_HEIGHT_CLAMP = 160; // cap so the tallest columns stay readable
 const COL_POLLUTION = 0xa832a8;
 const COL_POWERED = 0x22c55e;
@@ -237,6 +248,10 @@ export class IsoScene extends Phaser.Scene {
 	private lastZoomBakeTime = 0;
 	/** Per-frame scratch: tiles covered by a multi-tile cluster sprite. */
 	private covered!: Uint8Array;
+	/** Per-tile record of the top face the last bake drew (see
+	 *  rendered-surface.ts). Dynamic UI reads this instead of re-deriving
+	 *  overlay-specific geometry. */
+	private surface!: RenderedSurface;
 	private keys!: {
 		up: Phaser.Input.Keyboard.Key;
 		down: Phaser.Input.Keyboard.Key;
@@ -372,6 +387,7 @@ export class IsoScene extends Phaser.Scene {
 
 		this.sprites = new SpritePool(this, "_blank");
 		this.covered = new Uint8Array(this.city.width * this.city.height);
+		this.surface = createRenderedSurface(this.city.width, this.city.height);
 
 		const cam = this.cameras.main;
 		cam.setBackgroundColor(0x0f172a);
@@ -830,6 +846,7 @@ export class IsoScene extends Phaser.Scene {
 		this.gOverlay.clear();
 		this.sprites.begin();
 		this.covered.fill(0);
+		beginSurfaceBake(this.surface);
 
 		// Cull the sweep to the baked world rect. A tile (x, y) occupies
 		// column a = x - y (spanning (a±1)*HALF_W horizontally) and diagonal
@@ -884,26 +901,37 @@ export class IsoScene extends Phaser.Scene {
 			? COL_PIPE_DEMOLISH
 			: COL_CURSOR;
 		g.lineStyle(2, cursorCol, 0.9);
-		this.pathHoverFace(g, this.hoverX, this.hoverY, snap.overlay);
+		this.pathSurfaceFace(g, this.hoverX, this.hoverY);
 		g.strokePath();
 		if (isCornerTool(snap.tool)) this.drawCornerMarker();
 	}
 
-	/** Path the terrain surface under the cursor for selection highlighting. */
-	private pathHoverFace(
+	/** Path the face the last bake drew for tile (x, y) — sloped terrain,
+	 *  graded road, water plane, or column top, whatever the current overlay
+	 *  put on screen. The bake's per-tile record is the source of truth, so
+	 *  this never re-derives overlay-specific geometry; tiles outside the
+	 *  baked region (possible for drag previews mid-pan) fall back to ground
+	 *  geometry. */
+	private pathSurfaceFace(
 		g: Phaser.GameObjects.Graphics,
 		x: number,
 		y: number,
-		overlay: string,
 	): void {
-		// Land-value overlay lifts tiles by value — use flat diamond at that height.
-		if (overlay === "land-value") {
+		const idx = y * this.city.width + x;
+		if (readTileFace(this.surface, idx, _faceOut)) {
 			const cx = (x - y) * HALF_W;
 			const cy = (x + y) * HALF_H;
-			diamondPath(g, cx, cy, this.tileTopLift(x, y, overlay));
+			surfacePath(
+				g,
+				cx,
+				cy,
+				_faceOut[0] ?? 0,
+				_faceOut[1] ?? 0,
+				_faceOut[2] ?? 0,
+				_faceOut[3] ?? 0,
+			);
 			return;
 		}
-		// Everything else highlights at ground level.
 		this.pathGroundFace(g, x, y);
 	}
 
@@ -988,11 +1016,11 @@ export class IsoScene extends Phaser.Scene {
 			const c = inert ? COL_NO_TARGET : color;
 			if (!inert) {
 				g.fillStyle(c, 0.45);
-				this.pathGroundFace(g, t.x, t.y);
+				this.pathSurfaceFace(g, t.x, t.y);
 				g.fillPath();
 			}
 			g.lineStyle(1, c, inert ? 0.5 : 0.9);
-			this.pathGroundFace(g, t.x, t.y);
+			this.pathSurfaceFace(g, t.x, t.y);
 			g.strokePath();
 		}
 	}
@@ -1015,37 +1043,6 @@ export class IsoScene extends Phaser.Scene {
 	/** Corner height (0..ELEVATION_MAX) at vertex (vx, vy) of the corner grid. */
 	private vertexHeight(vx: number, vy: number): number {
 		return this.city.vertexHeights[vy * (this.city.width + 1) + vx] ?? 0;
-	}
-
-	/** World-px lift of the flat pad that structures on tile (x, y) sit on. */
-	private tileBaseLift(x: number, y: number): number {
-		return tileSurfaceHeight(this.city, x, y) * ELEV_HEIGHT;
-	}
-
-	/** World-space height of a tile's top surface in the current overlay mode. */
-	private tileTopLift(x: number, y: number, overlay: string): number {
-		const city = this.city;
-		const idx = y * city.width + x;
-		const ground = this.tileBaseLift(x, y);
-		const isRoad = city.roads[idx] === 1;
-		const isWater = !isRoad && city.terrain[idx] === TERRAIN_WATER;
-
-		if (overlay === "land-value" || overlay === "population-density") {
-			if (isWater) return ground;
-			const lv = city.landValue[idx] ?? 0;
-			return (
-				ground + Math.min(lv, OVERLAY_HEIGHT_CLAMP) * OVERLAY_HEIGHT_PER_UNIT
-			);
-		}
-
-		if (isRoad || isWater) return ground;
-		if (city.rail[idx] === 1 || city.powerLines[idx] === 1) return ground;
-
-		const civicType = city.civic[idx] ?? 0;
-		if (civicType !== 0) return ground + CIVIC_HEIGHT * TIER_HEIGHT;
-
-		const tier = city.building[idx] ?? 0;
-		return ground + tier * TIER_HEIGHT;
 	}
 
 	/** Place a sprite from the pool at the given tile's screen position. */
@@ -1113,6 +1110,8 @@ export class IsoScene extends Phaser.Scene {
 		return true;
 	}
 
+	/** The per-tile field a column overlay extrudes, or null for overlays that
+	 *  tint the normally rendered world instead. */
 	private columnField(overlay: string): Uint16Array | null {
 		if (overlay === "land-value") return this.city.landValue;
 		if (overlay === "population-density") return this.city.population;
@@ -1120,8 +1119,8 @@ export class IsoScene extends Phaser.Scene {
 	}
 
 	private drawTile(x: number, y: number, overlay: string, lod: boolean): void {
-		// Land value gets its own representation: buildings are hidden and each
-		// tile is extruded by its land value instead.
+		// Column overlays get their own representation: buildings are hidden
+		// and each tile is extruded by its field value instead.
 		const columnFieldArray = this.columnField(overlay);
 		if (columnFieldArray !== null) {
 			this.drawValueColumnTile(columnFieldArray, x, y, lod);
@@ -1217,6 +1216,10 @@ export class IsoScene extends Phaser.Scene {
 		const ge = isRoad ? re : le;
 		const gs = isRoad ? rs : ls;
 		const gw = isRoad ? rw : lw;
+
+		// Publish the face as drawn — graded road, flat water plane, or sloped
+		// terrain — so hover/preview trace what's actually on screen.
+		recordTileFace(this.surface, idx, gn, ge, gs, gw);
 
 		// Water tiles always draw their skirts (shoreline walls); land skirts
 		// draw only where something in front can fail to cover them. At far LOD
@@ -1428,6 +1431,12 @@ export class IsoScene extends Phaser.Scene {
 		}
 	}
 
+	/**
+	 * Column-overlay view: each tile is a solid column whose height encodes
+	 * its value in `field` (land value, population, …), colored by what
+	 * occupies the plot — zoning (R/C/I), road, or bare land. Water stays
+	 * flat for orientation.
+	 */
 	private drawValueColumnTile(
 		field: Uint16Array,
 		x: number,
@@ -1447,6 +1456,7 @@ export class IsoScene extends Phaser.Scene {
 			if (!lod) skirts(g, cx, cy, wl, wl, wl, COL_WATER, true, true);
 			g.fillStyle(COL_WATER, 1);
 			fillDiamond(g, cx, cy, wl);
+			recordTileFace(this.surface, idx, wl, wl, wl, wl);
 			return;
 		}
 
@@ -1462,11 +1472,12 @@ export class IsoScene extends Phaser.Scene {
 		const lw = hw * ELEV_HEIGHT;
 		const ground = Math.max(ln, le, ls, lw);
 
-		const lv = field[idx] ?? 0;
-		const valueH = Math.min(lv, OVERLAY_HEIGHT_CLAMP) * OVERLAY_HEIGHT_PER_UNIT;
+		const value = field[idx] ?? 0;
+		const valueH =
+			Math.min(value, OVERLAY_HEIGHT_CLAMP) * OVERLAY_HEIGHT_PER_UNIT;
 		const col = isRoad ? COL_ROAD : builtColor(city.zoning[idx] ?? 0);
 
-		// Sloped terrain in earth tones, then the land-value column rising from
+		// Sloped terrain in earth tones, then the value column rising from
 		// the tile's highest corner. Skirts are sub-pixel at far LOD.
 		if (!lod) {
 			skirts(
@@ -1487,6 +1498,8 @@ export class IsoScene extends Phaser.Scene {
 		if (valueH > 0) extrudeColumn(g, cx, cy, ground, ground + valueH, col);
 		g.fillStyle(col, 1);
 		fillDiamond(g, cx, cy, ground + valueH);
+		const top = ground + valueH;
+		recordTileFace(this.surface, idx, top, top, top, top);
 	}
 }
 
@@ -1649,6 +1662,9 @@ function extrudeColumn(
 
 // Pre-allocated output buffer for roadGrade (avoids allocation in hot path).
 const _roadOut = new Float64Array(4);
+
+// Pre-allocated output buffer for readTileFace (avoids per-frame allocation).
+const _faceOut = new Float32Array(4);
 
 /**
  * SC3K-style road grading: slopes along travel direction, flat perpendicular.
