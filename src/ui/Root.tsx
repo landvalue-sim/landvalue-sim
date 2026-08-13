@@ -1,48 +1,33 @@
 /**
- * Root — owns the app phase: main menu first, then the running game. The sim
- * client (worker + SharedArrayBuffer) is only created once the player starts a
- * city, so the menu carries no simulation cost. A failed start (e.g. missing
- * cross-origin isolation) renders the fatal-error panel instead of the game.
+ * Root — top-level page switch driven by the hash router (see app/router.ts).
+ * Each page owns its own resources: the sim client only exists while the game
+ * page is mounted, so the menu carries no simulation cost and a dev reload
+ * lands back on the page being worked on.
  */
 
-import { useState } from "react";
-import { createSimClient, type SimClient } from "../app/sim-client.ts";
-import { createStore, type InteractionStore } from "../app/store.ts";
-import { App } from "./App.tsx";
-import { MainMenu, type NewCityConfig } from "./MainMenu.tsx";
+import { useSyncExternalStore } from "react";
+import { parseRoute } from "../app/router.ts";
+import { GamePage } from "./GamePage.tsx";
+import { MainMenuPage, NewCityPage } from "./MainMenu.tsx";
 
-interface Session {
-	sim: SimClient;
-	store: InteractionStore;
+function subscribeHash(onChange: () => void): () => void {
+	window.addEventListener("hashchange", onChange);
+	return () => window.removeEventListener("hashchange", onChange);
+}
+
+function readHash(): string {
+	return window.location.hash;
 }
 
 export function Root(): React.ReactElement {
-	const [session, setSession] = useState<Session | null>(null);
-	const [error, setError] = useState<string | null>(null);
+	const hash = useSyncExternalStore(subscribeHash, readHash);
+	const route = parseRoute(hash);
 
-	if (error !== null) {
-		return (
-			<div className="fatal-error">
-				<h1>Cannot start simulation</h1>
-				<p>{error}</p>
-			</div>
-		);
+	if (route.page === "game") {
+		return <GamePage size={route.size} seed={route.seed} />;
 	}
-
-	if (session !== null) {
-		return <App sim={session.sim} store={session.store} />;
+	if (route.page === "new-city") {
+		return <NewCityPage initialSize={route.size} initialSeed={route.seed} />;
 	}
-
-	return (
-		<MainMenu
-			onStart={(config: NewCityConfig) => {
-				try {
-					const sim = createSimClient(config);
-					setSession({ sim, store: createStore(sim) });
-				} catch (err) {
-					setError(err instanceof Error ? err.message : String(err));
-				}
-			}}
-		/>
-	);
+	return <MainMenuPage />;
 }

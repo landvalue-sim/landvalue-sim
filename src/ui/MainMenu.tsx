@@ -1,9 +1,11 @@
 /**
- * MainMenu — the pre-game menu layer. New City collects map size and seed and
- * shows an accurate preview rendered by the terrain-preview worker (the same
- * `generateTerrain` the sim uses, so what you see is what you get). Load City
- * is a grayed-out stub until save/load exists. `onStart` hands the chosen
- * config to the root, which builds the real sim client.
+ * MainMenu pages — the pre-game screens, one per route. The main menu offers
+ * New City (Load City is a grayed-out stub until save/load exists); the
+ * new-city page collects map size and seed and shows an accurate preview
+ * rendered by the terrain-preview worker (the same `generateTerrain` the sim
+ * uses, so what you see is what you get). Navigation is URL-driven (see
+ * app/router.ts): Start City routes to `#/game?size=…&seed=…`, and the form
+ * mirrors its state into the URL so a reload keeps it.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -20,12 +22,7 @@ import {
 	type PreviewBitmap,
 	type PreviewClient,
 } from "../app/preview-client.ts";
-
-export interface NewCityConfig {
-	width: number;
-	height: number;
-	seed: number;
-}
+import { navigate, parseSeedText, replaceRoute } from "../app/router.ts";
 
 const MAP_SIZES = [
 	{ id: "64", label: "Small", tiles: 64 },
@@ -33,85 +30,92 @@ const MAP_SIZES = [
 	{ id: "256", label: "Large", tiles: 256 },
 ] as const;
 
-/** Seeds are non-negative decimal integers; 9 digits keeps them in 32 bits. */
-const SEED_PATTERN = /^\d{1,9}$/;
+const DEFAULT_SIZE_ID = "128";
+const DEFAULT_SEED_TEXT = "42";
+
+/** Upper bound (exclusive) for randomized seeds; matches the 9-digit rule. */
 const SEED_LIMIT = 1_000_000_000;
 
 /** Debounce so fast seed typing doesn't queue a generation per keystroke. */
 const PREVIEW_DEBOUNCE_MS = 120;
 
-export function MainMenu({
-	onStart,
-}: {
-	onStart: (config: NewCityConfig) => void;
-}): React.ReactElement {
-	const [screen, setScreen] = useState<"root" | "new-city">("root");
+export function MainMenuPage(): React.ReactElement {
+	return (
+		<MenuShell>
+			<div className="menu-actions">
+				<Button
+					className="menu-btn primary"
+					autoFocus
+					onPress={() => navigate({ page: "new-city", size: null, seed: null })}
+				>
+					New City
+				</Button>
+				<Button className="menu-btn" isDisabled>
+					Load City
+				</Button>
+				<p className="menu-hint">Loading saved cities is coming soon.</p>
+			</div>
+		</MenuShell>
+	);
+}
 
+export function NewCityPage({
+	initialSize,
+	initialSeed,
+}: {
+	initialSize: number | null;
+	initialSeed: number | null;
+}): React.ReactElement {
+	return (
+		<MenuShell>
+			<NewCityForm initialSize={initialSize} initialSeed={initialSeed} />
+		</MenuShell>
+	);
+}
+
+function MenuShell({
+	children,
+}: {
+	children: React.ReactNode;
+}): React.ReactElement {
 	return (
 		<div className="main-menu">
 			<div className="menu-card">
 				<h1 className="menu-title">landvalue-sim</h1>
 				<p className="menu-subtitle">An economic city simulator</p>
-				{screen === "root" ? (
-					<RootScreen onNewCity={() => setScreen("new-city")} />
-				) : (
-					<NewCityScreen onBack={() => setScreen("root")} onStart={onStart} />
-				)}
+				{children}
 			</div>
 		</div>
 	);
 }
 
-function RootScreen({
-	onNewCity,
+function NewCityForm({
+	initialSize,
+	initialSeed,
 }: {
-	onNewCity: () => void;
+	initialSize: number | null;
+	initialSeed: number | null;
 }): React.ReactElement {
-	return (
-		<div className="menu-actions">
-			<Button className="menu-btn primary" onPress={onNewCity} autoFocus>
-				New City
-			</Button>
-			<Button className="menu-btn" isDisabled>
-				Load City
-			</Button>
-			<p className="menu-hint">Loading saved cities is coming soon.</p>
-		</div>
+	const [sizeId, setSizeId] = useState<string>(() =>
+		initialSize !== null && MAP_SIZES.some((s) => s.tiles === initialSize)
+			? String(initialSize)
+			: DEFAULT_SIZE_ID,
 	);
-}
-
-function NewCityScreen({
-	onBack,
-	onStart,
-}: {
-	onBack: () => void;
-	onStart: (config: NewCityConfig) => void;
-}): React.ReactElement {
-	const [sizeId, setSizeId] = useState<string>("128");
-	const [seedText, setSeedText] = useState("42");
-	const [starting, setStarting] = useState(false);
+	const [seedText, setSeedText] = useState(() =>
+		initialSeed !== null ? String(initialSeed) : DEFAULT_SEED_TEXT,
+	);
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 
 	const size = Number(sizeId);
-	const seed = parseSeed(seedText);
+	const seed = parseSeedText(seedText);
 	const previewLoading = useTerrainPreview(canvasRef, size, seed);
 
-	// Defer the actual start one frame so the busy overlay paints before the
-	// synchronous city build (SAB alloc + terrain gen) blocks the main thread.
+	// Mirror valid form state into the URL (no history entry) so a reload
+	// restores the same size/seed instead of resetting the form.
 	useEffect(() => {
-		if (!starting || seed === null) return;
-		let timer = 0;
-		const raf = requestAnimationFrame(() => {
-			timer = window.setTimeout(
-				() => onStart({ width: size, height: size, seed }),
-				0,
-			);
-		});
-		return () => {
-			cancelAnimationFrame(raf);
-			clearTimeout(timer);
-		};
-	}, [starting, size, seed, onStart]);
+		if (seed === null) return;
+		replaceRoute({ page: "new-city", size, seed });
+	}, [size, seed]);
 
 	return (
 		<div className="new-city">
@@ -122,7 +126,6 @@ function NewCityScreen({
 					disallowEmptySelection
 					className="size-group"
 					selectedKeys={[sizeId]}
-					isDisabled={starting}
 					onSelectionChange={(keys) => {
 						const first = keys.values().next();
 						if (!first.done) setSizeId(String(first.value));
@@ -145,14 +148,12 @@ function NewCityScreen({
 					value={seedText}
 					onChange={setSeedText}
 					isInvalid={seed === null}
-					isDisabled={starting}
 				>
 					<Label className="menu-label">Seed</Label>
 					<div className="seed-row">
 						<Input className="seed-input" inputMode="numeric" />
 						<Button
 							className="seed-random-btn"
-							isDisabled={starting}
 							onPress={() => setSeedText(String(randomSeed()))}
 						>
 							Randomize
@@ -182,24 +183,19 @@ function NewCityScreen({
 			</div>
 
 			<div className="menu-footer">
-				<Button className="menu-btn" onPress={onBack} isDisabled={starting}>
+				<Button className="menu-btn" onPress={() => navigate({ page: "menu" })}>
 					Back
 				</Button>
 				<Button
 					className="menu-btn primary"
-					isDisabled={seed === null || starting}
-					onPress={() => setStarting(true)}
+					isDisabled={seed === null}
+					onPress={() => {
+						if (seed !== null) navigate({ page: "game", size, seed });
+					}}
 				>
 					Start City
 				</Button>
 			</div>
-
-			{starting ? (
-				<div className="menu-busy">
-					<div className="spinner" />
-					<span>Founding city…</span>
-				</div>
-			) : null}
 		</div>
 	);
 }
@@ -257,12 +253,6 @@ function drawPreview(canvas: HTMLCanvasElement, bitmap: PreviewBitmap): void {
 		0,
 		0,
 	);
-}
-
-function parseSeed(text: string): number | null {
-	const trimmed = text.trim();
-	if (!SEED_PATTERN.test(trimmed)) return null;
-	return Number(trimmed);
 }
 
 /** UI-only randomness — the sim itself stays seeded and deterministic. */
