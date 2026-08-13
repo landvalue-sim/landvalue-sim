@@ -934,6 +934,10 @@ body {
 	outline-offset: 1px;
 }
 
+.fatal-error .menu-btn {
+	margin-top: 14px;
+}
+
 .menu-hint {
 	font-size: 11.5px;
 	color: #6b7280;

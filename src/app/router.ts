@@ -70,8 +70,11 @@ export function routeHash(route: Route): string {
 		return `#/game?size=${route.size}&seed=${route.seed}`;
 	}
 	if (route.page === "new-city") {
-		if (route.size === null || route.seed === null) return "#/new";
-		return `#/new?size=${route.size}&seed=${route.seed}`;
+		const params: string[] = [];
+		if (route.size !== null) params.push(`size=${route.size}`);
+		if (route.seed !== null) params.push(`seed=${route.seed}`);
+		if (params.length === 0) return "#/new";
+		return `#/new?${params.join("&")}`;
 	}
 	return "#/";
 }

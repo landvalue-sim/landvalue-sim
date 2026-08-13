@@ -33,6 +33,7 @@ export function createPreviewClient(): PreviewClient {
 
 	let nextId = 1;
 	let latestId = 0;
+	let disposed = false;
 	let pendingResolve: ((result: PreviewBitmap | null) => void) | null = null;
 
 	function supersede(): void {
@@ -56,6 +57,7 @@ export function createPreviewClient(): PreviewClient {
 
 	return {
 		request(size, seed) {
+			if (disposed) return Promise.resolve(null);
 			supersede();
 			const id = nextId;
 			nextId++;
@@ -67,6 +69,7 @@ export function createPreviewClient(): PreviewClient {
 			});
 		},
 		dispose() {
+			disposed = true;
 			supersede();
 			worker.terminate();
 		},

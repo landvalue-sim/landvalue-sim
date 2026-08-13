@@ -13,7 +13,7 @@ import type {
 	FromPreviewWorkerMessage,
 	ToPreviewWorkerMessage,
 } from "../app/preview-protocol.ts";
-import { createCity, generateTerrain } from "../sim/index.ts";
+import { createCity, generateTerrain, MAX_GRID_SIZE } from "../sim/index.ts";
 import { paintPreviewPixels } from "./preview-paint.ts";
 
 const ctx = self as DedicatedWorkerGlobalScope;
@@ -25,6 +25,10 @@ ctx.addEventListener(
 		if (msg.type !== "preview") return;
 
 		const { id, size, seed } = msg;
+		console.assert(
+			Number.isInteger(size) && size >= 1 && size <= MAX_GRID_SIZE,
+			`preview size must be 1..${MAX_GRID_SIZE}`,
+		);
 		const city = createCity({ width: size, height: size, seed });
 		generateTerrain(city, seed);
 

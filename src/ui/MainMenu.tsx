@@ -224,7 +224,12 @@ function useTerrainPreview(
 	}, []);
 
 	useEffect(() => {
-		if (seed === null) return;
+		if (seed === null) {
+			// No request in flight (the cleanup below cancelled any pending
+			// debounce), so drop the spinner and keep the stale preview.
+			setLoading(false);
+			return;
+		}
 		setLoading(true);
 		const timer = window.setTimeout(() => {
 			const client = clientRef.current;

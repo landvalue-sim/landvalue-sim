@@ -7,6 +7,8 @@
  */
 
 import { useEffect, useState } from "react";
+import { Button } from "react-aria-components";
+import { navigate } from "../app/router.ts";
 import { createSimClient, type SimClient } from "../app/sim-client.ts";
 import { createStore, type InteractionStore } from "../app/store.ts";
 import { App } from "./App.tsx";
@@ -52,6 +54,9 @@ export function GamePage({
 			<div className="fatal-error">
 				<h1>Cannot start simulation</h1>
 				<p>{error}</p>
+				<Button className="menu-btn" onPress={() => navigate({ page: "menu" })}>
+					Back to menu
+				</Button>
 			</div>
 		);
 	}

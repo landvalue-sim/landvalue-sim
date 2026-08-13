@@ -43,6 +43,8 @@ describe("parseRoute", () => {
 			{ page: "menu" },
 			{ page: "new-city", size: null, seed: null },
 			{ page: "new-city", size: 64, seed: 7 },
+			{ page: "new-city", size: 64, seed: null },
+			{ page: "new-city", size: null, seed: 7 },
 			{ page: "game", size: 128, seed: 42 },
 		] as const;
 		for (const route of routes) {
