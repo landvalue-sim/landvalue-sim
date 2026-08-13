@@ -66,13 +66,16 @@ export function pickTile(
 	// cover. Elevation planes alone would stop short of tall value columns.
 	const terrainMax = ELEVATION_MAX * ELEV_HEIGHT;
 	const maxLift = render.maxLift > terrainMax ? render.maxLift : terrainMax;
-	const steps = Math.min(
-		Math.ceil(maxLift / PICK_LIFT_STEP_PX) + 1,
-		PICK_MAX_PROBE_STEPS,
-	);
+	// Assert the march actually reaches maxLift *before* clamping steps to the
+	// bound — otherwise a maxLift past the bound would silently truncate the
+	// march (steps clamped short) instead of failing loudly.
 	invariant(
 		maxLift <= (PICK_MAX_PROBE_STEPS - 1) * PICK_LIFT_STEP_PX,
 		"picking: rendered lift exceeds the probe march bound",
+	);
+	const steps = Math.min(
+		Math.ceil(maxLift / PICK_LIFT_STEP_PX) + 1,
+		PICK_MAX_PROBE_STEPS,
 	);
 
 	// Lowest probe known to be above the surface, bracketing the crossing.
