@@ -118,20 +118,20 @@ const TOOL_CATEGORIES: ReadonlyArray<ToolCategory> = [
 	},
 ];
 
-const OVERLAYS: ReadonlyArray<{ id: OverlayMode; label: string }> = [
-	{ id: "none", label: "None" },
-	{ id: "land-value", label: "Land Value" },
-	{ id: "pollution", label: "Pollution" },
-	{ id: "power", label: "Power" },
-	{ id: "water", label: "Water" },
-	{ id: "underground", label: "Underground" },
-	{ id: "crime", label: "Crime" },
-	{ id: "traffic", label: "Traffic" },
-	{ id: "police", label: "Police" },
-	{ id: "fire", label: "Fire" },
-	{ id: "education", label: "Education" },
-	{ id: "health", label: "Health" },
-];
+const OVERLAYS: Record<OverlayMode, string> = {
+	none: "None",
+	"land-value": "Land Value",
+	pollution: "Pollution",
+	power: "Power",
+	water: "Water",
+	underground: "Underground",
+	crime: "Crime",
+	traffic: "Traffic",
+	police: "Police",
+	fire: "Fire",
+	education: "Education",
+	health: "Health",
+};
 
 // Pause plus seven ascending tiers (Cities: Skylines / Stellaris style). The
 // numeral is the compact button face; `name` is the accessible label and the
@@ -229,27 +229,7 @@ export function Sidebar({ store, sim }: SidebarProps): React.ReactElement {
 
 			<section>
 				<div className="section-title">Overlays</div>
-				<ToggleButtonGroup
-					selectionMode="single"
-					disallowEmptySelection
-					className="btn-stack"
-					selectedKeys={[overlay]}
-					onSelectionChange={(keys) => {
-						const k = firstKey(keys);
-						if (k !== null) store.setOverlay(k as OverlayMode);
-					}}
-				>
-					{OVERLAYS.map((o) => (
-						<ToggleButton
-							key={o.id}
-							id={o.id}
-							className="overlay-btn"
-							onPress={blurOnPointerPress}
-						>
-							{o.label}
-						</ToggleButton>
-					))}
-				</ToggleButtonGroup>
+				<OverlayFlyout activeOverlay={overlay} onSelect={store.setOverlay} />
 			</section>
 
 			<section>
@@ -309,6 +289,49 @@ export function Sidebar({ store, sim }: SidebarProps): React.ReactElement {
 
 			<DevPanel sim={sim} />
 		</aside>
+	);
+}
+
+function OverlayFlyout({
+	activeOverlay,
+	onSelect,
+}: {
+	activeOverlay: OverlayMode;
+	onSelect: (overlay: OverlayMode) => void;
+}): React.ReactElement {
+	const isActive = activeOverlay !== "none";
+	return (
+		<MenuTrigger>
+			<Button
+				className={`category-btn${isActive ? " is-active" : ""}`}
+				aria-label={`Overlay: ${OVERLAYS[activeOverlay]}`}
+			>
+				<span className="category-label">{OVERLAYS[activeOverlay]}</span>
+				<span className="category-caret" aria-hidden="true">
+					▸
+				</span>
+			</Button>
+			<Popover className="tool-flyout" placement="right top" offset={4}>
+				<Menu
+					className="tool-flyout-menu"
+					aria-label="Overlays"
+					selectionMode="single"
+					disallowEmptySelection
+					selectedKeys={[activeOverlay]}
+					onAction={(key) => onSelect(key as OverlayMode)}
+				>
+					{Object.entries(OVERLAYS).map(([id, label]) => (
+						<MenuItem
+							key={id}
+							id={id}
+							className={`flyout-item${id === activeOverlay ? " is-active" : ""}`}
+						>
+							{label}
+						</MenuItem>
+					))}
+				</Menu>
+			</Popover>
+		</MenuTrigger>
 	);
 }
 
