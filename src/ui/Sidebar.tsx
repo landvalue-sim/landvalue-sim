@@ -120,6 +120,7 @@ const TOOL_CATEGORIES: ReadonlyArray<ToolCategory> = [
 const OVERLAYS: Record<OverlayMode, string> = {
 	none: "None",
 	"land-value": "Land Value",
+	"population-density": "Population Density",
 	pollution: "Pollution",
 	power: "Power",
 	water: "Water",
