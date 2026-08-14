@@ -109,15 +109,38 @@ show how much of the city is stranded past that frontier.
 
 ### Governance
 
-Money is not the only thing a government spends. **Influence** — political capital — is a
-second, capped resource that pays for standing ordinances and for responding to
-**situations**: Stellaris-style ongoing conditions with a progress bar, escalating stages,
-and a player-chosen approach. Both reach the sim through one narrow **modifier bus**, an
-array of named channels rebuilt from scratch every tick, which systems read and never
-write.
+**Money is constrained by law; influence is constrained by politics, and the game lives
+where those two constraints disagree.**
 
-The separation is the point: money buys concrete, influence buys permission. Full design
-in `INFLUENCE-AND-SITUATIONS.md`.
+**Influence** — political capital — is the primary currency: what the player spends to
+*do* things, rather than to build them. Money buys concrete, influence buys permission, so
+routine construction costs none and anything overriding someone's interests costs a lot.
+It is shown as an **unnumbered meter** with a growable cap, against a money economy shown
+to the dollar; that contrast between the auditable half of a government's problem and the
+felt half is deliberate.
+
+Money splits into an **operating fund** (taxes in; salaries, maintenance, debt service and
+pensions out) and a **capital fund** (bonds and grants in; construction out), which cannot
+pay for each other's problems. Every capital project creates an operating tail, so a city
+can build itself into a payroll crisis while the capital budget still looks healthy — and
+because new construction is visible and maintenance is not, the incentive gradient points
+squarely at the decisions real city governments actually make.
+
+Consequences arrive as **situations**: Stellaris-style ongoing conditions with a progress
+bar, escalating stages, and a player-chosen approach. Everything reaches the sim through
+one narrow **modifier bus**, an array of named channels rebuilt from scratch every tick,
+which systems read and never write.
+
+Underneath all of it is one repeated move — **borrow capacity from the future, repay it in
+sovereignty**. Bonds, pension underfunding, deferred maintenance, revenue monetisation,
+fine revenue, and favours taken from political factions are six versions of the same
+trade. So every failure state is also one shape: **the player never loses the city, they
+lose levers.** A credit downgrade, a hostile council after a lost election, a faction lien,
+a state cap on fine revenue, an oversight board — each leaves the map untouched and takes
+away the ability to act on it. Sovereignty is the health bar, which is how this design
+gets real stakes without the hard game-over the genre rightly avoids.
+
+Full design in `INFLUENCE-AND-BUDGET.md` and `SITUATIONS.md`.
 
 ## Urbanist levers (make the YIMBY argument playable)
 

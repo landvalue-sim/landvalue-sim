@@ -15,7 +15,7 @@
  *
  * Policy enact/repeal lives here rather than in the command processor because
  * insolvency repeals too, and the enactment-rank bookkeeping should have one
- * owner. See design_docs/INFLUENCE-AND-SITUATIONS.md.
+ * owner. See design_docs/INFLUENCE-AND-BUDGET.md.
  */
 
 import type { CityState } from "../city-state.ts";

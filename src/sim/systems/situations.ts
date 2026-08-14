@@ -19,7 +19,7 @@
  * covers "fix it or it gets worse", "enjoy it while it lasts", and "this ends
  * one of two ways and they are not the same ending".
  *
- * See design_docs/INFLUENCE-AND-SITUATIONS.md.
+ * See design_docs/SITUATIONS.md.
  */
 
 import type { CityState } from "../city-state.ts";

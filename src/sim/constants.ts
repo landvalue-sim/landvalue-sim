@@ -311,7 +311,7 @@ export const MAX_TERRAFORM_DRAG_SIDE = 64;
 //
 // Money buys concrete; influence buys permission. The cap is low on purpose:
 // the resource is about choosing between government actions, not hoarding.
-// See design_docs/INFLUENCE-AND-SITUATIONS.md.
+// See design_docs/INFLUENCE-AND-BUDGET.md.
 // ---------------------------------------------------------------------------
 export const MAX_INFLUENCE = 1000;
 export const STARTING_INFLUENCE = 100;

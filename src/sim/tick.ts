@@ -24,7 +24,7 @@
  * rebuilt at the top so a policy enacted by a command this tick is live for the
  * rest of it; situations run at the bottom so their triggers read this tick's
  * aggregates rather than last tick's. See
- * design_docs/INFLUENCE-AND-SITUATIONS.md.
+ * design_docs/INFLUENCE-AND-BUDGET.md.
  *
  * The simulation is fully deterministic: same seed + same commands =
  * same state. Never uses Math.random() or Date.now().
