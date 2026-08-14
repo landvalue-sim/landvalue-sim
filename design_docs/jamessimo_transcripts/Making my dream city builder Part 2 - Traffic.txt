@@ -1,0 +1,566 @@
+0:01
+Hi, in this video I'm going to cover traffic
+0:07
+to build my massive gridless realistic city builder.
+0:14
+But first, what what on earth? how what um my last
+0:21
+video, the part one in the series, I suppose, uh got over 180,000 views and
+0:28
+uh I now have, you know, I think close to uh yeah, 9,000 subscribers. Uh I I
+0:36
+honestly can't I honestly can't believe this. Um I had no idea that, you know,
+0:42
+it would resonate with people like this. Um, I had no, you know, idea what the
+0:47
+video would do, but I'm just very, very glad that people understood kind of my
+0:53
+point, where I was coming from. A lot of people seem to have the same gripes as me. And honestly, thank you all for the
+1:00
+support. Everyone saying, you know, it's a lovely comments telling me to continue with this, uh, you know, expressing your
+1:08
+own gripes being limited to a grid. And honestly, I've had so much different
+1:13
+ideas and people talk, you know, giving their feedback, their ideas. Um, I kind
+1:18
+of regret saying in the video, I'll answer all your comments because, wow, that's a lot of comments. But, um, I've
+1:24
+tried to answer as many as I can. I'll keep answering them. But, in the meantime, I thought I could help by
+1:31
+going back through my parceling system. Uh because a lot of the questions people
+1:36
+have I actually have answers to. But I kind of undersold my parceling system
+1:42
+demo that I made. What I missed mainly from my last parceling demo was the mix zoning, row houses, parks, dynamic
+1:51
+building sizes, um the road direction and the offset and courtyards. So I'm
+1:56
+going to demo all those quickly and hopefully this will answer a lot of questions people have. So here we are in
+2:02
+my parceling engine. I just want to demo some of the things that I've already built in this and I didn't show off in
+2:07
+my video. So, here we go. We just have a block here and I'm going to make a parcel in the middle.
+2:14
+And what I've done here is you can see I've got an offset down here. So, I'm just going to say enter. Okay. Now, I'm
+2:21
+going to click this and I'm going to put the offset I'll leave at 90. And I'm going to use my skeleton subdivision.
+2:26
+Boom. [clears throat] Some people asked how would we do courtyards and stuff like that. Well, it would work like
+2:32
+this. Um if a parcel of land is too big and the property could not meet it, uh
+2:37
+we could the offset would actually be controlled by the land developer like this.
+2:46
+This is a pretty good system I believe to, you know, make those people happy.
+2:52
+Um you could say Barcelona is confirmed I guess because I know they have a lot of buildings like this. Um, speaking of
+2:58
+like Barcelona, Europe, a lot of people were saying, oh, they really hope it's not like an American centric city
+3:05
+builder. Uh, and it definitely won't be. Um, you know, I'm not American. Um, you
+3:10
+know, I've lived in Europe. I lived in a I live in Asia and originally from the UK, so you know, I've seen pretty much a
+3:17
+lot of it. And, uh, some people were asking about rowousing. So, I do have
+3:22
+that as a concept in my parceling engine. So, if you remember in this in this system here, um you know, I let you
+3:29
+choose a zone and then you could generate buildings. Uh I actually have a row building here. So, you can generate
+3:36
+row buildings like this. Uh it's a little bit glitchy, but those brown blocks are supposed to be row houses. I
+3:42
+never fully finished this, but I do have it as a concept. Something else that um I I I didn't show off was um if I go to
+3:51
+debugging roads. So you see these little arrows here. These arrows will actually tell the
+3:57
+parcel of land where the road is. So by default buildings would normally face the road, especially in a residential
+4:03
+setting. But if this was say a huge apartment block, then instead of it
+4:09
+facing the road, well it would still need to face the road, but the buildings wouldn't have to. the buildings could
+4:14
+face instead of the road. If there was a large, you know, beautiful landmark
+4:19
+nearby, we could actually try to point the buildings toward that. Like buildings tend to want a seaside view,
+4:25
+for example. And also, I didn't show off this, which was a bit silly of me. I'm going to make let's make another road
+4:32
+quickly. Oh dear. Sorry. Uh, let me just restart that. Uh, again, this is this is just a
+4:40
+demo. This is not the city builder. This was something I built in my spare time
+4:45
+to try to, you know, essentially to prototype all these ideas. There's a bunch of different subdivision types
+4:51
+here and buildings. Boom. Let's build that. Click on that. I'm going to make
+4:56
+this a park instead. So, you see here, these are the in these are the zoning types I'm trying to test against. So, I
+5:02
+have residential, commercial, industrial, office, normal, but I also have rural, mixed use. So you can have
+5:09
+mixed use buildings, public or institution, parks, public works, and
+5:15
+public transit. But I want to show you a park. Oh, I go generic buildings. Boom. There
+5:22
+you go. Oh, that's an interesting one. Um, this actually uses um flow fields to
+5:28
+decide where the where the where the pathways go. So, um, this one's kind of a crazy one, but this would all be
+5:35
+configurable in the procedural generation settings. Even imagine this was actually a huge apartment building.
+5:41
+It would still have paths inside of it. So, and office blocks also have paths
+5:47
+inside of it. So, I am building a system to do that. Now, in this video, I am not going to go into the procedural
+5:53
+generation. Uh, I don't want to do that precisely right now, but I do want to talk a little bit about, you know, how
+5:59
+I'm doing things like the building sizes. So, I'm going to make a parcel of
+6:05
+land here, and I'm deliberately going to try to force it to have maybe some weird
+6:13
+triangular parcels of land. So, I'm going to deliberately give it this weird little shape. Uh, let's put a road in
+6:20
+there so it knows where to build a road. Okay, I'm going to Let's see if my
+6:27
+subdiv my skeleton subdivision will do that. Uh, okay. Let me just make it a little bit small. Can I make it a little
+6:33
+bit smaller? Oh, that's good. Yeah. Okay. Park disappeared. That's normal. Again, this is a very like, you know,
+6:38
+this is this is an old build. By the way, I should mention that. Um, I'll show you later. But I did actually I've
+6:46
+been working on this for over two years. So if you look at this uh this is my git um this is my git history and this is
+6:53
+for the parceling engine. Yeah I've I started work on about two years ago. A lot of the work on this was actually
+6:58
+done two years ago. Uh and then I picked it up again 10 months ago and um very
+7:05
+recently obviously I've been making you know doing stuff to it. But back to here I wanted to quickly uh show you the
+7:11
+parcels of land. So again you could build like a little residential. So there you go. The residential blocks fit
+7:17
+in nicely. But what if you have a weird weirdly shaped parcel of land like this?
+7:22
+Now, now I'm going to show you with an office only because offices are the only ones I have right now that follow this.
+7:28
+But the plan is that the buildings would actually, you see that office there? It will actually try to fit the building's
+7:36
+footprint, the sorry, the parcel of land's footprint a little bit better. So that is an idea I have for oddly shaped
+7:43
+parcel of land. Again, I'm not going to go into all the simulation right now, but I do just want to discuss, you know,
+7:50
+I have a plan for this and we'll do the procedural generation in another video. Some people asked me if this was AI
+7:57
+generated, if I used AI to make this parceling engine. No, I didn't. But I
+8:03
+did use it to help me with the UI. And I think that's why some people asked if it was AI generated because yeah, this UI
+8:08
+does scream AI. Uh I can show you what it looked like beforehand, though. It
+8:14
+used to look like this. Um, this was the UI before I had an AI come and help me with it. So, again, I had an AI come in
+8:20
+quickly to make clean it up to make it look a bit more presentable for people. This is how the this is how the UI used
+8:27
+to look though. Um, it's very very rough. So, I wanted to talk a little bit about
+8:32
+some other comments I got. Some people were asking me uh you know, oh this could just be a
+8:39
+mod for City Skylines 2 and City Skylines. And I actually did try to make
+8:45
+this into a mod at one point. However, you know, again, as you can see, I spent over two years on this. So, I really
+8:52
+didn't fancy taking all this effort and work I did to essentially make a free
+8:58
+mod for a game which I have criticisms for. Another common critique I would say
+9:04
+was people saying it's too ambitious, too big. Maybe I should explain a little
+9:09
+bit about myself. So I'm uh a software engineer by trade. I I build software
+9:15
+for clients, either doing offshore development or nearshore development, but I actually run large software teams
+9:23
+building software for clients. And when I'm working with a client at the beginning, we do something called blue
+9:29
+sky thinking. So, a lot of the things I'm talking about uh might be a bit blue
+9:34
+sky, a bit pie in the sky, but I do want to talk about them. It is important that
+9:40
+we discuss all the possibilities. I don't want to leave anything on the
+9:45
+floor if it would help make a better city simulation game. Um, and I'm like
+9:51
+this with my clients, but another thing I do in the software world because I charge by the hour. So clients don't
+9:59
+want to waste time. I don't want to waste time. I want to make sure that we build the best software and that
+10:04
+everyone's happy. So I have already built a lot of subsystems. Um, the
+10:10
+parceling engine is just one subsystem. And in this video, I'm also going to show you the traffic subsystem I built.
+10:17
+And again, these are just subsystems. they are not the, you know, they're not the core game yet.
+10:25
+So, let's go into traffic. We have types of traffic simulation we could do. So,
+10:32
+this is a still from a great video about an introduction to uh traffic simulation. I'll leave a link
+10:40
+to it in the comments. And you have this concept of macroscopic,
+10:45
+which is largecale traffic. Then uh at the other end you have microscopic like
+10:52
+agentbased simulation where you actually see little cars driving around and everything. Some people mentioned in my
+10:59
+last video they kind of heard me maybe distancing myself from agentbased
+11:04
+simulation because my goal is to make a huge game. So what I've landed on is the
+11:10
+middle part, the methoscopic simulation method. Now for Sim City 4, uh they were
+11:18
+a purely statistical simulation, what we would call macro. Cars were just cosmetic and the traffic model computes
+11:25
+trips, you know, just statistically and uses some basic path finding. Um and I
+11:32
+think they actually use some cellular automter as well to, you know, work out commute times, desiraability, and all
+11:39
+that. And that that system worked. And again, Sim City 4 is an older game. it.
+11:44
+So again, I shouldn't really be con, you know, comparing much to it, but a lot of people love Sim City 4. I love Sim City
+11:50
+4. And then on the complete opposite end of the spectrum, we have City Skylines.
+11:56
+Now, I uh I I don't trash talk, but I
+12:01
+was definitely, you know, critiquing City Skylines for being gridbased and all that. However, I should mention when
+12:08
+it comes to traffic, I don't think they've done anything wrong. I think the per agent what I would call micro
+12:14
+simulations of the of the traffic and the pedestrians is beautiful. I like it.
+12:22
+I think it's great. It's really good. Honestly, it looks great and you know bad decisions actually gen
+12:29
+lead to genuine traffic. Um but as I said before it's expensive. There is a
+12:34
+cap on how many active vehicles you can use, how many how big your city can get, and the agents are a bottleneck there,
+12:42
+but I again I love it. Okay, I love it to bits. Here it is. This is what my
+12:49
+game I played a while ago. But look, look at that. Oh, I love it. Look at all those little guys. Look at the little guys. Look at the little guys down there
+12:55
+going into the subway and all the cars and the and the ambulance. It's great.
+13:01
+Uh, honestly, no notes about this traffic simulation. The issue I have with it is that it is a bottleneck. And
+13:09
+quite frankly, I don't want to essentially reinvent the wheel by doing agentbased simulation again because then
+13:16
+I am just going to be making City Skylines but worse. So, let's talk about
+13:21
+my traffic simulation. So, what I'm going for is a linked transmission model. Uh, it's a very old
+13:28
+model. This isn't like anything new or groundbreaking. This does aggregate flow density per
+13:34
+link, not per vehicle. This allows us to have kinematic waves. So traffic
+13:40
+actually pulses realistically. And what I do that's interesting is that
+13:46
+as I said in my last video, this is a web GPU compute shader. It's also
+13:52
+layered with a uh dynamic traffic model that I've built, which I'll talk about uh later on.
+13:58
+And my model hopefully hopefully I'm still I'll show you a working build of
+14:03
+it will reproduce acceleration fans, standing cues, and stopand go waves and
+14:09
+traffic. Uh the last paper I read on this that I felt was really really good was um this
+14:16
+paper here and again I'll try to remember to leave a link for it in the description of the video. Um the the LTM
+14:24
+model has been around pretty much since the 1950s. This is a great extension of
+14:29
+it. It made it the a lot of the math equations here make it a lot more realistic looking but also save on
+14:36
+compute time. So yeah, LTM is a 20-year-old model peer review transport engineering theory.
+14:43
+Uh my dynamic traffic assignment um which I have not built yet. I'm going to
+14:48
+be straight. But what I'm using is I want to use a dilinearial curve to simulate morning peaks and evening
+14:56
+crescent and all that. So then I can actually have what would look like a realistic day and night cycle without
+15:03
+constantly talking to the computer's code. And the route choices would then respond to current traffic conditions.
+15:10
+So I'm not just doing static geography. I'm actually going to be, you know, rerouting changes when there's
+15:17
+congestion. The whole concept here is I want to simulate flow not drivers. The
+15:23
+roads are like pipes. Traffic is a compressible fluid. So if you can manage manage all the if you can imagine all
+15:29
+the traffic it's just being it's just fluid being pushed along the tube.
+15:34
+And this is why we can get what would hopefully be realistic looking shock waves and real you know the traffic will
+15:41
+feel consequential like city skylines but will scale more like Sim City 4.
+15:47
+That's my main goal. So, let me show you a demo of the traffic system I've built.
+15:53
+Okay, here it is. Oh, wait. That's just a flat quad. Well, if I can zoom in here
+15:58
+to give you an idea of scale. This is supposed to be the size of a small house, I suppose, or a mediumsiz house.
+16:06
+So, first things first, um, let me just show you the traffic model in its most basic form. So, you can build a road
+16:13
+like this. Uh, right now everything is straight. There are no um
+16:19
+Bezier curves or anything yet. I actually do did have Bezier curves working at one point. So, I'm going to
+16:26
+make a very unoptimal traffic system here just to hopefully hopefully it will show off the uh the traffic simulation.
+16:33
+So, I'm going to make a little just a little like this could be maybe
+16:38
+um maybe a little residential block. And over here, we'll make a sort of town
+16:43
+center like this. And uh you have to go through the town center to get to the industrial sector
+16:51
+which will be over here. Uh again this is just to simulate traffic. This is not to simulate um you know any economic
+16:59
+models any uh you know realistic zoning or right right now this is just to simulate the traffic pretty much. Okay.
+17:06
+Now I'm going to fill these in. So I'm going to bring up my ugly debug menu
+17:12
+and I actually have an autofill parcels here. So, I'm going to build up the residential boop boop boop. Again, these
+17:19
+are all pretending to be big city blocks. It wouldn't actually be like this. It's I'm only doing this because
+17:25
+I'm stress testing the system. There's a commercial district. And we're
+17:31
+going to do a large industrial district here. And you can already see the traffic is
+17:37
+moving now. And you can see the red and everything going along. There we go. And the traffic is flowing nicely through
+17:44
+the commercial and into the industrial. And the industrial, I'm guessing the
+17:49
+reason why the traffic is not completely gridlocked here is because I don't have enough workers. I actually have more
+17:54
+jobs than I have workers. O, wouldn't that be a nice world to live in? So, let's just quickly expand into my
+18:01
+residential here. Do it like that. I like I like making into blocks or to fill the parcel. I
+18:06
+want the residential. Boom. Boom. There you go. adding that now. Look how red that's getting now because I got more
+18:13
+people who need to get into the city and the traffic has actually got turned gridlocked already. And you can kind of
+18:20
+see the fan pattern here. Now, you'll notice here we actually do have little pedestrians as well. That was another
+18:27
+question people had for me. They said, "Oh, you know, I hope it doesn't be too carentric. I hope people will try to
+18:33
+walk if they can." And I even have built a system like this.
+18:38
+U probably should put it here. There we go. That's a little walk path. And hopefully people will start using it to
+18:44
+get from work to here. It might be too much of a greater
+18:49
+distance though for people to try and walk on it. Um h people aren't walking
+18:54
+on that. Well, let's try to fix up this congestion. So, the roads I have I actually have a
+19:01
+uh where is it?
+19:06
+Um, so, uh, right now this is all single lane roads, by the way. But let's put a
+19:11
+larger, you know, let's just do a huge three-way road here. And let's just say
+19:17
+we want that to go straight to the industrial park like this. There you go. And see, the traffic's
+19:24
+already being used. And hopefully after time, this will ease off. Now, the
+19:29
+congestion doesn't just disappear immediately. Those people are still in congestion. So, we have to wait a while
+19:36
+until those people can actually get out of the congestion and they will re-enter the population.
+19:44
+Um, my little side, my little walkway isn't working here, which I'm a bit upset about. I should have tested that more. Does it work here?
+19:53
+Well, the paths need to be worked on. I did have little people walking on them, I promise. But people are using the
+19:58
+roads anyway, so that's pretty cool. Uh what you might have noticed when I was in my road section is that I actually have a difference between American and
+20:04
+European. Right now all the roads look the same. Um but I do want it that the
+20:10
+roads can be completely customizable. So if I was to select European, but you can actually then toggle the
+20:16
+road to be American or European. This is just to show that I can skin the way the
+20:21
+roads look. Um but in future this will actually have more um you know this will
+20:27
+be a bit more tangible and I probably won't call American or Europe. The idea is that you as a player or a modder can
+20:33
+actually add whatever road type you want at the beginning and have the 3D mesh adapt to it. And every time I change the
+20:40
+3D mesh here, what's actually happening is a new um this whole entire road network is
+20:46
+being made into one mesh. Because what's interesting about this system is
+20:54
+uh this is all running off web GPU. The entire thing is actually all web
+21:00
+GPU. Nothing here is using the CPU. This is all using a big
+21:06
+compute shader. There you go. The traffic cleaned up there. Um sorry that was that was competitive by accident.
+21:14
+There's still traffic trying to get into here. So, again, I could maybe make a little road here. Let me just show my
+21:21
+make a I can make oneway roads on. Let's make a little two-way road and just put that over here like that. There we go.
+21:30
+There we go. Uh, the pedestrians right now are very visual. They're not really acting the way I expect them to, but I'm
+21:35
+going to keep working on that. Now, that's all well and good, right? That's a little city. Isn't that cute? But it's
+21:43
+not really, you know, it's not. This is nothing impressive. So, I'm going to
+21:48
+refresh and I'm going to quickly generate a stress grid.
+21:56
+Here we go. This is a stress grid. Now, if you look at my FPS, it's still a
+22:02
+solid 60 FPS even with all these buildings here. And that's because everything here is using GPU
+22:08
+instantiation. when possible me meshes are being grouped together naturally. So again, this whole road network is
+22:14
+actually one mesh doing a essentially a singular draw call. Uh there is some chunking involved, but it's pretty
+22:21
+minimal. And I'm going to go in and put in some fake traffic for you. So we're actually
+22:27
+going to have all these road networks have real traffic built in. So give me a second.
+22:33
+There we go. Traffic is in. Now everything immediately got gridlocked again. And that's because everything is
+22:40
+single two-way roads with everything's a singular two-way
+22:45
+road. And you can see the incoming the left and the right side of traffic have different um different, you know, layers
+22:52
+of gridlock. And what you'll see here is on the outskirts of the city, people are
+22:58
+walking to work. You see all these little people here. They're actually going to the commercial district because
+23:03
+obviously the residential, commercial, industrial. But if I go into the center of the city, people are still trying to
+23:09
+drive, but you'll notice no people because nobody's going to walk from the middle of here all the way to out here.
+23:20
+Yeah. So, um, again, this is all using a GPU compute shader. And again, my FPS is
+23:28
+not being impacted one iota. It's the exact same. I can zoom around. I can be
+23:33
+silly. Look at that. Oh, I also have like a pseudo sun that comes out. I think we can watch the sunrise here.
+23:40
+Let's try and get a nice shot here.
+23:45
+There we go. Beautiful.
+23:52
+But I know. But then the next point is, okay, well that's a very nice flat city you have, but real cities aren't like
+23:58
+that. And I agree with you. So, this I've also built in a terrain editor. So,
+24:06
+I'm going to quickly wipe out this city and I'm going to add in some terrain. Give me one second.
+24:13
+And here we go. Here is some terrain with um quite ridiculous looking hills.
+24:19
+Honestly, this is a bit too much honestly, but I wanted to show off the lake generation as well.
+24:25
+And just to pick up from my last point, um, okay, so I'm going to quickly build
+24:31
+a road here. Let's just try and get somewhere nice. Now, actually, I can look at I actually have an overlay
+24:36
+system. So, I have this buildability overlay, which will actually overlay the terrain with where it can and cannot be built. So, you'll notice here on the
+24:43
+side of cliffs, it can't really be built. And obviously, you can't build underwater. Um, so I'm looking for some
+24:50
+flatter green areas like this where it would be nice to build. Again, you know,
+24:56
+um, this is all very early days. Um, this is supposed to be a demo of the traffic system, but I have built in a
+25:02
+full terrain system, and I am using this game engine, which I'll go into more detail later about. So, let me quickly
+25:11
+put new overlay on. Let's quickly just make a quick road here. And again, the the roads do not play
+25:18
+nice with the terrain right now, but that's that's okay. Again, this is all very early days still
+25:25
+build a parcel by hand because I want to show off the concept
+25:31
+of that. Here we go. There we go. Um, I'm sorry. The buildings get automatically made. But if you click on
+25:39
+the land itself, you'll see here that it will actually tell you how much of that
+25:44
+land is it buildable. So this is 196 square meters of land but or but only
+25:50
+56% of it buildable and 21% of its water. How much of it is a slope? So
+25:57
+this is the sort of idea I have that we could take a parcel of land and judge
+26:03
+how much of it can be used, how much of it can't be used. And of course different developers and different prop
+26:09
+zoning would have different, you know, tolerances for that kind of stuff. Uh forgive the squares. Um due to the fact
+26:17
+that this is using GPU instantiating, it's much easier for me to make lots of little squares to indicate things. But
+26:24
+um realistically, you know, this is not a grid. I don't want people to think that I've betrayed my principles and
+26:30
+this is a grid. This is not a grid. It's still a polygon. It just looks like that. And I can autofill a parcel here.
+26:37
+Click on that. This has no water. Um and it's quite buildable. These are the the
+26:43
+slope calculations a little bit um aggressive, but again, this is a very aggressive terrain. Again, it wouldn't
+26:49
+really look like that. And I can actually take this and if I wanted to, I
+26:54
+could still build a test grid on this. Um, if I wanted to, actually, I can
+26:59
+quickly do it now. Give me a sec. There we go. Um, and the test script's
+27:06
+pretty interesting because it does show you where some buildings can and cannot be built. There you go. Look at that.
+27:12
+That looks like um I'm sure that looks like some city somewhere. Um, so here it
+27:17
+is. And again, full terrain. There's a sun. The traffic simulation will be
+27:22
+running in a bit. And I'm still at a solid 60 frames a second. Never dipped once. And I have gotten this to be
+27:28
+bigger. Uh the only reason I haven't gone bigger is because I'm getting this simulation sorted first before I scale
+27:34
+up. Uh roads still get built underwater, but that's like that I hope that's acceptable for now.
+27:41
+Post editing. James here. I forgot to talk about the terrain itself. The terrain itself is also a compute shader.
+27:48
+I represent the terrain as a massive matrix and that allows me to very
+27:53
+quickly edit it and the GPU can very easily draw it because GPUs love matrices.
+28:01
+So the plan moving forward, a lot of people asked about the plan and a lot of people were very sweet and saying, "Oh,
+28:07
+where do I donate? How do I get involved? I want to help you. Hey, I I
+28:12
+have a traffic system you can use. Oh, I want to build buildings for you and all that." And I'm I'm so like, you know, my
+28:19
+my heart's warmed by all the support and people wanting to give me their time. And as somebody who works in the
+28:25
+software outsourcing industry who's used to being nickeled and dime for every hour, you know, it's very I love I love
+28:33
+that people's passion, but I'm also, you know, I'm I'm also older. I'm, you know,
+28:39
+I I I I help run a business. I understand that people's time is valuable. So I'm really trying I don't
+28:47
+want to use anyone's time and labor unless I can reward them monetarily
+28:52
+essentially. So my plan going forward is to make an engaging and accurate population and economy system. Make a
+28:59
+traffic system that plays well uh a basic what I'm going to call the lowfi
+29:05
+game loop. kind of what I showed you with the traffic simulation, but with the with the population simulation in
+29:12
+there and with the parcel subdivision in there is probably what I'm aiming to do and basic procedural generation of
+29:19
+buildings. After I get all that done, then I'll probably start looking for money to build a team. That that is my
+29:26
+plan moving forward. And on the right hand side here, this is one of my graphs. I'm not showing the whole thing because a lot of it is like this is this
+29:32
+isn't a finished graph. It's kind of just something I put together. And that's it for part two. In the next
+29:39
+video, which will be part three, I will be going over the simulation precisely how exactly we are going to
+29:46
+simulate pops in the city. And I will also go over the game engine
+29:53
+in a bit more detail. Right now, you can just see and one of the subsystems I've
+29:58
+built. This is for district level pop movement and simulation.

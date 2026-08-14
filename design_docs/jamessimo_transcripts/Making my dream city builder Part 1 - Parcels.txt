@@ -1,0 +1,1068 @@
+0:01
+Hi, I'm James. I want to build a massive
+0:06
+gridless realistic city builder.
+0:11
+And when I say citybuilder, I mean the
+0:15
+good stuff, you know, your Sim City
+0:18
+3000,
+0:20
+Sim City 4, and even City Skylines. Um,
+0:24
+I love City Builders. I love all these
+0:26
+games and I want to build a better one.
+0:31
+But why?
+0:33
+Well, to be frank, I hate grids so much
+0:38
+it's not even funny.
+0:41
+What I mean by a grid is in most city
+0:43
+builders, uh, whenever you build, you
+0:46
+are limited to a grid. As you can see
+0:48
+here,
+0:50
+Sim City did this originally. However,
+0:52
+they can be forgiven because there is
+0:54
+also some real computer science reasons
+0:57
+why having everything at a grid is much
+0:59
+easier to work on than having everything
+1:03
+to be open. Now, City Skylines moved in
+1:06
+the right direction by letting you build
+1:08
+off well, it's not off-rid. You still
+1:12
+have a grid. It's just each building is
+1:14
+limited to its own grid, but you can
+1:16
+build organic shapes here.
+1:20
+Now, let's look at the top left here.
+1:22
+I'll just zoom into that.
+1:25
+Okay. So, um here I have four passes of
+1:29
+land which I've outlined here. Now, as
+1:32
+you can see, the dark colored green and
+1:35
+the light green, those are residential
+1:36
+houses. But you see in the middle of
+1:39
+them, there is this what I would call no
+1:41
+man's land. It's land that isn't owned
+1:44
+by any of the neighboring properties.
+1:47
+Now, this really I've always disliked
+1:50
+this a lot in City Skylines. If you want
+1:52
+this entire grid or this entire block to
+1:55
+be filled, the block essentially has to
+1:58
+be a perfect 90° each corner.
+2:02
+Otherwise, if it's off by slightly
+2:04
+little, it breaks the grid and you get
+2:07
+these very strange gaps in between
+2:10
+properties.
+2:12
+And this is really unrealistic.
+2:15
+So here is a real plot of land in the
+2:17
+middle. We'll call this an irregularly
+2:20
+shaped parcel of land, right? It's um
+2:22
+you know, it's a it's kind of like a
+2:24
+pentagon almost, right? But and in City
+2:27
+Skylines, if you were to be presented
+2:29
+with this, the middle part again would
+2:31
+not be populated or there'd be weird
+2:33
+gaps between the houses again when
+2:35
+nobody owns anything.
+2:38
+But if you look at the property lines
+2:39
+here, there is not a single inch of
+2:43
+property here that isn't claimed, right?
+2:46
+Everybody has a little parcel of land
+2:48
+here. And some of the parcels are
+2:50
+triangular, some of them are polygons,
+2:53
+and a lot of them are rectangles or
+2:55
+squares, which is very realistic. Land
+2:59
+is expensive, and you don't tend to
+3:01
+waste land, right?
+3:03
+And here is another
+3:06
+I just had to take a screenshot of this
+3:08
+because this is like indicative of my
+3:10
+biggest issue with City Skylines and
+3:12
+City Skylines 2 for that matter.
+3:14
+Although I don't play City Skylines 2
+3:16
+because it was so bad I had to refund
+3:18
+it. But okay, so this is sort of a this
+3:21
+goes into my other gripes, but again
+3:24
+this is a this is an a problem with a
+3:26
+gridbased system. On the left hand side
+3:29
+you have an elementary school and on the
+3:31
+right you have two houses next to each
+3:33
+other. Now first of all they're really
+3:35
+close to each other. Again that's just
+3:37
+because the way the grids were they had
+3:39
+to kind of be built like that because
+3:41
+they're in a grid but it's this grid I
+3:44
+bet you is irregular. There's no fencing
+3:46
+around it. Sometimes houses have fencing
+3:48
+sometimes they don't. It could also be
+3:51
+for performance reasons they don't put
+3:52
+fences everywhere. But this causes a
+3:55
+real problem because okay, so here's the
+3:58
+elementary school and then what the kids
+4:00
+go out to play in recess and then they
+4:02
+can just go into this guy's pool
+4:03
+whenever they want or go to this house
+4:06
+or just run out into the road. Again,
+4:09
+trying to fit everything onto a grid
+4:12
+causes these real problems and I have a
+4:14
+lot of other issues. The houses do not
+4:17
+match style. The elementary school is
+4:20
+tiny,
+4:21
+you know, compared to, you know, this is
+4:23
+like a house and you could fit two of
+4:25
+these houses in elementary school. A
+4:27
+real elementary school is really big.
+4:29
+Um, I'll go into that more later, but
+4:33
+these are just some of the issues I have
+4:34
+with grids. Um, grids are a factor in
+4:38
+almost any real world city, but they are
+4:41
+not 100% a city. Like a lot of cities
+4:44
+have towns and suburbs attached to it
+4:46
+with beautiful organic roads and it's
+4:49
+extremely difficult to pull this off I
+4:51
+found in most city builders again
+4:54
+because they do not account for the fact
+4:55
+that a parcel of land may be irregularly
+4:58
+shaped. It just happens.
+5:01
+Um
+5:03
+and grids are also I should mention
+5:05
+there's another reason for having grids
+5:07
+is because it does make procedurally
+5:09
+generating buildings a lot easier if
+5:11
+you're on a fixed grid.
+5:13
+But it causes lots of issues which I'll
+5:16
+go more into. I've talked about the
+5:18
+problem and my answer is to make my own
+5:22
+gridless parceling system. Um, and
+5:25
+before I get on to that, I do want to
+5:27
+mention two games that kind of do this.
+5:30
+This first one is City States
+5:33
+Metropolis. Um, it's not out yet. It was
+5:36
+supposed to be out the first half this
+5:37
+the first quarter this year, but it
+5:39
+isn't yet. Now they are actually doing
+5:42
+um the parcels will actually fit the
+5:44
+entire area. However, the buildings I
+5:47
+believe are still on a fixed grid. Now
+5:50
+again I don't know for a fact but it
+5:51
+looks like the way that you can paint
+5:53
+your own buildings but that the
+5:54
+buildings are still on a grid but the
+5:56
+parcel of lands can fit more naturally
+5:59
+into an irregular shaped parcel.
+6:02
+Uh a game I saw doing this um after I
+6:06
+had my original idea for this was I
+6:08
+think this is mana lords. Um so you can
+6:11
+see here painting a parcel of land which
+6:13
+fit fits the road nicely and then it
+6:16
+automatically subdivides the houses here
+6:19
+into lots of land which you would sell
+6:22
+to families. And I believe this even
+6:24
+simulates yeah the buildings are kind of
+6:26
+in a fixed place each time. They have
+6:28
+like a front part and a and a rear part.
+6:31
+Um, of course, this is for medieval
+6:33
+housing, but it's a very interesting
+6:36
+premise and this was something else I
+6:37
+wanted to try and replicate, but in a
+6:40
+much more detailed way.
+6:43
+So, I read white papers. Um, I've read
+6:47
+quite a lot of white papers. Some of
+6:48
+them I skim, but a lot of them I have
+6:51
+read trying to fix this problem of
+6:54
+procedurally generating urban parcels of
+6:57
+land.
+6:59
+And I landed on this paper from 2012
+7:03
+um from the University of Purdue and I
+7:05
+believe and there's other universities
+7:06
+involved but um this was arguably the
+7:09
+best results that I could find which did
+7:12
+offer a example of how it worked even
+7:16
+though it's only in the form of pseudo
+7:17
+code. Um, and I decided to try and mimic
+7:21
+this. Most importantly, if you see on,
+7:23
+if you can see where my mouse is, you
+7:25
+know, this was great. A weirdly L-shaped
+7:28
+parcel of land, but it all fits in
+7:31
+naturally, and it was aware of where
+7:33
+roads are.
+7:35
+So, I built it. It took a while, but I
+7:39
+did build it.
+7:44
+So, here is my land parcel experiment I
+7:48
+made. Um, how it works is you first have
+7:51
+to build a road. So, I'm going to try
+7:53
+and build a road similar to that white
+7:55
+paper.
+7:57
+And I should mention that I've never
+7:59
+actually managed to fully replicate the
+8:01
+way that white paper did it because
+8:03
+again, they did not offer any code and a
+8:06
+lot of the white paper is actually very
+8:08
+handwavy. But here I've made a road and
+8:10
+I'm going to fill in a parcel.
+8:13
+And I do have a system for doing this
+8:15
+automatically, but that's on a different
+8:17
+build.
+8:20
+So here is my parcel of land. I can
+8:22
+click on it and it will tell me its
+8:24
+area. I don't believe this area is
+8:26
+accurate at all, so please ignore that.
+8:28
+But I have a parcel of land. And I've
+8:30
+actually built a whole bunch of
+8:31
+different ways to subdivide it. But this
+8:33
+was the way that is the most important
+8:35
+for most residential environments.
+8:38
+skeleton v2. Boom. There you go. It has
+8:42
+made a parcel of land and now it's been
+8:45
+subdivided. So each one of these could
+8:47
+go to a different home. And this is
+8:50
+exactly what I wanted.
+8:53
+Um, you can even change the minimum area
+8:55
+of it. So you could actually make more
+8:57
+parcels of land or less. And that would
+9:00
+be dependent on essentially how much
+9:02
+money your city has and the area you're
+9:04
+in. That was this is my this is my main
+9:07
+idea was like
+9:09
+um you would lay out parcels of land and
+9:12
+a developer would come onto the land and
+9:16
+they would first decide how to subdivide
+9:18
+the land or maybe uh you as a city
+9:22
+planner can do that and then they would
+9:24
+sell off the parcels of land to people
+9:27
+or and they build their own houses or
+9:30
+the developer would actually pick the
+9:31
+lots and they would build their own
+9:34
+houses on on there. Um, so anyway, I can
+9:37
+just generate a residential building
+9:38
+here. Generate. Boom. These are bigger
+9:40
+plots of land. So they're actually
+9:42
+generating apartments. But if I pick a
+9:44
+smaller one.
+9:46
+There you go. Well, these are all
+9:48
+generating apartments. Again, all the
+9:50
+sizes are broken, but I do have this
+9:51
+also working for houses and stuff as
+9:54
+well.
+9:56
+So there we go. So this is my this is
+9:58
+like my idea and this was one of the
+10:00
+first tests I made for this idea I had
+10:04
+of you know being able to subdivide
+10:08
+parcels of land realistically to allow
+10:12
+for a much more what I would argue an
+10:15
+immersive city builder. And I have other
+10:17
+reasons for wanting to do this which
+10:18
+I'll go into but let me just show you. I
+10:21
+also have an OB subdivision like this
+10:25
+uh which can actually subdivide land
+10:27
+further. Um again it would have to be
+10:30
+sort of similar to that
+10:35
+and you could also generate commercial
+10:37
+buildings. So this isn't though but I'm
+10:40
+getting off track. I have a bunch of
+10:41
+ways to subdivide land. I also have a um
+10:47
+I also have this method. I can actually
+10:49
+do a Voronoi subdivision. This would be
+10:52
+more for sort of um farmland and stuff
+10:55
+like that because this isn't just for
+10:57
+residential. The city builder I have in
+10:59
+my mind, this would cover
+11:03
+all types of land. All types of land
+11:05
+would inherit off this land parcel
+11:08
+system.
+11:10
+And another reason for wanting to do
+11:14
+this was I feel that grid issues are
+11:17
+also scale issues. I talked a little bit
+11:20
+about it with the
+11:22
+elementary school, but nothing scales
+11:25
+right in any city builder. Now, there's
+11:29
+some reasons for this. Um, I believe
+11:31
+Will Wright, the creator of Sim City, I
+11:34
+believe he talked about it a long time
+11:36
+ago where they deliberately did not have
+11:38
+a whole bunch of parking spaces
+11:41
+because they believed it made the game
+11:43
+boring. Um, and it makes sense for Sim
+11:47
+City not to do that because Sim City was
+11:49
+an isometric game and you could not
+11:51
+freely zoom in and out as much as you
+11:53
+wanted. But it really bites you being
+11:57
+constrained to this grid system when it
+11:59
+comes to things like power plants. So
+12:01
+here's a power plant next to a house. I
+12:04
+don't know if you ever seen a power
+12:05
+plant before. They are huge. They are
+12:08
+never this small. A power plant, if you
+12:11
+want to build a power plant, you don't
+12:12
+just build a building, which is what
+12:14
+happens in games like City, Skyline, Sim
+12:17
+City. The buildings have to fit on a
+12:19
+grid. Okay? There's no way to get around
+12:21
+that. Just because the power plant can
+12:23
+fit there doesn't mean it would want to
+12:25
+be there because they need a lot of
+12:27
+space around them for safety reasons.
+12:29
+They might need access to water. There's
+12:31
+a whole bunch of things going on. So
+12:34
+another idea for wanting this parceling
+12:36
+system was that it would actually lead
+12:38
+to more realistic looking cities because
+12:40
+you would be forced to give certain
+12:43
+utilities and institutions the land they
+12:46
+need. And here are some real world
+12:48
+examples of just to show you the size.
+12:51
+Now, this one on the left, um, that's
+12:53
+not like your computer messing up or a
+12:55
+bad bit rate. This is a French power
+12:58
+plant. I did not know this. French
+13:00
+nuclear power plants are actually
+13:03
+censored on Google images. But it is a
+13:06
+nuclear power plant. You can see one of
+13:07
+the tower, the smoke stacks here, or the
+13:10
+cooling tower I should say. And just
+13:12
+look how big it is compared to these
+13:14
+tiny little houses here, these little
+13:16
+French countryside houses here. And look
+13:18
+how big this power plant is. Right. Um,
+13:21
+football stadiums are the same. I find
+13:24
+in most games they get them wrong. It's
+13:26
+not as egregious, but they're pretty
+13:28
+wrong. And down here is a coal power
+13:30
+plant in America.
+13:33
+Um, they have a huge coal reservoir
+13:36
+here. That's actually a huge reservoir
+13:38
+full of coal because obviously the coal
+13:39
+has to come from somewhere. It needs to
+13:41
+be stashed somewhere. So, you can kind
+13:44
+of make out with your eyes. This is a
+13:45
+huge parcel of land. And not only does
+13:48
+the power plant need to live there, but
+13:49
+the car park, the offices, uh, this one
+13:52
+even has a fire station built into it.
+13:54
+Actually, I think most big power plants
+13:56
+probably have a firehouse built into
+13:58
+them.
+14:00
+And here's just the example of it in
+14:02
+game. Um, and I'm hopping on City
+14:04
+Skylines only because it's the game I
+14:06
+play a lot. It's play game I like, but I
+14:09
+really get upset when I see these kind
+14:11
+of problems. So, again, this nuclear
+14:12
+power plant next to um some not houses.
+14:15
+Oh, there's some houses there. Again,
+14:17
+it's never like that. You can never
+14:19
+build a power plant right up to the
+14:21
+road. Realistically, they would be in
+14:23
+the middle of a huge parcel of land and
+14:24
+there'd be a road going to it. Uh here's
+14:27
+a coal power plant next to some houses.
+14:30
+Again,
+14:32
+um you know, again, this is um again,
+14:35
+it's it's up to the player not to do it
+14:36
+like this. I deliberately place them
+14:38
+here just to give you an idea. and the
+14:41
+soccer stadium up here. It's a little
+14:43
+bit difficult to explain. They have a
+14:45
+decent car park around the outside, but
+14:48
+if you took each if you can take one of
+14:51
+the s the sibs on this and put them in
+14:55
+put them in the football stadium,
+14:57
+they're giants. This football stadium is
+14:59
+actually not to scale with the rest of
+15:01
+the world. And and most of the game is
+15:03
+like that and it's annoying. Let me try
+15:06
+and sell you my vision for a parcel
+15:09
+driven gridless city builder.
+15:12
+Here is an illustration of what I would
+15:14
+like to build fully with my parceling
+15:16
+system. So here you have a white road.
+15:18
+This white road is just a road. Um the
+15:21
+sea, a little beach and some green and
+15:24
+just grass. So first things first, the
+15:27
+player would lay down a parcel of land.
+15:31
+And then depending on what it's used
+15:34
+for. So let's say it's used for
+15:35
+residential. First they would decide how
+15:38
+much land to give to each person. So
+15:41
+maybe we want this to be cheaper
+15:42
+housing. So we'll do we'll do smaller
+15:45
+parcels of land. And then the houses get
+15:48
+built on the land. But the each house
+15:51
+would understand its parcel of land and
+15:53
+they would have certain rules. So houses
+15:55
+tend to be a little bit closer to the
+15:57
+front with space in the back for a
+16:00
+backyard. very classic. And then the
+16:04
+houses understand what they have in
+16:06
+their parcel of land. They say, "Oh, we
+16:07
+have a backyard. We have a front. We
+16:09
+could also have room maybe if we have
+16:11
+access to water." Some houses may want
+16:13
+to put a little jetty out onto the water
+16:17
+if they can. And more affluent houses
+16:20
+would probably have more jetties and
+16:22
+maybe some pools and stuff like that and
+16:25
+driveways that go right up to their
+16:26
+house.
+16:29
+But it doesn't just have to be
+16:30
+residential.
+16:32
+So let's take another example of some
+16:35
+commercial on the top here. This could
+16:38
+be just like a little supermarket, like
+16:41
+a little Walmart or something. Maybe
+16:43
+maybe it's a bit too small for that, but
+16:45
+like a little supermarket or a strip
+16:47
+mall. And then down south here you have
+16:50
+this could be a fancy restaurant or a
+16:53
+hotel. And again, the restaurants and
+16:55
+hotel understand that they have access
+16:57
+to the beach. So, they may actually want
+16:58
+to put some beach stuff out there.
+17:01
+Again, it would be up to the property
+17:03
+developer to decide what to do with
+17:05
+their land.
+17:07
+You could say it's industrial. Um, so of
+17:11
+course they'll build an industrial
+17:12
+plant. That makes sense to be by the
+17:14
+water. And what you could even do is
+17:16
+actually give this industrial area more
+17:19
+access to the water. And then they could
+17:22
+actually build an entire dock system,
+17:24
+like an actual dock for ships to come
+17:27
+and bring items in and out of the city.
+17:30
+And again, it's up to the developer. The
+17:32
+property developer in this case would be
+17:34
+a corporation. And they say, "What do we
+17:36
+have access to in this price of piece of
+17:38
+land? Is it worth it to do it?" And they
+17:40
+would build it.
+17:43
+You could also as a city just say, "I
+17:45
+want this parcel of land to be a natural
+17:48
+nature trail.
+17:51
+You could as a city say I want it to be
+17:53
+a water treatment plant. And the other
+17:57
+beautiful thing I believe about this
+17:58
+parceling system is that you can give a
+18:01
+utility more land that they need. This
+18:04
+could be a hospital, this could be a
+18:05
+police station. And at the beginning it
+18:07
+could be small, but as a city grows and
+18:09
+demand grows, like any business, they
+18:12
+will try to meet capacity by expanding
+18:16
+on what they already have. So this water
+18:17
+treatment plant could expand to service
+18:20
+more income as your city grows until
+18:24
+they get so big they can't grow anymore.
+18:26
+And then you as a city have to either
+18:28
+decide a new area to build or you could
+18:31
+reward this utility more land.
+18:35
+And something else I would be interested
+18:37
+in for a new city builder is not only
+18:40
+residential as in houses, you know, high
+18:43
+density, low density, but what if you
+18:46
+don't have enough, you have too many new
+18:48
+people coming in that can't get suitable
+18:50
+housing? You can have trailer parks
+18:53
+naturally form. And I'm even
+18:56
+investigating ways to have parcels of
+18:58
+land be created by the game but be
+19:02
+claimed by say a shanty town or
+19:04
+something which happens in real life. If
+19:06
+a land goes unused and depending on the
+19:09
+local demographics that land may be
+19:11
+squatted on by people or you could just
+19:14
+designate this as a temporary housing
+19:15
+area and have trailers come in. Again,
+19:18
+this is a real thing that real cities
+19:19
+do.
+19:21
+And the complete opposite, you can make
+19:23
+condominiums. And again, the condominium
+19:25
+would decide how much land they have.
+19:28
+And using procedural generation, we
+19:30
+would like to try and build a building
+19:33
+using as much space as they can,
+19:35
+including parking lots and anything they
+19:38
+want. So in this case, out the swimming
+19:39
+pool.
+19:41
+And the reality is, especially more in
+19:44
+the modern day and as cities get bigger
+19:46
+and more expensive,
+19:48
+um, traditionally now, people don't buy
+19:51
+a small parcel of land and build their
+19:53
+own house on it. Typically, what will
+19:55
+happen is either the city will give you
+19:57
+schematics for houses you're allowed to
+19:59
+build on there using their own designs,
+20:01
+or a big property developer buys it and
+20:04
+builds lots of the same type of house,
+20:06
+which you see a lot of in China and
+20:08
+Korea and other Asian countries.
+20:11
+And this would be something that would
+20:13
+happen in the city naturally as prices
+20:16
+change. At first it'll be very
+20:18
+affordable and people can build their
+20:19
+own houses, but maybe you need more
+20:21
+socialized housing and you'll get more
+20:23
+blocks like this.
+20:26
+And of course, um, this is just an
+20:27
+aerial shot of somewhere typical of
+20:29
+China where again, a property developer
+20:32
+buys out this huge plot of land and they
+20:35
+build lots of apartments on it. And in
+20:38
+between the apartments there are parks
+20:40
+and playgrounds and everything that a
+20:42
+community would need. So again, this is
+20:46
+what real cities look like, especially
+20:49
+in different places in the world. And
+20:51
+I'm hoping that I can build a city
+20:52
+simulator that would respect all types
+20:56
+of cities. You can make European cities,
+20:59
+but you could also make, you know, more
+21:02
+Asian Chinese style cities. I'm going to
+21:05
+end it here. I want to quickly talk
+21:07
+about what I've done and I will make
+21:08
+another video going into this more. But
+21:12
+I've just shown you the parceling system
+21:14
+and I hope I've sold some people on this
+21:16
+idea I have for a parcel driven city
+21:18
+builder. But I've also worked on a very
+21:21
+interesting traffic simulation model
+21:23
+which actually uses GPU compute shaders.
+21:27
+I'm using a web GPU engine, completely
+21:31
+GPU driven engine. Um, and again I'll go
+21:35
+into this more in another video, but I
+21:37
+think this video has already gone on for
+21:38
+long enough and I kind of want to try
+21:40
+and keep things compartmentalized.
+21:42
+If you have any questions, please leave
+21:45
+a comment for me in YouTube. I promise
+21:47
+I'll answer them. Um, I definitely want
+21:49
+to hear what other people think about
+21:51
+this. And yeah, and I'll make another
+21:54
+video in the future going into what I've
+21:56
+built so far. And maybe it'll turn into
+21:59
+a devlog. Who knows?

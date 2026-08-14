@@ -1,0 +1,285 @@
+0:044 secondsHi, and welcome to my part three in building my massive gridless realistic city builder. But first, dark mode. Um,
+0:1414 secondsI forget that I'm not like presenting to a bunch of bored businessmen in a well-lit fluorescent room. So, uh, some
+0:2222 secondspeople have asked to, you know, have darker slides, which I completely agree with. Part three,
+0:2828 secondscity simulation or layers upon layers I call it. Now, uh,
+0:3737 secondshow do you simulate a city? And, and I ask this because you have a city, but a city is surrounded by many, many
+0:4646 secondsdifferent things. And here is just a handful of them. You have services, politics, zoning, food, electricity,
+0:5353 secondsmarkets, buildings, land value, water, the economy, work, raw resources, consumer goods, workers, investment,
+1:021 minute, 2 secondsdevelopers, supply chains, public transport, pedestrians, freight, and lastly, traffic.
+1:081 minute, 8 secondsNow, these are all just systems upon systems to simulate a city. And in my
+1:161 minute, 16 secondsresearch, and I've spent, I would actually argue years researching this, there is no one simulation,
+1:241 minute, 24 secondssimulating a city, and this is something that will Wright uh talked about.
+1:291 minute, 29 secondsSimulating a city isn't like a self-contained singular formula, right?
+1:341 minute, 34 secondsLike a flight simulation model is, or like my traffic, my LTM traffic model.
+1:391 minute, 39 secondsThose are singular known formulas. But so speaking of Will Wright, the guy who made the original Sim Cities, something
+1:471 minute, 47 secondsthat was very influential to him, but wasn't a it wasn't as big as a part as people like to talk about, but it's urban dynamics. Urban Dynamics, later
+1:561 minute, 56 secondsalso known more as system dynamics. Um, if you work in any sort of business, you probably know something about system dynamics. But urban dynamics was a book
+2:052 minutes, 5 secondsfrom the uh 1969 I want to say um written by JW Forester and it
+2:122 minutes, 12 secondsessentially took what a city is and turned it into you know repeatable algorithms and something that is called
+2:212 minutes, 21 secondsstocks and flows. Now stocks and flows are something again it's a big part of system dynamics. Most simulations will use some form of this and I just want to
+2:302 minutes, 30 secondstalk a little bit about this and I'm going to go through the different ways to simulate a city and then at the end talk about what I'm doing.
+2:392 minutes, 39 secondsSo let's imagine like a bathtub right in the middle of the screen here. Okay, you have an inflow for a city. That's things
+2:482 minutes, 48 secondslike births per year, people moving in, new houses being built, new businesses, that kind of stuff
+2:552 minutes, 55 secondsthat fills this what they call stock in the stock and flow method in the in our bathtub analogy is the water. So the
+3:033 minutes, 3 secondsstock in this case would be number of people, jobs, houses, etc. And then you can't just keep filling that up. You
+3:103 minutes, 10 secondsalso have to have an outflow. Outflow would be things like demolitions, deaths, businesses going out of business, that kind of stuff. The water
+3:203 minutes, 20 secondslevel is the stock and it's directly the result of the difference between the inflow and outflow. Uh something that's
+3:273 minutes, 27 secondsimportant. You can't change stock. You can only change the way things go in and out, but you should never touch stock. That's a big part of system dynamics.
+3:363 minutes, 36 secondsAnd it's realistic, right? Like if you live in a city and the city does a drastic, you know, new policy or
+3:443 minutes, 44 secondsredesign, it normally won't affect the stock or the people it's already affected. It can only affect things going into the system or it can get things out of the system faster.
+3:543 minutes, 54 secondsForers's model isn't about geography or about how things get to one another in a timely manner like my traffic
+4:024 minutes, 2 secondssimulation. It's about the life cycle of the city structures and the people that go in and out of the city.
+4:084 minutes, 8 secondsNow what was more influential towards Sim City and modern city builders is probably cellular automter.
+4:164 minutes, 16 secondsUh Will Reich referred to this as cellular dynamics. Cellular dynamics or cellular automter is the idea of taking
+4:244 minutes, 24 secondsdata and representing it essentially as a 2D grid. An extremely famous version of this would be Conway's game of life.
+4:334 minutes, 33 secondsThe data being represented on screen here is literally just a one or a zero.
+4:374 minutes, 37 secondsand they are rules about what happens uh to each cell. So I'm going to go into a little bit about cellular dynamics. I
+4:454 minutes, 45 secondsthink it's quite interesting. So using a city simulation example, imagine in the middle you have an industrial block. So
+4:524 minutes, 52 secondsthat is a building, right? A building that is making pollutant. So let's represent the pollutant by a number. So
+5:005 minutesnumber 100 is the worst the pollution can get. Zero is no pollution. So let's pretend this building is making
+5:085 minutes, 8 secondspollution. Now what would happen is well the pollution obviously in real life does not just stay on the building
+5:155 minutes, 15 secondsitself. It will radiate outwards like this. And there's a very simple mathematical equation going on here.
+5:225 minutes, 22 secondsEssentially the center you know the the the 100 block here says is there an empty neighbor next to me? If so yes
+5:315 minutes, 31 secondstake 25 of my value and give it to the next cell. Then it happens to the next cell. Give it 25. Then it happens to the next cell until there's no more to give.
+5:415 minutes, 41 secondsThat is a very simple form of cellular dynamics. Computers love doing math like this.
+5:475 minutes, 47 secondsSo let's take a more um detailed example. So in the middle I have a big arterial road with little roads coming
+5:555 minutes, 55 secondsoff it, a big industrial block and a park. Again I am going to quickly mask
+6:026 minutes, 2 secondseverything off as their value. So the industrial side obviously 100s vomiting
+6:086 minutes, 8 secondsout pollution. Then we have the 50s here for the art the arterial road and the
+6:166 minutes, 16 secondssmall roads here only give off 25% pollution. And then the park we actually gave a negative value to so it actually
+6:236 minutes, 23 secondssucks up pollution. But of course we need to radiate out. So using our cellular automter math everything will
+6:316 minutes, 31 secondsjust radiate out. And of course the pollution radiates out. But you can see down here the park actually impacted the road next to it and actually took some pollution away from the road next to it.
+6:436 minutes, 43 secondsAnd this is how Sim City worked. So you can see here this is just cellular dynamics again or cellular automter. You can see the roads make the pollution and
+6:526 minutes, 52 secondsit radiates out. Obviously in the big polluting areas makes the most pollution. And that's how a lot of simulations worked.
+7:017 minutes, 1 secondAnd the reason why cellular dynamics or cellular automter is so uh useful is because let's take property value as an
+7:097 minutes, 9 secondsexample. Again, I'm just going to apply the same mathematics where it radiates outwards. So again, the bad factory
+7:177 minutes, 17 secondsradiates out negative property value when the park radiates out good property value. Of course, I could change these values. I've kept the values the same.
+7:257 minutes, 25 secondsBut then what Sim City did, and this is more impactful to Sim City than Forester's urban dynamics was, was that
+7:337 minutes, 33 secondsyou can take the pollution map and the property value map, overlay them, and just apply mathematics to it vertically.
+7:427 minutes, 42 secondsAnd that's how it works. And you can just take the same size. This is an array essentially and just do array, you
+7:497 minutes, 49 secondsknow, additions, subtractions, multiplications, and it's an extremely quick way to get, you know, great feeling numbers. So, let's talk about Sim City's simulation a little bit more.
+8:018 minutes, 1 secondAgain, I'm building my own city simulator, but it's extremely important to understand how things were done in the past, why things were done like
+8:098 minutes, 9 secondsthat, and things that they might have been doing well that we should emulate even today. So, the population in Sim City is actually simulated tile by tile.
+8:198 minutes, 19 secondsUm, and it's a again a direct reflection of those layers I talked about in the cellular automter. And it fully uses cellular automter with the stocks and flow logic to I would say great effect.
+8:308 minutes, 30 secondsAnd of course in Sim City their population is actually fully abstracted.
+8:358 minutes, 35 secondsUh there is no you know following individuals. Um they follow what is told they can and should do on the cellular automter grid.
+8:468 minutes, 46 secondsUh just some fun issues with Sim City.
+8:488 minutes, 48 secondsUm mainly I just want to again I discovered this kind of after the fact. This is an interesting thing to remember is that
+8:568 minutes, 56 secondsyou know when I was playing Sim City I never noticed this. I only noticed this after somebody told me. So, um you know,
+9:039 minutes, 3 secondsthey use um path finding for the traffic um which is normal. It's very easy to do path finding on a cellular grid, but
+9:119 minutes, 11 secondsafter work um Sims actually just returned to their nearest vacant home, which I didn't I didn't know that happened. And also the buses and subways
+9:199 minutes, 19 secondsapparently acted as teleports. Um, again, which kind of makes sense, um,
+9:269 minutes, 26 secondsbecause you because again, they weren't agent-based. So, it kind of makes sense that they were just treated as teleports and that's probably how people wanted to
+9:359 minutes, 35 secondsuse subways and buses other than driving was because it probably gave them a faster way to get around the city. But again, there's no like I'm not saying
+9:439 minutes, 43 secondsanything here is bad. It's just, you know, a part of the times. Sim City uh even up to Sim City 4 had to work on something like a Pentium 3 I want to
+9:519 minutes, 51 secondssay. So you know so uh another book that um is quite influential at least to the early city builders was growing
+9:599 minutes, 59 secondsartificial societies. Um this was published in 1996. This is basically the one of the first books that I could
+10:0610 minutes, 6 secondsresearch that was about agentbased simulation. So agent-based simulation has been around for a long time. It's been a thing that people have wanted for
+10:1510 minutes, 15 secondsa long time. This was much more influential because it also covered stuff like spatial simulation, i.e.
+10:2210 minutes, 22 secondsthings are actually quite far apart. How do you know cities function when you've got two zones that are like far apart?
+10:3010 minutes, 30 secondsAnd it also covers some social rules which um you know I can go into that later. So agentbased simulation, this is
+10:3810 minutes, 38 secondswhat City Skylines uses. Uh, from what I can tell, almost all the modern citybuilders um use agent-based
+10:4610 minutes, 46 secondssimulation. And as I said in my last video, this is not a bad thing.
+10:4910 minutes, 49 secondsAgent-based simulation, I think, is good. It's a very fun thing. And, you know, computers get better and better.
+10:5510 minutes, 55 secondsAnd ideally, we could have more and more agents. So, here you have an agent.
+11:0111 minutes, 1 secondAn agent normally will have a type. Um, so that type could be like student, if they're a low or high income worker, or
+11:0811 minutes, 8 secondsthey're retired. uh then because of that they will have a job. Their job has a destination in the world, their transit
+11:1611 minutes, 16 secondstype this agent would like to do and their salary and then there's a visual element of course like their position in the 3D
+11:2511 minutes, 25 secondsworld and the 3D model they should use for anam for the city skylines example.
+11:3211 minutes, 32 secondsAnd so an agent works, you take all these little guys, spread them out across the map, and they will be in home
+11:4011 minutes, 40 secondswork, and then during the day, they will just walk to different jobs, different points of interest, depending on what
+11:4711 minutes, 47 secondsthe city simulation needs off them. And again, this is a very, you know, it leads to very emergent real behavior. So
+11:5611 minutes, 56 secondsCity Skylines famously uses agents. Uh they don't fully use agents. They probably do some other simulation stuff.
+12:0312 minutes, 3 secondsI believe they use agents for the pedestrians and cars and transit, but I believe there is stuff under the economy
+12:1012 minutes, 10 secondsthat probably works in a different way, but I don't have access to their source code. So, yeah, they have simulated life paths, but there is a per agent cost
+12:1812 minutes, 18 secondshere, which I kind of talked about in my last video. And again, it's again this the city skylines way of doing traffic is great because it can take things into
+12:2712 minutes, 27 secondsaccount like the agents own drivers behavior, their comfort, their cost and then bad traffic can force buildings to
+12:3412 minutes, 34 secondsnot have enough walker workers causes the dead and the trash to pile up etc.
+12:4012 minutes, 40 secondsSo, you know, it leads to like a a pretty nice feeling city. But sometimes the simulation doesn't feel like it meaningfully punishes or rewards choice.
+12:4912 minutes, 49 secondsA lot of people um in my last video left comments about feeling it was you know they I said I had no comments on the
+12:5712 minutes, 57 secondsagent-based simulation, but a lot of people said, "Oh, there's loads of issues with it, yada yada yada." And you know, I do understand that. And I think one of the issues is that the simulation
+13:0613 minutes, 6 secondssometimes doesn't feel like you're impacting it. It feels more about the agents, how they're getting to places is more important.
+13:1513 minutes, 15 secondsUm yeah and as I said the infrastructure decisions don't feel loadbearing.
+13:2013 minutes, 20 secondsOkay another another thing I want to quickly touch on uh I'm not going to go into a full lecture here but uh KD trees is something that I'm pretty sure all
+13:2913 minutes, 29 secondscity simulation simulators have used. Uh a KD tree or K- dimensional tree. It's a binary space partitioning uh structure.
+13:3813 minutes, 38 secondsThis has been used since Doom like literally the video game Doom. um binary space partitioning um and it's a very
+13:4513 minutes, 45 secondsvery quick mathematical way to find out things like how many shops are within a 5 km radius of me or how many trees are
+13:5313 minutes, 53 secondsthere. I would recommend some other videos. Um just type in KD tree into YouTube and there's people who give
+14:0014 minutesreally good explanations about this. But I just wanted to mention that this is something that I'm doing and pretty much all city simulators I hope do. If they
+14:0914 minutes, 9 secondsdon't do it I would question that. So, I've been talking about city simulations and you know me, I like my white papers.
+14:1614 minutes, 16 secondsSo, I do research. Has there been any like huge discoveries in city simulations and there are a lot of white
+14:2414 minutes, 24 secondspapers coming out about city simulations? But I have to warn you, if you have a weak stomach, you should look
+14:3014 minutes, 30 secondsaway. Now, the forbidden fourth type LLM powered agents. During my research, I
+14:3914 minutes, 39 secondshave found many papers basically going the opposite direction I'm going. I'm making the argument that I want to be less agent-based in my simulation.
+14:4714 minutes, 47 secondsAcademia seems to be in the opposite direction. They say, "No, no, no. We need more agents and but we also need to give each agent their own LLM, their own
+14:5514 minutes, 55 secondsAI to follow." Um, uh, I haven't read these papers fully. Um, I've skimmed a
+15:0215 minutes, 2 secondslot of the, uh, the, um, diagrams. So this is some of the diagrams that come from two of the papers.
+15:0915 minutes, 9 secondsWeirdly these both the academic three all three academic papers have quite nice graphics. Maybe some AI was used here. I don't know. It's not really my
+15:1715 minutes, 17 secondspoint. But um I just but it's uh the each paper kind of has their own different system. Uh the one on the left
+15:2515 minutes, 25 secondshere, this is about um using LLMs to decide what transport they use, what schedule they have, and how they should
+15:3415 minutes, 34 secondsmaybe explore the city. The one on the right kind of similar to that, you know, personal personas, how they socially
+15:4215 minutes, 42 secondsinteract with each other. Uh the last LLM white paper was um a little bit more interesting where it wasn't the agents
+15:5015 minutes, 50 secondsusing an LLM to decide what to do each day but more about uh larger systems. So in this paper they said the government
+15:5715 minutes, 57 secondsmakes decisions on an LLM, households make decision on an LLM, you know uh how you do production and all that and the
+16:0416 minutes, 4 secondsinvestment. I just disclaimer I am not going to be using anything like this.
+16:0916 minutes, 9 secondsUh, I can't think of a more cursed game mode than, oh, you can play my game and there is a token cost for how long you
+16:1516 minutes, 15 secondsplay my game. That's awful. But it's an interesting thing to look at. I do like to read these things. I do like to see where academia is going.
+16:2516 minutes, 25 secondsSo, something that's a lot more grounded in reality. Again, gravitational model.
+16:3016 minutes, 30 secondsThis is something again I believe all citybuilders do. Uh, we've had gravity since Isaac Newton.
+16:3716 minutes, 37 secondsuh and the gravitational force is um well I can explain like this. So imagine a woman, the woman could be an agent,
+16:4516 minutes, 45 secondsthe woman could be a population group, it doesn't really matter. They are currently at home. Um, they need a job.
+16:5516 minutes, 55 secondsSo they have a choice between they would use a KD tree normally to find out what's nearby them or what's inside, you
+17:0217 minutes, 2 secondsknow, what's nearby. And she's between two different buildings. Now, it's in in most citybuilders, um, it would actually
+17:1117 minutes, 11 secondsbe not the agent or the woman in the middle deciding where to go, even though that makes sense, right? Like the person decides where to go. It's normally a lot
+17:2017 minutes, 20 secondsmore computationally cheaper to have the places of employment decide who to take.
+17:2617 minutes, 26 secondsSo, this is called a sync system. It's like a sink and a drain. the companies actually pull in people traditionally because this is a lot cheaper than
+17:3517 minutes, 35 secondshaving the woman in the middle decide where she goes to work. So we have two gravitational fields and the
+17:4217 minutes, 42 secondsgravitational field decides how big it is is decided on things like well is there occupancy at either of these jobs?
+17:4917 minutes, 49 secondsDo they need people? What's the land value? What's the building rating? And that decides the size of each gravitational sink. and then the agent
+17:5817 minutes, 58 secondswill get pulled towards whatever's stronger. Uh again, this is an extremely classic system most city builders I believe use
+18:0718 minutes, 7 secondssomething like this. However, uh an issue that I've been having or I've been trying to solve is okay, so if this was
+18:1618 minutes, 16 secondsan agent-based simulation, there was also a time to destination that becomes a part of the decision- making here. But
+18:2418 minutes, 24 secondsthere are issues sometimes where well let's say the occupancy of both buildings is exactly the same. The land value is the exact same and the distance
+18:3318 minutes, 33 secondsis the exact same. How who wins? Now in a extremely lazy fair gravitational
+18:4018 minutes, 40 secondsmodel it would just be a coin flip essentially random chance which which way she goes. However, what I'm want to
+18:4818 minutes, 48 secondsbuild is something a bit more intelligent than just the building itself or the zone itself deciding how
+18:5618 minutes, 56 secondsbig it is. What I really want to do is something like this.
+19:0119 minutes, 1 secondThe place of work will reference what's around it in its immediate. We could call this a district perhaps. I want to
+19:1019 minutes, 10 secondsbe able to know what's around it and then each district can actually have its own score
+19:1719 minutes, 17 secondsand I will go into that more in later and I'll show an actual demo I have built to kind of visualize what I'm thinking about.
+19:2719 minutes, 27 secondsSo no one simulation works on its own, right? Um simulations is layers upon layers of different systems and they're
+19:3419 minutes, 34 secondsall woven to make a single engaging experience. I have been working on documenting everything I do. I like markdown. These are markdown files.
+19:4519 minutes, 45 secondsThese are all the systems I have already pretty much fully planned out. I like to document everything as I go along.
+19:5319 minutes, 53 secondsAgain, I'm from like the corporate world and I like to have everything documented so in case something was to happen to me, I could actually deliver this to
+20:0020 minutessomeone else and they could finish it on mystead or a team. Let's talk about my simulation. I'm not going to go through
+20:0820 minutes, 8 secondsall of these things, but I wanted to just show you a sort of a kitchen sink of what I'm doing right now, and I will
+20:1620 minutes, 16 secondsgo into detail in some of the more interesting ones here. The first one you might have caught your eye was the Victoria 3 style, what they call
+20:2420 minutes, 24 secondscohorts, I believe. Uh, I love Victoria 2, Victoria 3. I love those kind of games. And I want statist statistical
+20:3020 minutes, 30 secondspopulation groups. Right now, I'm working with the idea of pops. So instead of just like low income, highinccome workers. So pops of groups
+20:3920 minutes, 39 secondsdefined by their profession, culture, religion, and state of residence and workplace. And like everything, they're
+20:4820 minutes, 48 secondsstatistical stocks. So they have like a standard of living, wealth, um, and qualifications that they have. And this will allow them to migrate place to
+20:5620 minutes, 56 secondsplace. But another reason I really wanted to have a pop system was because I want pops to naturally congregate
+21:0521 minutes, 5 secondstogether. Like you know in real life we have neighborhoods and some neighborhoods are very dictated by the local industry and some other population
+21:1421 minutes, 14 secondstypes I want to simulate and I'm trying to build them in early. Tourists I think tourists are a big part of cities um
+21:2121 minutes, 21 secondsespecially cities that have a lot of beautiful natural points of interest. I want to be able to simulate external commuters. So if your city does not have
+21:3021 minutes, 30 secondsenough highly educated or does not have enough people who are willing to do seasonal work, they would actually come
+21:3721 minutes, 37 secondsinto the city to work. I also want to simulate you know sort of in addition to that would be economic migrants. People
+21:4521 minutes, 45 secondswho come to your city for work add pressure to the system that you need to be able to account for. And lastly the
+21:5221 minutes, 52 secondshomeless. I'm still working on the sort of mathematics there. I want to be very careful with it. I understand I believe it was a Sim City the 2013 the the last
+22:0222 minutes, 2 secondsSim City they tried to do homelessness and it was really bad and I definitely don't want to have a system like that.
+22:0922 minutes, 9 secondsBut I am also trying to account for that. So going back to my simulation, the last thing I want to touch on is sort of this dynamic points of interests
+22:1822 minutes, 18 secondsI've been talking about. Um and a little bit about the demand pipeline. So let's go back to my example here.
+22:2722 minutes, 27 secondsThere is an agent. She is stuck between two job options. Let's say these job options from what you see here are
+22:3522 minutes, 35 secondsidentical, right? Okay. Well, well, how does she decide where to go? Well, if we zoom out from looking at her and let you
+22:4222 minutes, 42 secondslook at the city, she lives here. Now, there are two job offers for her. They are both 5 km.
+22:5022 minutes, 50 secondsWhich one do you think she would actually go for? Do you think she would want to work on the outskirts, further away from her home, or do you think she'd like to work inside the city?
+23:0023 minutesWell, statistically, most people, they would most likely want to go live towards a city because closer to the city, salaries are higher, there are
+23:0823 minutes, 8 secondsmore opportunities. That is a fact of most cities. So, she would probably want to go live towards a city. This is something I want to try and simulate
+23:1723 minutes, 17 secondsbetter. And I don't believe many sim city simulators do this. So the agent in that case or the pop you know has a need
+23:2623 minutes, 26 secondsto go to have some social mobility. But I also want to talk about the needs of the city what is called um rci or r yeah
+23:3523 minutes, 35 secondsrci traditionally uh that is residential commercial industrial and later it was
+23:4123 minutes, 41 secondsadded to office we call RICO. So this signals to a city its demand for new zoning, right? I think if you've played a city simulator, you know about this.
+23:5023 minutes, 50 secondsYou have the residential, the commercial, the industrial, and the office. Why do they all start with residential? This is something I notice in all city builders. When you build a
+23:5823 minutes, 58 secondsnew when you go to a new city builder, the residential is the first need.
+24:0324 minutes, 3 secondsI have a different mentality. I think the C and the I should be first. people would actually move towards companies
+24:1224 minutes, 12 secondsand for business. Traditionally, um we're not simulating the wild wild west where people went out into the west with
+24:2024 minutes, 20 secondsnothing to build their own house and then to build a town around it. In the modern world, it's more about people move for the job traditionally.
+24:3124 minutes, 31 secondsAnd I believe that RICO citywide RICO or residential commercial needs are very
+24:3824 minutes, 38 secondsrestricting. And I believe that's why most city builders you build a city. You don't build many cities on the same map.
+24:4724 minutes, 47 secondsImagine this is my city builder. This is just like a a picture, right? But just imagine this is my city builder. And you would have the Rico in the corner, right? Your residential, commercial, and all that need.
+24:5824 minutes, 58 secondsMy idea is first my city would actually be broken up into districts and I will demo how that's going to work in uh
+25:0725 minutes, 7 secondssoon. But let's just say the the city automatically is broken up into districts. Well, each district actually
+25:1425 minutes, 14 secondsshould have its own RICO in it. It should have its own need for residential, commercial, industrial office. Um this doesn't mean the
+25:2325 minutes, 23 secondsdistricts don't talk to each other and reference each other. I want district leveling level of requirements and this
+25:3125 minutes, 31 secondswould also lead to things like districts having their own schools, having their own hospitals, having their own police
+25:3825 minutes, 38 secondsdepartments and having their own access to public transit. This is something that I really want each district to be
+25:4625 minutes, 46 secondsaware of and I want POPS to be able to move to districts depending on the job offering the schooling which is a very
+25:5525 minutes, 55 secondsrealistic thing people do move to get to better schooling districts if they can afford it. So let's talk about district
+26:0226 minutes, 2 secondsgrouping. So again instead of citywide RICO I want I would like to have per district needs. You know this will allow for neighborhoods to form around
+26:1026 minutes, 10 secondsindustry. So if you have a huge lumber yard or something in out out in the city limits, the neighborhood around it would
+26:1826 minutes, 18 secondsactually be built towards that and it would actually feel like a logging town more than just another urban center.
+26:2826 minutes, 28 secondsOkay, so here is a um city simulation sort of sandbox. I actually built this
+26:3626 minutes, 36 secondsbefore even building my parceling engine. It's older than that. Nothing here is really to show any individual
+26:4226 minutes, 42 secondscity simulation. This is more to show my grouping of districts idea. So I'm going to use an auto parling tool here. Let's
+26:5126 minutes, 51 secondswork on the middle first. Let's just have a little residential area in the middle here. Just boom boom boom boom.
+26:5926 minutes, 59 secondsAnd right in the center, let's have some mixed use residential commercial. And let's do do a little bit more residential up here. Okay. And then down
+27:0827 minutes, 8 secondshere, let's just have some pure commercial blocks.
+27:1327 minutes, 13 secondsAnd on the right here, let's just have a big industrial park. On the bottom of that, let's just have some utilities and
+27:2027 minutes, 20 secondsservices like a water treatment plant and I don't know, a waste facility.
+27:2427 minutes, 24 secondsNormally, you wouldn't put them so close to each other, obviously. You know, let's extend the extend the residential a little bit there. And then on the far
+27:3327 minutes, 33 secondsend, let's have a big big farm area like that. Uh oh, it's
+27:4127 minutes, 41 secondsnot connected to the road. Let me just draw road. Make sure it's connected. There you go. It's connected now. Okay.
+27:4727 minutes, 47 secondsNow, when I press start, you might have seen these little these little uh these little circles have
+27:5627 minutes, 56 secondsactually sent it in. These have automatically dictated what is a district and has automatically grouped
+28:0428 minutes, 4 secondsdistricts together. So you see here this is a residential district. Even though I put some commercial in there, it identified that this should be still a
+28:1328 minutes, 13 secondsresidential district with some commercial in there. And the commercial area down here again that has all
+28:1928 minutes, 19 secondsgrouped together. So this is sort of my idea for grouping together parcels of land into districts. And this was an an
+28:2828 minutes, 28 secondsidea I've had to simplify some of the mathematics involved. I have some um maths going here. The idea this was also
+28:3628 minutes, 36 secondsto simulate, you know, could you be food self-sufficient? How much do you need to be food self-sufficient? How much waste is being managed? A lot of this is
+28:4428 minutes, 44 secondsbroken. Again, a lot of this is very very very old code. Uh that's why it looks so ugly. But this is sort of the idea I had was that districts would
+28:5228 minutes, 52 secondsautomatically group and then we could make better statistical analysises based on the district. And of course then
+28:5928 minutes, 59 secondsbecause these are one district they would understand what they have immediate access to and the looks of the building and the feeling of the town
+29:0729 minutes, 7 secondscould actually be dictated by that. And that was the districts uh with movement.
+29:1429 minutes, 14 secondsAs you know, I've already shown off the traffic system in my previous devlog. I would be using my LTM and DTS, which is
+29:2429 minutes, 24 secondsdynamic traffic system to move between the different districts and points of interest using the realistic traffic that I demoed in my previous devlog.
+29:3229 minutes, 32 secondsThere would still be a demand pipeline using a gravity model. And I am also building a demand-driven cargo system
+29:3929 minutes, 39 secondswhere industries can ship between each other and there is a downstream demand for things. And something I'm trying not
+29:4729 minutes, 47 secondsto forget is to make the game fun. So I'm also going to put some more fun stuff in, but um I know it's been quite dry with the city simulation stuff.
+29:5629 minutes, 56 secondsHowever, I do believe that it's important to have a solid foundation first um and make something that would
+30:0330 minutes, 3 secondsmake, you know, real serious city simulator fans happy, but we can always make it more fun. And I do have kids. I
+30:1130 minutes, 11 secondshave one kid who's actually old enough to start playing City Simulators soon, and I would like to build a game that he would like to play as much as, you know, his dad wants to play.
+30:2130 minutes, 21 secondsUm, some questions I had in my previous video was sort of around what year would the game be set, what to simulate. So,
+30:2930 minutes, 29 secondsthe year is going to be, I guess, current year. My idea was you can start with a blank canvas or build off an
+30:3730 minutes, 37 secondsexisting functional old town. And I'm going to demo that uh in this video as well quickly. Um, another idea I had is
+30:4630 minutes, 46 secondsyou can help to help a failing town to modernize and you would move into the future. I'm
+30:5330 minutes, 53 secondsnot sure if I'm going to log what year you're in. Um, an issue I have with most city builders is that they kind of start at like the current year, I guess, but
+31:0231 minutes, 2 secondsthe longer you play it, you have games that go on for like 150 years. And I don't know, it feels kind of weird. So,
+31:0931 minutes, 9 secondsI'm not exactly sure how to get around that yet, but I do not want to simulate the far future. Although, I do have futuristic ideas. Like, I would like to
+31:1731 minutes, 17 secondssimulate drone delivery perhaps and autonomous cars. But again, this is sort of just pie in the sky.
+31:2531 minutes, 25 secondsSo, let me demo where I am right now with the city builder. Okay, so here's my little city builder.
+31:3331 minutes, 33 secondsI've made the map flat right now. Uh, ignore the debug square. Um, so some things I wanted to show you, some additions that have been made. First
+31:4131 minutes, 41 secondsthings first, uh, I h people said that they would love to be able to have cities that don't require actual cars or
+31:5131 minutes, 51 secondsat least a city center doesn't require cars. So, I took some time actually making my pathing system
+31:5931 minutes, 59 secondson I would say on par with the with the car with the U traffic system. So, now
+32:0632 minutes, 6 secondsI'm just going to build, you know, kind of like an old town, I guess, here.
+32:1132 minutes, 11 secondsAnd I'm going to put some residential in the middle. There we go. Again, massive buildings. Please ignore them. They're
+32:1832 minutes, 18 secondsjust there for visualization. There we go. And I've put in a little residential section and a commercial street. And you can see here, none of these are cars.
+32:2732 minutes, 27 secondsUm, it's probably not very obvious to you. These are actually supposed to be bicycles. The blue are bicycles, and these are people. And as you can see,
+32:3532 minutes, 35 secondsthey are walking between the town, the the the town here and the city all via paths. There are no cars here
+32:4332 minutes, 43 secondswhatsoever. So, um that was what I meant by I said perhaps we could have an old town here. Imagine old small buildings
+32:5032 minutes, 50 secondshere. And this is the town you inherit, but you have to build out and make the town, you know, modern and profitable and all that kind of stuff. Now, I am
+32:5932 minutes, 59 secondsgoing to need a real road for this next part on a demo. So, I'm going to build a road out here. Now, let's just pretend
+33:0633 minutes, 6 secondsout here there was a huge mining operation. So, let's build a very
+33:1333 minutes, 13 secondslarge parcel of land here. And let's pretend that this is all built off some sort of I don't know or deposit here or whatever.
+33:2233 minutes, 22 secondsSo, what what this is this is a mining operation. And what happens is what I want to happen is if you want to parcel
+33:3033 minutes, 30 secondsoff a large part of land for mining, you can do that, but it's going to come at a cost. The mining operations I want, and
+33:3833 minutes, 38 secondsthis would be true for like oil digging and all anything else that would require earth moving, you would actually have to the land would actually be dug up in a
+33:4733 minutes, 47 secondsquarry style. And then later, you're going to have to deal with the consequence of this. And that's
+33:5533 minutes, 55 secondssomething that real cities have to to think about. Just because your city is built on top of a huge or deposit, do you want to dig it up? Because you'll
+34:0334 minutes, 3 secondsmake a lot of money, there'll be a lot of influx of people coming in, but eventually you're going to be left with a big hole in the ground and you got to
+34:1234 minutes, 12 secondsdecide how to deal with that. Okay. So, you know, uh those are just some of the things I've been working on. I've been working on some other things as well,
+34:2034 minutes, 20 secondslike automatic barriers forming against roads when they're against cliffs, but that needs a little bit more time in the oven. Um, again, I've been working quite
+34:3034 minutes, 30 secondsseriously on the fundamentals, on the simulation, on all the mature big boy
+34:3734 minutes, 37 secondsstuff, you know. So, I decided to build this just for a little bit of fun.
+34:4334 minutes, 43 secondsprobably not a good use of my time, but it was fun and it made my kids laugh, so that was important for me.
+34:5234 minutes, 52 secondsSo, some other things I'm doing, uh, again, these are like just some bullet points. I will go into these in other
+35:0035 minutesvideos, but I want to just talk about it now, kind of get people excited, give you an ex and, you know, give you a look behind the curtain.
+35:0835 minutes, 8 secondsAnd here are some techy stuff that I also want to cover. not right now but I'll cover these later like my ondemand
+35:1535 minutes, 15 secondsmatrix um you know a diff the difference between dyextras single source versus aar algorithm uh more about top k or uh
+35:2535 minutes, 25 secondsKD trees u my time slice demand pass um how demand goes between different areas
+35:3235 minutes, 32 secondsof the game um and the GPU boundary stuff I've been doing and obviously talk about the game engine which I again I'll cover in another video.
+35:4235 minutes, 42 secondsOkay. So, so thank you for waiting to the end of the video and some announcements. A lot of people asked for it and I have decided to finally make a
+35:5135 minutes, 51 secondsDiscord. So, I have a Discord. Feel free to join. The Discord is called James's Citybuilder because um it actually took
+36:0136 minutes, 1 secondme a while to make the Discord because I kept looking at that what you going to call the Discord server and I was like, well, my game doesn't have a name yet.
+36:0836 minutes, 8 secondsjoin the Discord and how about you suggest some game names for me. That'd be great. Uh I have a sug I have a um like sort of like a suggestions feedback
+36:1636 minutes, 16 secondssection and a general chat and I will be developing the Discord as time goes on.
+36:2236 minutes, 22 secondsUh something else uh I decided to make I've actually made a Patreon. Um I wasn't planning on making a Patreon.
+36:2936 minutes, 29 secondsHowever, my last two videos I've had lots of people leave comments saying, "Where's the Patreon? I want a Patreon." And all that. So, I decided to make a
+36:3836 minutes, 38 secondsPatreon. Uh, right now I only have one tier. I don't feel like I have a lot to offer. So, I I just made one tier for
+36:4636 minutes, 46 secondspeople who want to support me. And again, thank you so much for all the support to people. Uh, some people found my Kofi and I want to say thank you to
+36:5436 minutes, 54 secondsthose people as well for donating to me on Kofi is really nice. And, um, if you want to donate on Patreon, obviously
+37:0237 minutes, 2 secondsthat'll be thank you so much, but don't feel like you have to donate. I'm not I'm not like pausing the project if I don't get enough Patreons or nothing
+37:1037 minutes, 10 secondslike that. The Patreon will not impact this project, but it would be nice to have some uh initial capital to help me
+37:1737 minutes, 17 secondsalong the way. And again, thank you for anyone who leaves a comment, views the video, subscribes, obviously leaves any
+37:2537 minutes, 25 secondsmoney through Kofi, Patreon. Thank you so so much. The end. Uh, the next video I'm going to talk about is
+37:3237 minutes, 32 secondsdevelopers, developers, developers, developers, developers, developers, developers, developers, developers, developers, developers, developers, developers, developers, and zoning.
